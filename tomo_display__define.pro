@@ -213,6 +213,66 @@ pro tomo_display_event, event
     tomo_display->event, event
 end
 
+pro tomo_display::display_slice, new_window=new_window
+    if (ptr_valid(self.pvolume)) then begin
+        widget_control, self.widgets.disp_slice, get_value=slice
+        widget_control, self.widgets.display_min, get_value=min
+        widget_control, self.widgets.display_max, get_value=max
+        widget_control, self.widgets.direction, get_value=direction
+        widget_control, self.widgets.volume_file, get_value=file
+        ; Set the axis dimensions
+        if (self.setup.image_type eq 'RECONSTRUCTED') then begin
+            xdist = findgen(self.nx)*self.setup.x_pixel_size
+            ydist = findgen(self.ny)*self.setup.x_pixel_size
+            zdist = findgen(self.nz)*self.setup.y_pixel_size
+        endif else begin
+            xdist = findgen(self.nx)*self.setup.x_pixel_size
+            ydist = findgen(self.ny)*self.setup.y_pixel_size
+            zdist = *self.setup.angles
+        endelse
+        case direction of
+            0: begin
+                slice = (slice > 0) < (self.nx-1)
+                r = (*(self.pvolume))[slice, *, *]
+                xdist = ydist
+                ydist = zdist
+                end
+            1: begin
+                slice = (slice > 0) < (self.ny-1)
+                r = (*(self.pvolume))[*, slice, *]
+                ydist = zdist
+                end
+            2: begin
+                slice = (slice > 0) < (self.nz-1)
+                r = (*(self.pvolume))[*, *, slice]
+                end
+        endcase
+        axes = ['X', 'Y', 'Z']
+        widget_control, self.widgets.rotation_center, get_value=center
+        title = file + '    Center='+strtrim(string(center),2) + $
+                    '     '+axes[direction]+'='+strtrim(string(slice),2)
+        widget_control, self.widgets.auto_intensity, get_value=auto
+        if (auto) then begin
+            min=min(r, max=max)
+        endif else begin
+            widget_control, self.widgets.display_min, get_value=min
+            widget_control, self.widgets.display_max, get_value=max
+        endelse
+        ; Change the size of the image before calling image_display
+        self->rebin, r, xdist, ydist
+        if (keyword_set(new_window)) or (obj_valid(self.image_display) eq 0) then begin
+            self.image_display = obj_new('image_display', r, min=min, max=max, $
+                                          title=title, xdist=xdist, ydist=ydist)
+        endif else begin
+            self.image_display->scale_image, r, min=min, max=max, $
+                                          title=title, xdist=xdist, ydist=ydist, /leave_mouse
+        endelse
+
+    endif else begin
+        t = dialog_message('Must read in volume file first.', /error)
+    endelse
+end
+
 pro tomo_display::event, event
     if (tag_names(event, /structure_name) eq 'WIDGET_KILL_REQUEST') then begin
         widget_control, event.top, /destroy
@@ -354,64 +414,16 @@ pro tomo_display::event, event
 
         self.widgets.disp_slice: begin
             widget_control, self.widgets.disp_slider, set_value=event.value
+            self->display_slice
         end
 
         self.widgets.disp_slider: begin
             widget_control, self.widgets.disp_slice, set_value=event.value
+            self->display_slice
         end
 
         self.widgets.display_slice: begin
-            if (ptr_valid(self.pvolume)) then begin
-                widget_control, self.widgets.disp_slice, get_value=slice
-                widget_control, self.widgets.display_min, get_value=min
-                widget_control, self.widgets.display_max, get_value=max
-                widget_control, self.widgets.direction, get_value=direction
-                widget_control, self.widgets.volume_file, get_value=file
-                ; Set the axis dimensions
-                if (self.setup.image_type eq 'RECONSTRUCTED') then begin
-                    xdist = findgen(self.nx)*self.setup.x_pixel_size
-                    ydist = findgen(self.ny)*self.setup.x_pixel_size
-                    zdist = findgen(self.nz)*self.setup.y_pixel_size
-                endif else begin
-                    xdist = findgen(self.nx)*self.setup.x_pixel_size
-                    ydist = findgen(self.ny)*self.setup.y_pixel_size
-                    zdist = *self.setup.angles
-                endelse
-                case direction of
-                    0: begin
-                        slice = (slice > 0) < (self.nx-1)
-                        r = (*(self.pvolume))[slice, *, *]
-                        xdist = ydist
-                        ydist = zdist
-                    end
-                    1: begin
-                        slice = (slice > 0) < (self.ny-1)
-                        r = (*(self.pvolume))[*, slice, *]
-                        ydist = zdist
-                    end
-                    2: begin
-                        slice = (slice > 0) < (self.nz-1)
-                        r = (*(self.pvolume))[*, *, slice]
-                    end
-                endcase
-                axes = ['X', 'Y', 'Z']
-                widget_control, self.widgets.rotation_center, get_value=center
-                title = file + '    Center='+strtrim(string(center),2) + $
-                        '     '+axes[direction]+'='+strtrim(string(slice),2)
-                widget_control, self.widgets.auto_intensity, get_value=auto
-                if (auto) then begin
-                    min=min(r, max=max)
-                endif else begin
-                    widget_control, self.widgets.display_min, get_value=min
-                    widget_control, self.widgets.display_max, get_value=max
-                endelse
-                ; Change the size of the image before calling image_display
-                self->rebin, r, xdist, ydist
-                image_display, r, min=min, max=max, title=title, $
-                               xdist=xdist, ydist=ydist
-            endif else begin
-                t = dialog_message('Must read in volume file first.', /error)
-            endelse
+            self->display_slice, /new_window
         end
 
         self.widgets.movie_output: begin
@@ -489,6 +501,8 @@ function tomo_display::init
 ;
 ; MODIFICATION HISTORY:
 ;       Written by:     Mark Rivers (16-Nov-2001)
+;       June 4, 2002    MLR  Made the display slice entry and slider display an
+;                            image in an existing window if it exists.
 ;
 ;-
 
@@ -809,6 +823,7 @@ pro tomo_display__define
         nx: 0, $
         ny: 0, $
         nz: 0, $
+        image_display: obj_new(), $
         fonts: fonts $
     }
 end
