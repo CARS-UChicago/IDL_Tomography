@@ -1,5 +1,6 @@
 ; This procedure tests the memory consumption with signed and unsigned shorts and
 ; longs
+; Mark Rivers
 pro test_unsigned, volume
     dims = size(volume, /dimensions)
     type = size(volume, /type)
