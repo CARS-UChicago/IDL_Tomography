@@ -1,0 +1,874 @@
+;+
+; NAME:
+;  TOMO::PREPROCESS
+;
+; PURPOSE:
+;   This procedure reads a tomography data set from individual Princeton
+;   Instruments .SPE files.  It writes a 3-D volume file to disk.
+;
+; CATEGORY:
+;   Tomography
+;
+; CALLING SEQUENCE:
+;   TOMO->PREPROCESS, Base_file, First, Last
+;
+; INPUTS:
+;   Base_file:
+;       The base file name for the data set.  The actual file name are assumed
+;       to be of the form Base_file + strtrim(file_number,2) + '.SPE'.
+;   First:
+;       The number of the first file, typically 1.
+;   Last:
+;       The number of the last file
+;
+; KEYWORD PARAMETERS:
+;   THRESHOLD:
+;       The threshold for zinger removal in normal frames.  See documentation
+;       for REMOVE_TOMO_ARTIFACTS for details.  Default=1.25
+;   DOUBLE_THRESHOLD:
+;       The threshold for zinger removal in white field frames using double
+;       correlation.  Default=1.05
+;   DARK:
+;       The dark current, either a scaler or a 2-D array.  If this is a scaler
+;       value then a constant dark current is subtracted from each pixel in
+;       every frame.  If this is a 2-D array then it must have the same
+;       dimensions as each frame in the data set.  In this case the specified
+;       2-D dark current will be substracted from each frame in the data set.
+;       Note that if the data set contains dark current frames (frame type =
+;       DARK_FIELD) then this keyword is ignorred.
+;   FIRST_ROW:
+;       The starting row (slice) to be processed.  The default is 0.  This
+;       keyword, together with LAST_ROW below are provided for processing 
+;       data sets which are too large to be read into memory in their 
+;       entirety.  It lets one create multiple volume arrays from a single 
+;       data set, for example rows 0-300 in file 1, (FIRST_ROW=0, LAST_ROW=300)
+;       rows 301-600 in file 2, etc.
+;   LAST_ROW:
+;       The ending row (slice) to be processed.  The defaults is the last row
+;       in each image.  See comments under FIRST_ROW above.
+;        
+;   WHITE:
+;       The white field value, either a scaler or a 2-D array.  If this is a
+;       scaler value then each pixel in each data frame is normalized by this
+;       constant value.  If this is a 2-D array then it must have the same
+;       dimensions as each frame in the data set.  In this case then each data
+;       frame in the data set is normalized by the specified 2-D array.
+;       Note that if the data set contains white field frames (frame type =
+;       FLAT_FIELD), which is typically the case, then this keyword is
+;       ignorred.
+;   OUTPUT:
+;       The name of the output file.  The default is Base_file + '.volume'
+;
+;   DEBUG:
+;       A debugging flag.  Allowed values are:
+;           0: No informational output
+;           1: Prints each input filename as it is read, and prints limited
+;              information on processing steps
+;           2: Prints detailed information on processing steps
+;
+; OUTPUTS:
+;   This function returns a 3-dimensional signed 16-bit integer volume array
+;   of size [NCOLS, NROWS, NANGLES].  The data is the ratio of the input image
+;   to the flat field, multiplied by 10,000.  The ratio of the data to the
+;   flat field should be in the range 0 to 1 (with occasional values slightly
+;   greater than 1).  Multiplying by 10000 should give sufficient resolution,
+;   since even values with 99% absorption will be stored with a precision of
+;   1%.
+;
+; RESTRICTIONS:
+;   - There must not be any missing files between the numbers specified by the
+;     First and Last parameters.
+;   - The input files must follow the naming convention Base_file +
+;     strtrim(number,2) + '.SPE', where number varies from First to Last.
+;   - By storing the normalized data as 16-bit integers, there is a
+;     possibility of loss of some information when using a true 16-bit camera.
+;
+; PROCEDURE:
+;   This function performs the following steps:
+;   - Reads each frame in the data set into a large 3-D data buffer.  Stores
+;     a flag for each frame indicating if the frame is a dark current, a
+;     white field or normal data.
+;     Stores the rotation angle at which each frame was collected.
+;   - Subtracts the dark current from each data frame and white field frame,
+;     using dark current images in the data set if present, or the input dark
+;     current if present.
+;     If the data set contains multiple dark current frames, then the
+;     correction is done as follows:
+;         - Use the first dark current for all frames collected before the
+;           first dark current
+;         - Use the last dark current for all frames collected after the last
+;           dark current
+;         - Use the average of the closest preceeding and following dark
+;           currents for all frames collected between two dark currents.
+;   - Removes zingers from white field frames using REMOVE_TOMO_ARTIFACTS with
+;     /DOUBLE_CORRELATION if possible, or /ZINGERS if not.
+;   - Divides each data frame by the white field, using white field images in
+;     the data set if present, or the input white field if present.  If the
+;     data set contains multiple white field frames, then the correction is
+;     done as follows:
+;         - Use the first white field for all frames collected before the
+;           first white field
+;         - Use the last white field for all frames collected after the last
+;           white field
+;         - Use the average of the closest preceeding and following white
+;           fields for all frames collected between two white fields.
+;     The ratio of each frame to the white field is multiplied by 10,000 to be
+;     able to use 16 bit integers, rather than floats to store the results,
+;     saving a factor of 2 in memory, which is important for these large 3-D
+;     data sets.
+;   - Sorts the rotation angle array, to determine the order in which the
+;     normalized data frames should be written back out to disk in the volume
+;     file.
+;   - Corrects for zingers in the white-field normalized data frames, using 
+;     REMOVE_TOMO_ARTIFACTS, /ZINGERS.  
+;   - Writes the normalized data frames to a single disk file.  The default 
+;     file name is Base_file + '.volume'.  This file is in little-endian binary 
+;     format, with the following data:
+;       - NCOLS (long integer, number of columns in each frame)
+;       - NROWS (long integer, number of rows in each frame)
+;       - NANGLES (long integer, number of frames)
+;       - DATA (short integer array [NCOLS, NROWS, NANGLES]
+;       The volume file can be read back in to IDL with function
+;       READ_TOMO_VOLUME
+;
+; EXAMPLE:
+;   The following example will read files Mydata1.SPE through Mydata370.SPE,
+;   using a constant dark current of 50 counts at each pixel.  This data set
+;   is assumed to have white field frames in it.  The output file will be
+;   Mydata.volume
+;       IDL>  READ_TOMO_DATA, 'Mydata', 1, 370, dark=50
+;       ; Now read the volume file back into IDL
+;       IDL> vol = READ_TOMO_VOLUME('Mydata.volume')
+;       ; Play the volume data as a movie, rotating the sample
+;       IDL> window, 0
+;       IDL> make_movie, vol, min=3000, max=12000
+;
+; MODIFICATION HISTORY:
+;   Written by: Mark Rivers, March 27, 1999.
+;   3-APR-1999 MLR  Changed white field normalization to use weighted average
+;                   of white fields before and after, rather than simple
+;                   average
+;   4-APR-1999 MLR  Changed the default value of threshold from 1.20 to 1.05
+;                   Switched to double correlation method of zinger removal
+;                   for white field images when possible.
+;   18-MAY-1999 MLR Added missing keyword DOUBLE_THRESHOLD to procedure line
+;   07-JUL-1999 MLR Changed zinger removal for data frames so it is done after
+;                   whitefield correction.  This makes the identification of
+;                   zingers (versus high-frequency structure in the whitefield)
+;                   much more robust.
+;   13-SEP-1999 MLR Changed the dark current correction to use a loop, so that
+;                   two large arrays are not required at the same time.
+;   08-DEC-1999 MLR Added FIRST_ROW and LAST_ROW keywords for handling very
+;                   large data sets.
+;                   Added OUTPUT keyword
+;   02-MAR-2000 MLR Added DEBUG keyword to calls to REMOVE_TOMO_ARTIFACTS
+;                   large data sets.
+;   02-MAR-2000 MLR Changed the default value of THRESHOLD from 1.05 to 1.25
+;                   because the lower threshold was causing significant
+;                   blurring of sharp edges.  Changed the default value of
+;                   DOUBLE_THRESHOLD from 1.02 to 1.05, since it was finding
+;                   many more zingers than physically plausible.
+;   02-MAR-2000 MLR Added SWAP_IF_BIG_ENDIAN keyword when opening output file.
+;   22-JAN-2001 MLR Added some default debugging when writing output file
+;   11-APR-2001 MLR Changed the name of this routine from READ_TOMO_DATA to
+;                   TOMO::PREPROCESS when it was incorporated in the TOMO class
+;                   library.
+;                   This routine now updates the .SETUP file with the dark current 
+;                   that was specified when running this procedure.
+;                   The output file is now written with TOMO::WRITE_VOLUME rather
+;                   than being incrementally written as the data are processed.  This
+;                   requires more memory, but is necessary to allow use of netCDF
+;                   and other file formats.
+;-
+
+pro tomo::read_data_file, base_file, file_number, data, type, angle, debug, $
+                    threshold=threshold
+   file = base_file + strtrim(file_number, 2) + '.SPE'
+   read_princeton, file, data, header=header, comment=comment
+   angle=float(strmid(comment[0], 6))
+   type=strmid(comment[1], 5)
+   if (debug ne 0) then print, 'Reading file ', file, ' angle=', angle, $
+                               ' type=', type
+end
+
+
+pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
+                    white=input_white, threshold=threshold, $
+                    double_threshold=double_threshold, debug=debug, $
+                    first_row=first_row, last_row=last_row, output=output, setup=setup
+
+    nfiles = stop - start + 1
+    if (n_elements(debug) eq 0) then debug=1
+    if (n_elements(threshold) eq 0) then threshold=1.25
+    if (n_elements(double_threshold) eq 0) then double_threshold=1.05
+    if (n_elements(output) eq 0) then output=base_file + '.volume'
+    if (n_elements(setup) eq 0) then setup=base_file + '.setup'
+
+    status = self->read_setup(setup)
+
+    ; Read one file to get the dimensions
+    self->read_data_file, base_file, 1, data, type, angle, debug
+    size = size(data)
+    ncols = size[1]
+    nrows = size[2]
+    ystart = 0
+    ystop = nrows-1
+    if (n_elements(first_row) ne 0) then ystart = first_row
+    if (n_elements(last_row) ne 0) then ystop = last_row
+    ; The subset flag is for efficiency below
+    if ((ystart eq 0) and (ystop eq nrows-1)) then subset=0 else subset=1
+    nrows = ystop - ystart + 1
+    if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
+
+    data_buff = intarr(ncols, nrows, nfiles, /nozero)
+    angles = fltarr(nfiles)
+    image_type = strarr(nfiles)
+    for i=0, nfiles-1 do begin
+        self->read_data_file, base_file, start+i, data, type, angle, debug, $
+                   threshold=threshold
+        if (subset) then begin
+            data_buff[0,0,i]=data[*,ystart:ystop]
+        endif  else begin
+            data_buff[0,0,i]=data 
+        endelse
+        angles[i]=angle
+        image_type[i]=type
+    endfor
+
+    ; Do dark current correction
+    if (debug ne 0) then print, 'Doing dark current correction ...'
+    darks = where(image_type eq 'DARK_FIELD', ndarks)
+    if (debug ge 2) then print, 'ndarks= ', ndarks, 'darks=', darks
+    if (ndarks eq 0) then begin
+        if (n_elements(input_dark) ne 0) then begin
+            dark = input_dark
+            s = size(dark)  ; Input dark current
+            if (debug ge 2) then print, 'input_dark= ', input_dark, $
+                                  'size(input_dark)=', s
+            case s[0] of
+                0: begin ; Constant dark current
+                    for i=0, nfiles-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+                    self.dark_current = dark
+                end
+                2: begin  ; Dark current array
+                    if (s[3] ne ncols) or (s[4] ne nrows) then $
+                                message, 'Wrong dims on dark'
+                    for i=0, nfiles-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+                end
+                else: message, 'Wrong dims on dark'
+            endcase
+        endif
+    endif else begin
+        ; File contains one or more dark current images
+        ; Files up to the first dark current use the first dark current
+        dark = data_buff[*, *, darks[0]]
+        for i=0, darks[0]-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+            ; Files after the last dark current use the last dark current
+            for i=darks[ndarks-1]+1, nfiles-1 do $
+                            data_buff[0,0,i]=data_buff[*,*,i] - dark
+            ; Files in between the first dark and the last dark use the average of
+            ; the dark current before and after
+            nseries = ndarks-1
+            for j=0, nseries-1 do begin
+                dark = (data_buff[*,*,darks[j]] + data_buff[*,*,darks[j+1]]) / 2
+                for i=darks[j]+1, darks[j+1]-1 do $
+                            data_buff[0,0,i]=data_buff[*,*,i] - dark
+            endfor
+    endelse
+
+    ; Do flat field current correction and zinger removal on flat field frames
+    if (debug ne 0) then print, 'Doing white field correction ...'
+    whites = where(image_type eq 'FLAT_FIELD', nwhites)
+    if (debug ge 2) then print, 'nwhites= ', nwhites, 'whites=', whites
+    if (nwhites eq 0) and (n_elements(input_white) ne 0) then begin
+        white = input_white
+        s = size(white)  ; Input white field
+        case s[0] of
+            0: data_buff[0,0,0] = 10000 * (data_buff/float(white))  ; Constant
+            2: begin  ; White field array
+                if (s[3] ne ncols) or (s[4] ne nrows) then $
+                                message, 'Wrong dims on white'
+                for i=0, nfiles-1 do $
+                    data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
+            end
+            else: message, 'Wrong dims on white'
+        endcase
+    endif else begin
+        ; File contains one or more white field images
+        ; Files up to the first white field use the first white field
+        white = data_buff[*, *, whites[0]]
+        white = remove_tomo_artifacts(white, /zingers, threshold=threshold, $
+                                 debug=debug)
+        for i=0, whites[0]-1 do data_buff[0,0,i] = $
+                        10000 * (data_buff[*,*,i]/float(white))
+        ; Files after the last white field use the last white field
+        white = data_buff[*,*,whites[nwhites-1]]
+        white = remove_tomo_artifacts(white, /zingers, threshold=threshold, $
+                                 debug=debug)
+        for i=whites[nwhites-1]+1, nfiles-1 do $
+                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
+        ; Files in between the first white field and the last white field use the
+        ; weighted average of the white field before and after
+        nseries = nwhites-1
+        for j=0, nseries-1 do begin
+            white1 = data_buff[*,*,whites[j]]
+            white2 = data_buff[*,*,whites[j+1]]
+            ; Remove zingers with double correlation
+            white1 = remove_tomo_artifacts(white1, image2=white2, $
+                         /double_correlation, threshold=double_threshold, $
+                         debug=debug)
+            nframes = whites[j+1] - whites[j] - 1
+            for i=0, nframes-1 do begin
+                k = i + whites[j]+1
+                ratio = float(i)/float(nframes-1)
+                white = white1*(1.0-ratio) + white2*ratio
+                data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
+            endfor
+        endfor
+    endelse
+
+    ; Now we have normalized data.
+    ; Correct for zingers now that flat field normalization is done
+    ; Write out to disk file, sorted by angle, arranged by slice
+    if (debug ne 0) then print, 'Writing volume file ...'
+    data_images = where(image_type eq 'NORMAL', nangles)
+    angles = angles[data_images]
+    sorted_indices = sort(angles)
+    angles = angles[sorted_indices]
+    ptr_free, self.angles
+    self.angles = ptr_new(angles)
+    data_images = data_images[sorted_indices]
+    ncols = long(ncols)
+    nrows = long(nrows)
+    nangles = long(nangles)
+    vol = intarr(ncols, nrows, nangles)
+    for i=0, nangles-1 do begin
+        proj = reform(data_buff[*,*,data_images[i]])
+        proj = remove_tomo_artifacts(proj, /zingers, threshold=threshold, $
+                                debug=debug)
+        if (debug ne 0) then print, 'Copying projection ' + strtrim(i+1,2) + '/' + $
+                                                       strtrim(nangles,2)
+        vol[0,0,i] = proj
+    endfor
+    self->write_volume, output, vol, /corrected
+    status = self->write_setup(setup)
+end
+
+
+;+
+; NAME:
+;   TOMO::RECONSTRUCT_VOLUME
+;
+; PURPOSE:
+;   This procedure reconstructs a complete 3-D data set (X, Y, Theta) into a 
+;   3-D (X, Y, Z) volume.  It reads its input from disk and writes its output
+;   back to disk.
+;
+; CATEGORY:
+;   Tomography.
+;
+; CALLING SEQUENCE:
+;   TOMO->RECONSTRUCT_VOLUME, Base_file
+;
+; INPUTS:
+;   Base_file: 
+;       The base file name.  The input file is assumed to be named
+;       base_file+'.volume', and the output file will be named
+;       base_file+'_recon.volume'.  The input file is read with
+;       READ_TOMO_VOLUME and the output file is written with WRITE_TOMO_VOLUME.
+;               
+; KEYWORD PARAMETERS:
+;   This procedure accepts all keywords accepted by READ_TOMO_VOLUME and
+;   RECONSTRUCT_SLICE and simply passes them to those routines via keyword 
+;   inheritance.
+;
+;   CENTER
+;       This keyword, which is passed to RECONSTRUCT_SLICE can either be a scaler (the
+;       normal case) or a 2-element array.  If it is a 2-element array then the
+;       center value passed to RECONSTRUCT_SLICE is interpolated between CENTER[0]
+;       for the first slice of the volume file to CENTER[1] at the last slice of the
+;       volume file.  This can be useful if the optimum center varies with slice
+;       depth.
+;   ANGLES
+;       An optional array of angles (in degrees) at which each projection was taken.
+;       This keyword is passed to RECONSTRUCT_SLICE.  If this keyword is missing
+;       then RECONSTRUCT_SLICE assumes even spacing from 0 to 180-delta degrees.
+;   SCALE
+;       The scale factor by which the data should be multiplied before writing as
+;       short integers to the output file.  The default is 1.e6.  Since the
+;       attenuation values are per-pixel, and are typically 0.001, this leads to
+;       integers in the range of 10,000.  If there are highly attenuating pixels the
+;       scale factor may need to be decreased to 1-5e5 to avoid integer overflow.
+;       The inverse of the SCALE is stored as the attribute volume:scale_factor
+;       in the netCDF file.
+;
+; OUTPUTS:
+;   This procedure writes its results to a file base_file+'_recon.volume'
+;
+; RESTRICTIONS:
+;   This procedure assumes a naming convention for the input and output files.
+;   The output is stored as 16 bit integers to save memory and disk space.
+;   This can reduce the dynamic range of the reconstructed data.
+;
+; PROCEDURE:
+;   This procedure simply does the following:
+;       - Reads a corrected input volume (X, Y, Theta) which is typically
+;         created with READ_TOMO_DATA
+;       - Calls RECONSTRUCT_SLICE for each row (slice) in the input volume
+;       - Scales the reconstructed data (floating poing) by 10000 and converts
+;         to 16 bit integers
+;       - Writes the reconstructed 3-D volume (X, Y, Z) back to disk with
+;         WRITE_TOMO_VOLUME
+;
+; EXAMPLE:
+;   reconstruct_volume, 'FOSSIL1', /AUTO_CENTER
+;
+; MODIFICATION HISTORY:
+;   Written by:    Mark Rivers, April 23, 1999
+;   30-APR-1999 MLR  Fixed bug introduced by new version of sinogram, need
+;                    to get size of reconstructed slices after centering
+;   18-MAY-1999 MLR  Changed formal parameter _extra to _ref_extra to allow
+;                    CENTER keyword value to be returned from sinogram (via
+;                    reconstruct_slice).
+;   23-FEB-2000 MLR  Pass extra keywords to read_tomo_volume
+;   7-MAR-2000  MLR  Added support for GRIDREC reconstruction, which reconstructs
+;                    2 slices at once.
+;   2-JAN-2001  MLR  Added CENTER keyword. If it is a 2-element array then the
+;                    center is interpolated.
+;   11-APR-2001 MLR  Incorporated the previous routine RECONSTRUCT_VOLUME into the
+;                    TOMO class library.
+;                    This procedure now updates the .SETUP file with the center
+;                    value which was used for the reconstruction.
+;   12-APR-2001 MLR  Added SCALE and angles keywords since we need to process them
+;                    here.
+;-
+
+pro tomo::reconstruct_volume, base_file, center=center, scale=scale, angles=angles, $
+                              _ref_extra=extra
+
+    status = self->read_setup(base_file+'.setup')
+    vol = self->read_volume(base_file + '.volume', _extra=extra)
+    if (n_elements(center) ne 0) then self.center = center[0]
+    if (n_elements(angles) ne 0) then self.angles = ptr_new(angles)
+    if (n_elements(scale) eq 0) then scale=1.e6
+    self.scale_factor = 1./scale
+    ; This procedure reconstructs all of the slices for a tomography data set
+    nrows = n_elements(vol[0,*,0])
+    ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
+    if (keyword_set(back_project)) then step=1 else step=2
+    for i=0, nrows-1, step do begin
+        if (n_elements(center) eq 0) then cent=-1
+        if (n_elements(center) eq 1) then cent=center
+        if (n_elements(center) eq 2) then cent = $
+                     round(center[0] + float(i) / (nrows-1) * (center[1]-center[0]))
+        r = reconstruct_slice(i, vol, r2, center=cent, scale=scale, angles=angles, $
+                              _extra=extra)
+        if (i eq 0) then begin
+            ncols = n_elements(r[*,0])
+            recon = intarr(ncols, ncols, nrows, /nozero)
+        endif
+        print, 'reconstructing slice ', i
+        recon[0,0,i] = r
+        if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
+            recon[0,0,i+1] = r2
+        endif
+    endfor
+    self->write_volume, base_file + 'recon.volume', recon, /reconstructed
+    status = self->write_setup(base_file + '.setup')
+end
+
+
+pro tomo::write_volume, file, volume, netcdf=netcdf, raw=raw, corrected=corrected, $
+                        reconstructed=reconstructed
+
+;+
+; NAME:
+;   TOMO::WRITE_VOLUME
+;
+; PURPOSE:
+;   Writes 3-D volume files to be read later by READ_TOMO_VOLUME.  
+;   There are currently 2 file formats supported:
+;   1) The old APS-specific architecture-dependent binary format.
+;      In general this format should no longer be used, since it does not
+;      contain information on the dark current, centering, etc.  It is also
+;      not nearly as portable as netCDF, since if the IDL routine
+;      READ_TOMO_VOLUME is not used to read the files then user-code must
+;      handle byte-swapping, etc.
+;   2) netCDF format files.  This is the format which should generally be used,
+;      since it supports additional information like the dark current and it is
+;      very portable.  Many data-handling packages support netCDF and there are
+;      netCDF libraries available on virtually all platforms.
+;
+; CATEGORY:
+;   Tomography data processing
+;
+; CALLING SEQUENCE:
+;   TOMO->WRITE_VOLUME, File, Volume
+;
+; INPUTS:
+;   File:    
+;       The name of the volume file to be written.
+;   Volume:  
+;       The 3-D volume data to be written.  This must be a 3-D 16-bit integer
+;       array.  The dimensions are NX, NY, NANGLES or NX, NY, NZ
+;
+; KEYWORD PARAMETERS:
+;   NETCDF:
+;       Set this keyword  to write files in netCDF file format.  This is the
+;       default.  If NETCDF=0 then files are written in the old APS format.
+;
+; RESTRICTIONS:
+;   The old APS format files are written using little-endian byte order.
+;   When this routine writes such files it swaps the byte order if it is 
+;   running on a big-endian machine.  Thus that file format
+;   is most efficient on little-endian machines (Intel, DEC).
+;
+; EXAMPLE:
+;   tomo = obj_new('tomo', 'test.setup')
+;   tomo->WRITE_VOLUME, 'diamond2.volume', volume
+;
+; MODIFICATION HISTORY:
+;   Written by:     Mark Rivers, May 13, 1998
+;   26-JAN-2000  MLR  Added /swap_if_big_endian keyword to openw to allow
+;                     files to be read on big-endian machines.
+;   11-APR-2001  MLR  Added support for netCDF file format.  Added NETCDF keyword.
+;-
+;-
+
+    if (n_elements(netcdf) eq 0) then netcdf=1
+
+    size = size(volume)
+    if (keyword_set(raw)) then self.image_type = "RAW"
+    if (keyword_set(corrected)) then self.image_type = "CORRECTED"
+    if (keyword_set(reconstructed)) then self.image_type = "RECONSTRUCTED"
+    
+
+    if (netcdf eq 0) then begin
+        openw, lun, file, /get, /swap_if_big_endian
+        ncols = size[1]
+        nrows = size[2]
+        nangles = size[3]
+        writeu, lun, ncols, nrows, nangles, volume
+        free_lun, lun
+        return
+    endif else begin
+
+        ; netCDF file format
+        ; Create netCDF file
+        file_id = ncdf_create(file, /clobber)
+        ncdf_control, file_id, fill=0
+
+        ; Create dimensions
+        nx_id = ncdf_dimdef(file_id, 'NX', size[1])
+        ny_id = ncdf_dimdef(file_id, 'NY', size[2])
+        nz_id = ncdf_dimdef(file_id, 'NZ', size[3])
+    
+        ; Create variables
+        vol_id = ncdf_vardef(file_id, 'VOLUME', [nx_id, ny_id, nz_id], /SHORT)
+
+        ; Create attributes.  Replace null strings with a blank.
+        if (self.title ne '') then str=self.title else str=' '
+        ncdf_attput, file_id, /GLOBAL, 'title', str
+        if (self.operator ne '') then str=self.operator else str=' '
+        ncdf_attput, file_id, /GLOBAL, 'operator', str
+        if (self.camera ne '') then str=self.camera else str=' '
+        ncdf_attput, file_id, /GLOBAL, 'camera', str
+        if (self.sample ne '') then str=self.sample else str=' '
+        ncdf_attput, file_id, /GLOBAL, 'sample', str
+        if (self.image_type ne '') then str=self.image_type else str=' '
+        ncdf_attput, file_id, /GLOBAL, 'image_type', str
+        ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
+        ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
+        ncdf_attput, file_id, /GLOBAL, 'center', self.center
+        ncdf_attput, file_id, /GLOBAL, 'x_pixel_size', self.x_pixel_size
+        ncdf_attput, file_id, /GLOBAL, 'y_pixel_size', self.y_pixel_size
+        ncdf_attput, file_id, /GLOBAL, 'z_pixel_size', self.z_pixel_size
+        if (ptr_valid(self.angles)) then $
+            ncdf_attput, file_id, /GLOBAL, 'angles', *(self.angles)
+        if (self.scale_factor ne 0) then scale=self.scale_factor else scale=1.0
+        ncdf_attput, file_id, vol_id,  'scale_factor',  scale
+
+        ; Put the file into data mode.
+        ncdf_control, file_id, /endef 
+
+        ; Write volume data to the file
+        ncdf_varput, file_id, vol_id, volume
+
+        ; Close the file
+        ncdf_close, file_id
+    endelse
+end
+
+
+function tomo::read_volume, file, $
+         xrange=xrange, yrange=yrange, zrange=zrange
+
+;+
+; NAME:
+;   TOMO::READ_VOLUME
+;
+; PURPOSE:
+;   Reads in 3-D volume files written by WRITE_TOMO_VOLUME.  These are binary 
+;   files written in little endian.  This file format is "temporary" until we
+;   decide on a portable self-describing binary format, such as HDF or netCDF.
+;   Both intermediate volume files (after preprocessing) and final
+;   reconstructions are currently stored in this format.
+;
+; CATEGORY:
+;   Tomography data processing
+;
+; CALLING SEQUENCE:
+;   Result = READ_TOMO_VOLUME(File)
+;
+; INPUTS:
+;   File:
+;       The name of the volume file to be read.  If this is not specified then 
+;       the function will use DIALOG_PICKFILE to allow the user to select a 
+;       file.
+; KEYWORD PARAMETERS:
+;   XRANGE=[xstart, xstop]
+;       The range of X values to read in.  The default is to read the entire
+;       X range of the data
+;   YRANGE=[ystart, ystop]
+;       The range of Y values to read in.  The default is to read the entire
+;       Y range of the data
+;   ZRANGE=[zstart, zstop]
+;       The range of Z values to read in.  The default is to read the entire
+;       Z range of the data
+;
+; OUTPUTS:
+;   This function returns a 3-D 16-bit integer array.  The dimensions are
+;   NX, NY, NZ
+;
+; RESTRICTIONS:
+;   These files are written using the little-endian byte order and 
+;   floating point format.  When this routine reads the files it swaps the
+;   byte order if it is running on a big-endian machine.  Thus the file format
+;   is most efficient on little-endian machines (Intel, DEC).
+;
+; EXAMPLE:
+;   volume = READ_TOMO_VOLUME('diamond2.volume')
+;
+; MODIFICATION HISTORY:
+;   Written by: Mark Rivers, May 13, 1998
+;   06-APR-1999  MLR  Made file input optional, puts up dialog if it is not 
+;                     specified
+;   25-JAN-2000  MLR  Added /swap_if_big_endian keyword to openr to allow
+;                     files to be read on big-endian machines.
+;   23-FEB-2000  MLR  Added xrange, yrange, zrange keywords
+;   11-APR-2001  MLR  Added support for netCDF file format.
+;-
+
+    if (n_elements(file) eq 0) then file = dialog_pickfile(/read, /must_exist)
+    if file eq "" then return, 0
+
+    on_ioerror, ignore_error
+    ncdf_control, 0, /noverbose
+    file_id = ncdf_open(file, /nowrite)
+ignore_error:
+    if (n_elements(file_id) eq 0) then begin
+        on_ioerror, null
+        ; This is not a netCDF file, it is an old APS format file
+        openr, lun, file, error=error, /get, /swap_if_big_endian
+        if (error ne 0) then message, 'Error opening file: ' + file
+        nx = 0L
+        ny = 0L
+        nz = 0L
+        header = 12  ; Size of header in bytes
+        readu, lun, nx, ny, nz
+        ; Simplest case is if no ranges are specified, no need to loop
+        if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
+            (n_elements(xrange) eq 0) then begin
+            volume = intarr(nx, ny, nz, /nozero)
+            readu, lun, volume
+        endif else begin
+            if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
+            if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
+            if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
+            ; Compute nx, ny, nz clip if user specified too large a range
+            ix = (xrange[1] - xrange[0] + 1) < nx
+            iy = (yrange[1] - yrange[0] + 1) < ny
+            iz = (zrange[1] - zrange[0] + 1) < nz
+            volume = intarr(ix, iy, iz, /nozero)
+            slice = intarr(nx, ny, /nozero)
+            point_lun, lun, header + zrange[0]*nx*ny*2L
+            for i = 0, iz-1 do begin
+                readu, lun, slice
+                volume[0, 0, i] = $
+                    slice[xrange[0]:xrange[1], yrange[0]:yrange[1]]
+            endfor
+            volume = reform(volume, /overwrite)
+            free_lun, lun
+        endelse
+    endif else begin
+        ; This is a netCDF file
+        ; Process the global attributes
+        status = ncdf_inquire(file_id)
+        for i=0, status.ngatts-1 do begin
+            name = ncdf_attname(file_id, /global, i)
+            ncdf_attget, file_id, /global, name, value
+            case name of
+                'title':        self.title =        strtrim(value,2)
+                'operator':     self.operator =     strtrim(value,2)
+                'camera':       self.camera =       strtrim(value,2)
+                'sample':       self.sample =       strtrim(value,2)
+                'image_type':   self.image_type =   strtrim(value,2)
+                'energy':       self.energy =       value
+                'dark_current': self.dark_current = value
+                'center':       self.center =       value
+                'x_pixel_size': self.x_pixel_size = value
+                'y_pixel_size': self.y_pixel_size = value
+                'z_pixel_size': self.z_pixel_size = value
+                'angles':       begin
+                                    ptr_free, self.angles
+                                    self.angles = ptr_new(value)
+                                end
+            endcase
+        endfor
+        ; Get the variable id
+        vol_id   = ncdf_varid (file_id, 'VOLUME')
+
+        if (vol_id eq -1) then begin
+            ncdf_close, file_id
+            message, 'No VOLUME variable in netCDF file'
+        endif
+
+        ; Get information about the volume variable
+        vol_info = ncdf_varinq(file_id, vol_id)
+
+        ; If we are to read the entire array things are simpler
+        if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
+           (n_elements(xrange) eq 0) then begin
+            ncdf_varget, file_id, vol_id, volume
+        endif else begin
+            if (vol_info.ndims ne 3) then begin
+                ncdf_close, file_id
+                message, 'VOLUME variable does not have 3 dimensions in netCDF file'
+            endif
+            ncdf_diminq, file_id, vol_info.dim[0], name, nx
+            ncdf_diminq, file_id, vol_info.dim[1], name, ny
+            ncdf_diminq, file_id, vol_info.dim[2], name, nz
+            if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
+            if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
+            if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
+
+            ; Make sure ranges are valid
+            xrange = (xrange > 0) < (nx-1)
+            yrange = (yrange > 0) < (ny-1)
+            zrange = (zrange > 0) < (nz-1)
+            ncdf_varget, file_id, vol_id, volume, $
+                offset=[xrange[0], yrange[0], zrange[0]], $
+                count=[xrange[1]-xrange[0]+1, $
+                       yrange[1]-yrange[0]+1, $
+                       zrange[1]-zrange[0]+1]
+        endelse
+        for i=0, vol_info.natts-1 do begin
+            name = ncdf_attname(file_id, vol_id, i)
+            ncdf_attget, file_id, vol_id, name, value
+            case name of
+                'scale_factor': self.scale_factor = value
+            endcase
+        endfor
+
+        ; Close the netCDF file
+        ncdf_close, file_id
+    endelse  ; netCDF
+
+    return, volume
+end
+
+
+
+function tomo::write_setup, file
+    openw, lun, file, error=error, /get_lun
+    if (error ne 0) then return, 0
+    printf, lun, 'TITLE: ', self.title
+    printf, lun, 'OPERATOR: ', self.operator
+    printf, lun, 'CAMERA: ', self.camera
+    printf, lun, 'SAMPLE: ', self.sample
+    if (ptr_valid(self.comments)) then comments = *self.comments
+    for i=0, n_elements(comments)-1 do begin
+        printf, lun, 'COMMENT: ', comments[i]
+    endfor
+    printf, lun, 'DARK_CURRENT: ', self.dark_current
+    printf, lun, 'CENTER: ', self.center
+    printf, lun, 'ENERGY: ',  self.energy
+    printf, lun, 'X_PIXEL_SIZE: ', self.x_pixel_size
+    printf, lun, 'Y_PIXEL_SIZE: ', self.y_pixel_size
+    printf, lun, 'Z_PIXEL_SIZE: ', self.z_pixel_size
+    free_lun, lun
+    return, 1
+end
+
+
+function tomo::read_setup, file
+    ncomments = 0
+    comment = strarr(100)
+    line = ''
+    openr, lun, file, error=error, /get_lun
+    if (error ne 0) then return, 0
+    while (not eof(lun)) do begin
+        readf, lun, line
+        pos = strpos(line, ' ')
+        tag = strupcase(strmid(line, 0, pos))
+        value = strtrim(strmid(line, pos, 1000), 2)
+        case tag of
+            'TITLE:'  :  self.title = value
+            'OPERATOR:'  :  self.operator = value
+            'CAMERA:'  :  self.camera = value
+            'SAMPLE:'  :  self.sample = value
+            'COMMENT:'  :  begin
+                comment[ncomments] = value
+                ncomments = ncomments + 1
+            end
+            'DARK_CURRENT:'  :  self.dark_current = value
+            'CENTER:'  :  self.center = value
+            'ENERGY:'  :  self.energy = value
+            'X_PIXEL_SIZE:'  :  self.x_pixel_size = value
+            'Y_PIXEL_SIZE:'  :  self.y_pixel_size = value
+            'Z_PIXEL_SIZE:'  :  self.z_pixel_size = value
+        endcase
+    endwhile
+    if (ncomments gt 0) then begin
+        comment = comment[0:ncomments-1]
+        ptr_free, self.comments
+        self.comments =  ptr_new(comment)
+    endif
+    free_lun, lun
+    return, 1
+end
+
+
+function tomo::init, file
+    if (n_elements(file) ne 0) then status = self->read_setup(file)
+    return, 1
+end
+
+pro tomo::cleanup
+    ptr_free, self.comments
+    ptr_free, self.angles
+end
+
+
+pro tomo__define
+    tomo = $
+       {tomo, $
+        title: " ", $
+        operator: " ", $
+        camera: " ", $
+        sample: " ", $
+        comments: ptr_new(), $
+        image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
+        dark_current: 0., $
+        center: 0., $
+        energy: 0., $
+        x_pixel_size: 0., $
+        y_pixel_size: 0., $
+        z_pixel_size: 0., $
+        scale_factor: 0., $
+        nx:     0L, $
+        ny:     0L, $
+        nz:     0L, $
+        angles: ptr_new() $ 
+    }
+end
