@@ -189,7 +189,7 @@ ncols = n_elements(output(*,0))
 
 cog = fltarr(nrows)                    ; Center-of-gravity array
 linear = findgen(ncols) / (ncols-1)
-no_air = fltarr(ncols) + 1.0
+no_air = fltarr(ncols) + 1e4
 lin2 = findgen(ncols) + 1.
 weight = fltarr(nrows) + 1.
 for i=0, nrows-1 do begin
