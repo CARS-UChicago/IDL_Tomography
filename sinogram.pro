@@ -189,12 +189,17 @@ ncols = n_elements(output(*,0))
 
 cog = fltarr(nrows)                    ; Center-of-gravity array
 linear = findgen(ncols) / (ncols-1)
+no_air = fltarr(ncols) + 1.0
 lin2 = findgen(ncols) + 1.
 weight = fltarr(nrows) + 1.
 for i=0, nrows-1 do begin
-    air_left = total(output(0:air_values-1,i)) / air_values
-    air_right = total(output(ncols-air_values:ncols-1,i)) / air_values
-    air = air_left + linear*(air_right-air_left)
+    if (air_values gt 0) then begin
+       air_left = total(output(0:air_values-1,i)) / air_values
+       air_right = total(output(ncols-air_values:ncols-1,i)) / air_values
+       air = air_left + linear*(air_right-air_left)
+    endif else begin
+       air = no_air
+    endelse
     if (not keyword_set(fluorescence)) then $
         output(0,i) = -alog(output(*,i)/air > 1.e-5)
     cog(i) = total(output(*,i) * lin2) / total(output(*,i))
@@ -247,21 +252,26 @@ if (do_shift) then begin
     if keyword_set(auto_center) then center = cog_mean
     shift_amount = round(center - (ncols-1)/2.)
     npad = 2 * abs(shift_amount)
+    if (air_values gt 0) then begin
+        pad_values = air_values 
+    endif else begin
+        pad_values = 1
+    endelse
     if (shift_amount lt 0) then begin
-        air_left = fltarr(npad, nrows)
-        temp = total(output(0:air_values-1,*),1) / air_values
+        pad_left = fltarr(npad, nrows)
+        temp = total(output(0:pad_values-1,*),1) / pad_values
         for i=0, npad-1 do begin
-            air_left[i,*] = temp
+            pad_left[i,*] = temp
         endfor
-        output = [air_left, output]
+        output = [pad_left, output]
         ncols = n_elements(output(*,0))
     endif else if (shift_amount gt 0) then begin
-        air_right = fltarr(npad, nrows)
-        temp = total(output(ncols-air_values:ncols-1,*),1) / air_values
+        pad_right = fltarr(npad, nrows)
+        temp = total(output(ncols-pad_values:ncols-1,*),1) / pad_values
         for i=0, npad-1 do begin
-            air_right[i,*] =  temp
+            pad_right[i,*] =  temp
         endfor
-        output = [output, air_right]
+        output = [output, pad_right]
         ncols = n_elements(output(*,0))
     endif
     for i=0, nrows-1 do begin
