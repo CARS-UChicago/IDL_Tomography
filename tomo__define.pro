@@ -198,19 +198,45 @@
 ;                   and other file formats.
 ;   1-NOV-2001 MLR  Added BUFF_ANGLES keyword
 ;   20-NOV-2001 MLR  Added ABORT_WIDGET and STATUS_WIDGET keywords
+;   25-APR-2002 MLR  Added support for reading 3-D .SPE files, created when doing
+;                    fast scanning
 ;-
 
 pro tomo::read_data_file, base_file, file_number, data, type, angle, debug, $
                     status_widget
    file = base_file + strtrim(file_number, 2) + '.SPE'
-   read_princeton, file, data, header=header, comment=comment
-   angle=float(strmid(comment[0], 6))
-   type=strmid(comment[1], 5)
-   str = 'Reading ' + file + ' angle=' + $
-                string(angle, format='(f6.2)') + ' type=' + type
+   str = 'Reading ' + file
    if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, set_value=str
-   if (debug ne 0) then print, str
+        widget_control, status_widget, set_value=str
+   read_princeton, file, data, header=header, comment=comment
+   ndims = size(data, /n_dimensions)
+   if (ndims eq 2) then begin
+        angle=float(strmid(comment[0], 6))
+        type=strmid(comment[1], 5)
+        str = str + ' angle=' + string(angle, format='(f6.2)') + ' type=' + type
+        if (widget_info(status_widget, /valid_id)) then $
+                widget_control, status_widget, set_value=str
+        if (debug ne 0) then print, str
+    endif else if (ndims eq 3) then begin
+        dims = size(data, /dimensions)
+        n_views = dims[2]
+        type = strarr(n_views)
+        angle = fltarr(n_views)
+        start_angle = strmid(comment[0], 12)
+        angle_step = strmid(comment[1], 11)
+        flat_fields = strmid(comment[2], 12)
+        flat_fields = fix(strsplit(flat_fields, /extract))
+        ang = start_angle
+        for i=0, n_views-1 do begin
+            angle[i] = ang
+            if (max(i eq flat_fields)) then begin
+                type[i] = 'FLAT_FIELD'
+            endif else begin
+                type[i] = 'NORMAL'
+                ang = ang + angle_step
+            endelse
+        endfor
+    endif
 end
 
 
@@ -234,42 +260,53 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
 
     ; Read one file to get the dimensions
     self->read_data_file, base_file, 1, data, type, angle, debug, status_widget
-    size = size(data)
-    ncols = size[1]
-    nrows = size[2]
-    ystart = 0
-    ystop = nrows-1
-    if (n_elements(first_row) ne 0) then ystart = first_row
-    if (n_elements(last_row) ne 0) then ystop = last_row
-    ; The subset flag is for efficiency below
-    if ((ystart eq 0) and (ystop eq nrows-1)) then subset=0 else subset=1
-    nrows = ystop - ystart + 1
-    if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
+    ndims = size(data, /n_dimensions)
+    dims = size(data, /dimensions)
+    if (ndims eq 2) then begin
+        ; This is data with 1 frame per file
+        ncols = dims[0]
+        nrows = dims[1]
+        ystart = 0
+        ystop = nrows-1
+        if (n_elements(first_row) ne 0) then ystart = first_row
+        if (n_elements(last_row) ne 0) then ystop = last_row
+        ; The subset flag is for efficiency below
+        if ((ystart eq 0) and (ystop eq nrows-1)) then subset=0 else subset=1
+        nrows = ystop - ystart + 1
+        if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
 
-    data_buff = intarr(ncols, nrows, nfiles, /nozero)
-    angles = fltarr(nfiles)
-    image_type = strarr(nfiles)
-    for i=0, nfiles-1 do begin
-        self->read_data_file, base_file, start+i, data, type, angle, debug, $
-                              status_widget
-        if (subset) then begin
-            data_buff[0,0,i]=data[*,ystart:ystop]
-        endif  else begin
-            data_buff[0,0,i]=data
-        endelse
-        angles[i]=angle
-        image_type[i]=type
-        if (widget_info(abort_widget, /valid_id)) then begin
-            event = widget_event(/nowait, abort_widget)
-            widget_control, abort_widget, get_uvalue=abort
-            if (abort) then begin
-               if (widget_info(status_widget, /valid_id)) then $
-                   widget_control, status_widget, $
-                                   set_value='Preprocessing aborted'
-               return
+        data_buff = intarr(ncols, nrows, nfiles, /nozero)
+        angles = fltarr(nfiles)
+        image_type = strarr(nfiles)
+        for i=0, nfiles-1 do begin
+            self->read_data_file, base_file, start+i, data, type, angle, debug, $
+                                status_widget
+            if (subset) then begin
+                data_buff[0,0,i]=data[*,ystart:ystop]
+            endif  else begin
+                data_buff[0,0,i]=data
+            endelse
+            angles[i]=angle
+            image_type[i]=type
+            if (widget_info(abort_widget, /valid_id)) then begin
+                event = widget_event(/nowait, abort_widget)
+                widget_control, abort_widget, get_uvalue=abort
+                if (abort) then begin
+                if (widget_info(status_widget, /valid_id)) then $
+                    widget_control, status_widget, $
+                                    set_value='Preprocessing aborted'
+                return
+                endif
             endif
-        endif
-    endfor
+        endfor
+    endif else if (ndims eq 3) then begin
+        ; This is a file with all of the data in it
+        ncols = dims[0]
+        nrows = dims[1]
+        data_buff = temporary(data)
+        image_type = type
+        angles=angle
+    endif
 
     ; Do dark current correction
     str = 'Doing dark current correction ...'
@@ -547,6 +584,8 @@ end
 ;   12-APR-2001 MLR  Added SCALE and angles keywords since we need to process them
 ;                    here.
 ;   22-NOV-2001 MLR  Added STATUS_WIDGET and ABORT_WIDGET keywords
+;   02-APR-2002 MLR  Fixed bugs with STATUS_WIDGET and ABORT_WIDGET
+;   11-APR-2002 MLR  Fixed bug introduced on 02-APR with center
 ;-
 
 pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
@@ -554,6 +593,8 @@ pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
                               status_widget=status_widget, $
                               _ref_extra=extra
 
+    if (n_elements(status_widget) eq 0) then status_widget = -1L
+    if (n_elements(abort_widget) eq 0) then abort_widget = -1L
     status = self->read_setup(base_file+'.setup')
     str = 'Reading volume file ...'
     if (widget_info(status_widget, /valid_id)) then $
@@ -563,8 +604,6 @@ pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
     if (n_elements(center) ne 0) then self.center = center[0]
     if (n_elements(angles) ne 0) then self.angles = ptr_new(angles)
     if (n_elements(scale) eq 0) then scale=1.e6
-    if (n_elements(status_widget) eq 0) then status_widget = -1L
-    if (n_elements(status_widget) eq 0) then abort_widget = -1L
 
     self.scale_factor = 1./scale
     ; This procedure reconstructs all of the slices for a tomography data set
@@ -984,6 +1023,7 @@ end
 ;
 ; MODIFICATION HISTORY:
 ;   Written by: Mark Rivers, Aug. 2001?
+;-
 
 function tomo::write_setup, file
     openw, lun, file, error=error, /get_lun
@@ -1034,6 +1074,7 @@ end
 ;
 ; MODIFICATION HISTORY:
 ;   Written by: Mark Rivers, Aug. 2001?
+;-
 
 function tomo::read_setup, file
     ; Clear any existing information
@@ -1120,6 +1161,7 @@ end
 ;
 ; MODIFICATION HISTORY:
 ;   Written by: Mark Rivers, Nov. 18, 2001
+;-
 
 function tomo::get_setup
     t = {tomo}
