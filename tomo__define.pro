@@ -38,15 +38,15 @@
 ;       DARK_FIELD) then this keyword is ignorred.
 ;   FIRST_ROW:
 ;       The starting row (slice) to be processed.  The default is 0.  This
-;       keyword, together with LAST_ROW below are provided for processing 
-;       data sets which are too large to be read into memory in their 
-;       entirety.  It lets one create multiple volume arrays from a single 
+;       keyword, together with LAST_ROW below are provided for processing
+;       data sets which are too large to be read into memory in their
+;       entirety.  It lets one create multiple volume arrays from a single
 ;       data set, for example rows 0-300 in file 1, (FIRST_ROW=0, LAST_ROW=300)
 ;       rows 301-600 in file 2, etc.
 ;   LAST_ROW:
 ;       The ending row (slice) to be processed.  The defaults is the last row
 ;       in each image.  See comments under FIRST_ROW above.
-;        
+;
 ;   WHITE:
 ;       The white field value, either a scaler or a 2-D array.  If this is a
 ;       scaler value then each pixel in each data frame is normalized by this
@@ -119,10 +119,10 @@
 ;   - Sorts the rotation angle array, to determine the order in which the
 ;     normalized data frames should be written back out to disk in the volume
 ;     file.
-;   - Corrects for zingers in the white-field normalized data frames, using 
-;     REMOVE_TOMO_ARTIFACTS, /ZINGERS.  
-;   - Writes the normalized data frames to a single disk file.  The default 
-;     file name is Base_file + '.volume'.  This file is in little-endian binary 
+;   - Corrects for zingers in the white-field normalized data frames, using
+;     REMOVE_TOMO_ARTIFACTS, /ZINGERS.
+;   - Writes the normalized data frames to a single disk file.  The default
+;     file name is Base_file + '.volume'.  This file is in little-endian binary
 ;     format, with the following data:
 ;       - NCOLS (long integer, number of columns in each frame)
 ;       - NROWS (long integer, number of rows in each frame)
@@ -173,7 +173,7 @@
 ;   11-APR-2001 MLR Changed the name of this routine from READ_TOMO_DATA to
 ;                   TOMO::PREPROCESS when it was incorporated in the TOMO class
 ;                   library.
-;                   This routine now updates the .SETUP file with the dark current 
+;                   This routine now updates the .SETUP file with the dark current
 ;                   that was specified when running this procedure.
 ;                   The output file is now written with TOMO::WRITE_VOLUME rather
 ;                   than being incrementally written as the data are processed.  This
@@ -229,7 +229,7 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
         if (subset) then begin
             data_buff[0,0,i]=data[*,ystart:ystop]
         endif  else begin
-            data_buff[0,0,i]=data 
+            data_buff[0,0,i]=data
         endelse
         angles[i]=angle
         image_type[i]=type
@@ -360,7 +360,7 @@ end
 ;   TOMO::RECONSTRUCT_VOLUME
 ;
 ; PURPOSE:
-;   This procedure reconstructs a complete 3-D data set (X, Y, Theta) into a 
+;   This procedure reconstructs a complete 3-D data set (X, Y, Theta) into a
 ;   3-D (X, Y, Z) volume.  It reads its input from disk and writes its output
 ;   back to disk.
 ;
@@ -371,15 +371,15 @@ end
 ;   TOMO->RECONSTRUCT_VOLUME, Base_file
 ;
 ; INPUTS:
-;   Base_file: 
+;   Base_file:
 ;       The base file name.  The input file is assumed to be named
 ;       base_file+'.volume', and the output file will be named
 ;       base_file+'_recon.volume'.  The input file is read with
 ;       READ_TOMO_VOLUME and the output file is written with WRITE_TOMO_VOLUME.
-;               
+;
 ; KEYWORD PARAMETERS:
 ;   This procedure accepts all keywords accepted by READ_TOMO_VOLUME and
-;   RECONSTRUCT_SLICE and simply passes them to those routines via keyword 
+;   RECONSTRUCT_SLICE and simply passes them to those routines via keyword
 ;   inheritance.
 ;
 ;   CENTER
@@ -478,15 +478,17 @@ pro tomo::reconstruct_volume, base_file, center=center, scale=scale, angles=angl
 end
 
 
-pro tomo::write_volume, file, volume, netcdf=netcdf, raw=raw, corrected=corrected, $
-                        reconstructed=reconstructed
+pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
+                        raw=raw, corrected=corrected, reconstructed=reconstructed, $
+                        xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
+                        xmax=xmax, ymax=ymax, zmax=zmax
 
 ;+
 ; NAME:
 ;   TOMO::WRITE_VOLUME
 ;
 ; PURPOSE:
-;   Writes 3-D volume files to be read later by READ_TOMO_VOLUME.  
+;   Writes 3-D volume files to be read later by READ_TOMO_VOLUME.
 ;   There are currently 2 file formats supported:
 ;   1) The old APS-specific architecture-dependent binary format.
 ;      In general this format should no longer be used, since it does not
@@ -506,20 +508,34 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, raw=raw, corrected=correcte
 ;   TOMO->WRITE_VOLUME, File, Volume
 ;
 ; INPUTS:
-;   File:    
+;   File:
 ;       The name of the volume file to be written.
-;   Volume:  
+;   Volume:
 ;       The 3-D volume data to be written.  This must be a 3-D 16-bit integer
 ;       array.  The dimensions are NX, NY, NANGLES or NX, NY, NZ
 ;
 ; KEYWORD PARAMETERS:
+;   XOFFSET:
+;   YOFFSET:
+;   ZOFFSET:  The [X,Y,Z] offsets in the disk array to begin writing to.  Default
+;             is [0,0,0]
+;   XMAX:
+;   YMAX:
+;   ZMAX:     The maximum [X,Y,Z] size of the array on disk.  Valid only when the
+;             file is first created, i.e. if APPEND is not specified.  Default
+;             is the size of the Volume array in each dimension.
+;   APPEND:   Open an existing file for appending or overwriting data.  Default is to
+;             APPEND=0 which creates a new file.
 ;   NETCDF:
 ;       Set this keyword  to write files in netCDF file format.  This is the
 ;       default.  If NETCDF=0 then files are written in the old APS format.
+;   RAW:      The data are raw projections (X,Y,THETA), not normalized for flat field
+;   CORRECTED: The data are flat-field normalized projections (X,Y,THETA)
+;   RECONSTRUCTED:  The data are reconstructed sections (X,Y,Z)
 ;
 ; RESTRICTIONS:
 ;   The old APS format files are written using little-endian byte order.
-;   When this routine writes such files it swaps the byte order if it is 
+;   When this routine writes such files it swaps the byte order if it is
 ;   running on a big-endian machine.  Thus that file format
 ;   is most efficient on little-endian machines (Intel, DEC).
 ;
@@ -532,6 +548,8 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, raw=raw, corrected=correcte
 ;   26-JAN-2000  MLR  Added /swap_if_big_endian keyword to openw to allow
 ;                     files to be read on big-endian machines.
 ;   11-APR-2001  MLR  Added support for netCDF file format.  Added NETCDF keyword.
+;   5-NOV-2001   MLR  Added XOFFSET, YOFFSET, ZOFFSET, XMAX, YMAX, ZMAX, and
+;                     APPEND keywords
 ;-
 ;-
 
@@ -541,7 +559,7 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, raw=raw, corrected=correcte
     if (keyword_set(raw)) then self.image_type = "RAW"
     if (keyword_set(corrected)) then self.image_type = "CORRECTED"
     if (keyword_set(reconstructed)) then self.image_type = "RECONSTRUCTED"
-    
+
 
     if (netcdf eq 0) then begin
         openw, lun, file, /get, /swap_if_big_endian
@@ -554,45 +572,66 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, raw=raw, corrected=correcte
     endif else begin
 
         ; netCDF file format
-        ; Create netCDF file
-        file_id = ncdf_create(file, /clobber)
-        ncdf_control, file_id, fill=0
+        if (keyword_set(append)) then begin
+            ; If APPEND keyword is specifified then open an existing netCDF file
+            file_id = ncdf_open(file, /write)
+            ; Get the variable id
+            vol_id   = ncdf_varid (file_id, 'VOLUME')
+            if (vol_id eq -1) then begin
+                ncdf_close, file_id
+                message, 'No VOLUME variable in netCDF file'
+            endif
+        endif else begin
+            ; else create a new netCDF file
+            ; Create netCDF file
+            file_id = ncdf_create(file, /clobber)
+            ncdf_control, file_id, fill=0
 
-        ; Create dimensions
-        nx_id = ncdf_dimdef(file_id, 'NX', size[1])
-        ny_id = ncdf_dimdef(file_id, 'NY', size[2])
-        nz_id = ncdf_dimdef(file_id, 'NZ', size[3])
-    
-        ; Create variables
-        vol_id = ncdf_vardef(file_id, 'VOLUME', [nx_id, ny_id, nz_id], /SHORT)
+            ; Create dimensions
+            if (n_elements(xmax) eq 0) then xmax=size[1]
+            if (n_elements(ymax) eq 0) then ymax=size[2]
+            if (n_elements(zmax) eq 0) then zmax=size[3]
+            nx_id = ncdf_dimdef(file_id, 'NX', xmax)
+            ny_id = ncdf_dimdef(file_id, 'NY', ymax)
+            nz_id = ncdf_dimdef(file_id, 'NZ', zmax)
 
-        ; Create attributes.  Replace null strings with a blank.
-        if (self.title ne '') then str=self.title else str=' '
-        ncdf_attput, file_id, /GLOBAL, 'title', str
-        if (self.operator ne '') then str=self.operator else str=' '
-        ncdf_attput, file_id, /GLOBAL, 'operator', str
-        if (self.camera ne '') then str=self.camera else str=' '
-        ncdf_attput, file_id, /GLOBAL, 'camera', str
-        if (self.sample ne '') then str=self.sample else str=' '
-        ncdf_attput, file_id, /GLOBAL, 'sample', str
-        if (self.image_type ne '') then str=self.image_type else str=' '
-        ncdf_attput, file_id, /GLOBAL, 'image_type', str
-        ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
-        ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
-        ncdf_attput, file_id, /GLOBAL, 'center', self.center
-        ncdf_attput, file_id, /GLOBAL, 'x_pixel_size', self.x_pixel_size
-        ncdf_attput, file_id, /GLOBAL, 'y_pixel_size', self.y_pixel_size
-        ncdf_attput, file_id, /GLOBAL, 'z_pixel_size', self.z_pixel_size
-        if (ptr_valid(self.angles)) then $
-            ncdf_attput, file_id, /GLOBAL, 'angles', *(self.angles)
-        if (self.scale_factor ne 0) then scale=self.scale_factor else scale=1.0
-        ncdf_attput, file_id, vol_id,  'scale_factor',  scale
+            ; Create variables
+            vol_id = ncdf_vardef(file_id, 'VOLUME', [nx_id, ny_id, nz_id], /SHORT)
 
-        ; Put the file into data mode.
-        ncdf_control, file_id, /endef 
+            ; Create attributes.  Replace null strings with a blank.
+            if (self.title ne '') then str=self.title else str=' '
+            ncdf_attput, file_id, /GLOBAL, 'title', str
+            if (self.operator ne '') then str=self.operator else str=' '
+            ncdf_attput, file_id, /GLOBAL, 'operator', str
+            if (self.camera ne '') then str=self.camera else str=' '
+            ncdf_attput, file_id, /GLOBAL, 'camera', str
+            if (self.sample ne '') then str=self.sample else str=' '
+            ncdf_attput, file_id, /GLOBAL, 'sample', str
+            if (self.image_type ne '') then str=self.image_type else str=' '
+            ncdf_attput, file_id, /GLOBAL, 'image_type', str
+            ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
+            ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
+            ncdf_attput, file_id, /GLOBAL, 'center', self.center
+            ncdf_attput, file_id, /GLOBAL, 'x_pixel_size', self.x_pixel_size
+            ncdf_attput, file_id, /GLOBAL, 'y_pixel_size', self.y_pixel_size
+            ncdf_attput, file_id, /GLOBAL, 'z_pixel_size', self.z_pixel_size
+            if (ptr_valid(self.angles)) then $
+                ncdf_attput, file_id, /GLOBAL, 'angles', *(self.angles)
+            if (self.scale_factor ne 0) then scale=self.scale_factor else scale=1.0
+            ncdf_attput, file_id, vol_id,  'scale_factor',  scale
+            ; Put the file into data mode.
+            ncdf_control, file_id, /endef
+        endelse
 
         ; Write volume data to the file
-        ncdf_varput, file_id, vol_id, volume
+        offset = [0,0,0]
+        if (n_elements(xoffset) ne 0) then offset[0]=xoffset
+        if (n_elements(yoffset) ne 0) then offset[1]=yoffset
+        if (n_elements(zoffset) ne 0) then offset[2]=zoffset
+        count = [size[1], size[2], size[3]]
+        stride=[1,1,1]
+        ncdf_varput, file_id, vol_id, volume, $
+                     offset=offset, count=count, stride=stride
 
         ; Close the file
         ncdf_close, file_id
@@ -608,7 +647,7 @@ function tomo::read_volume, file, $
 ;   TOMO::READ_VOLUME
 ;
 ; PURPOSE:
-;   Reads in 3-D volume files written by WRITE_TOMO_VOLUME.  These are binary 
+;   Reads in 3-D volume files written by WRITE_TOMO_VOLUME.  These are binary
 ;   files written in little endian.  This file format is "temporary" until we
 ;   decide on a portable self-describing binary format, such as HDF or netCDF.
 ;   Both intermediate volume files (after preprocessing) and final
@@ -622,8 +661,8 @@ function tomo::read_volume, file, $
 ;
 ; INPUTS:
 ;   File:
-;       The name of the volume file to be read.  If this is not specified then 
-;       the function will use DIALOG_PICKFILE to allow the user to select a 
+;       The name of the volume file to be read.  If this is not specified then
+;       the function will use DIALOG_PICKFILE to allow the user to select a
 ;       file.
 ; KEYWORD PARAMETERS:
 ;   XRANGE=[xstart, xstop]
@@ -641,7 +680,7 @@ function tomo::read_volume, file, $
 ;   NX, NY, NZ
 ;
 ; RESTRICTIONS:
-;   These files are written using the little-endian byte order and 
+;   These files are written using the little-endian byte order and
 ;   floating point format.  When this routine reads the files it swaps the
 ;   byte order if it is running on a big-endian machine.  Thus the file format
 ;   is most efficient on little-endian machines (Intel, DEC).
@@ -651,7 +690,7 @@ function tomo::read_volume, file, $
 ;
 ; MODIFICATION HISTORY:
 ;   Written by: Mark Rivers, May 13, 1998
-;   06-APR-1999  MLR  Made file input optional, puts up dialog if it is not 
+;   06-APR-1999  MLR  Made file input optional, puts up dialog if it is not
 ;                     specified
 ;   25-JAN-2000  MLR  Added /swap_if_big_endian keyword to openr to allow
 ;                     files to be read on big-endian machines.
@@ -869,6 +908,6 @@ pro tomo__define
         nx:     0L, $
         ny:     0L, $
         nz:     0L, $
-        angles: ptr_new() $ 
+        angles: ptr_new() $
     }
 end
