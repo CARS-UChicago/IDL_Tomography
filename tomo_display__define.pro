@@ -273,6 +273,17 @@ pro tomo_display::display_slice, new_window=new_window
     endelse
 end
 
+pro tomo_display::volume_render
+    if (ptr_valid(self.pvolume)) then begin
+        widget_control, self.widgets.display_min, get_value=min
+        widget_control, self.widgets.display_max, get_value=max
+        v = bytscl(*self.pvolume, min=min, max=max)
+        volume_render, v
+    endif else begin
+        t = dialog_message('Must read in volume file first.', /error)
+    endelse
+end
+
 pro tomo_display::event, event
     if (tag_names(event, /structure_name) eq 'WIDGET_KILL_REQUEST') then begin
         widget_control, event.top, /destroy
@@ -288,7 +299,7 @@ pro tomo_display::event, event
             endif
         end
 
-        self.widgets.read_file: begin
+        self.widgets.read_volume_file: begin
             file = dialog_pickfile(filter='*.volume', get_path=path)
             if (file eq '') then break
             pos = strpos(file, path)
@@ -346,6 +357,48 @@ pro tomo_display::event, event
             if (self.setup.z_pixel_size eq 0.) then self.setup.z_pixel_size=1.0
             widget_control, self.widgets.status, $
                             set_value='Done reading volume file ' + file
+        end
+
+        self.widgets.read_camera_file: begin
+            file = dialog_pickfile(filter='*.spe', get_path=path)
+            if (file eq '') then break
+            widget_control, /hourglass
+            widget_control, self.widgets.status, $
+                            set_value='Reading camera file ...'
+            read_princeton, file, vol
+            widget_control, self.widgets.status, $
+                            set_value='Done reading camera file ' + file
+            if (size(vol, /n_dimensions) eq 3) then begin
+               ptr_free, self.pvolume
+               widget_control, self.widgets.volume_type, $
+                            set_value='RAW'
+               self.pvolume = ptr_new(vol, /no_copy)
+               dims = size(*self.pvolume, /dimensions)
+               ; Set the array dimensions
+               widget_control, self.widgets.nx, set_value=dims[0]
+               self.nx = dims[0]
+               widget_control, self.widgets.ny, set_value=dims[1]
+               self.ny = dims[1]
+               widget_control, self.widgets.nz, set_value=dims[2]
+               self.nz = dims[2]
+               ; Set the intensity range
+               min = min(*self.pvolume, max=max)
+               widget_control, self.widgets.display_min, set_value=min
+               widget_control, self.widgets.display_max, set_value=max
+               ; Set the slice display range
+                self->set_limits
+               ; Build the angle array if it does not exist
+               if (not ptr_valid(self.setup.angles)) then begin
+                   ; Assume evenly spaced angles 0 to 180-angle_step degrees
+                   self.setup.angles = ptr_new(findgen(self.nz)/(self.nz) * 180.)
+               endif
+               ; Set the pixel sizes to 1 if they are zero
+               if (self.setup.x_pixel_size eq 0.) then self.setup.x_pixel_size=1.0
+               if (self.setup.y_pixel_size eq 0.) then self.setup.y_pixel_size=1.0
+               if (self.setup.z_pixel_size eq 0.) then self.setup.z_pixel_size=1.0
+            endif else begin
+               image_display, vol
+            endelse
         end
 
         self.widgets.free_memory: begin
@@ -426,6 +479,10 @@ pro tomo_display::event, event
             self->display_slice, /new_window
         end
 
+        self.widgets.volume_render: begin
+            self->volume_render
+        end
+
         self.widgets.movie_output: begin
             ; Nothing to do
         end
@@ -454,12 +511,14 @@ pro tomo_display::event, event
                                        get_value=jpeg_file
                     2: widget_control, self.widgets.movie_file, $
                                        get_value=mpeg_file
+                    3: widget_control, self.widgets.movie_file, $
+                                       get_value=tiff_file
                 endcase
                 widget_control, self.widgets.abort, set_uvalue=0
                 widget_control, self.widgets.status, set_value=""
                 make_movie, index=direction+1, scale=scale, *self.pvolume, $
-                            jpeg_file=jpeg_file, mpeg_file=mpeg_file, min=min, $
-                            max=max, start=start, stop=stop, step=step, $
+                            jpeg_file=jpeg_file, tiff_file=tiff_file, mpeg_file=mpeg_file, $
+                            min=min, max=max, start=start, stop=stop, step=step, $
                             label=label, abort_widget=self.widgets.abort, $
                             status_widget=self.widgets.status
             endif else begin
@@ -503,6 +562,7 @@ function tomo_display::init
 ;       Written by:     Mark Rivers (16-Nov-2001)
 ;       June 4, 2002    MLR  Made the display slice entry and slider display an
 ;                            image in an existing window if it exists.
+;       Jan. 9, 2004    MLR  Added TIFF output for make_movie
 ;
 ;-
 
@@ -516,8 +576,10 @@ function tomo_display::init
     file = widget_button(mbar, /menu, value = 'File')
     self.widgets.change_directory = widget_button(file, $
                                             value = 'Change directory ...')
-    self.widgets.read_file = widget_button(file, $
+    self.widgets.read_volume_file = widget_button(file, $
                                             value = 'Read volume file ...')
+    self.widgets.read_camera_file = widget_button(file, $
+                                            value = 'Read camera file ...')
     self.widgets.free_memory = widget_button(file, value='Free volume array')
     self.widgets.exit = widget_button(file, $
                                             value = 'Exit')
@@ -525,8 +587,9 @@ function tomo_display::init
     self.widgets.processing_options = widget_button(options, $
                                             value = 'Processing options ...')
 
-
-    col = widget_base(self.widgets.base, /column, /frame)
+    row0 = widget_base(self.widgets.base, /row, /frame)
+    col0 = widget_base(row0, /column, /frame)
+    col = widget_base(col0, /column, /frame)
     self.widgets.main_base = col
     t = widget_label(col, value='File/Status', font=self.fonts.heading1)
     self.widgets.base_file = cw_field(col, title="Base file name:", $
@@ -544,7 +607,7 @@ function tomo_display::init
 
 
     ; Preprocessing
-    col = widget_base(self.widgets.base, /column, /frame)
+    col = widget_base(col0, /column, /frame)
     self.widgets.preprocess_base = col
     t = widget_label(col, value='Preprocess', font=self.fonts.heading1)
     row = widget_base(col, /row, /base_align_bottom)
@@ -558,7 +621,7 @@ function tomo_display::init
     self.widgets.preprocess_go = widget_button(col1, value=' Preprocess ')
 
     ; Reconstruction
-    col = widget_base(self.widgets.base, /column, /frame)
+    col = widget_base(col0, /column, /frame)
     self.widgets.reconstruct_base = col
     t = widget_label(col, value='Reconstruct', font=self.fonts.heading1)
     row = widget_base(col, /row)
@@ -576,7 +639,7 @@ function tomo_display::init
                                                    value='Reconstruct all')
 
     ; Visualization
-    col = widget_base(self.widgets.base, /column, /frame)
+    col = widget_base(row0, /column, /frame)
     self.widgets.visualize_base = col
     widget_control, col, sensitive=0
     t = widget_label(col, value='Visualize', font=self.fonts.heading1)
@@ -627,10 +690,14 @@ function tomo_display::init
     col1 = widget_base(row, /column, /align_center)
     self.widgets.display_slice = widget_button(col1, value='Display slice')
 
+    row = widget_base(col, /row)
+    t = widget_label(row, value='Volume render:')
+    self.widgets.volume_render = widget_button(row, value='Volume render')
+
     t = widget_label(col, value='Movies', font=self.fonts.heading1)
 
     row = widget_base(col, /row)
-    self.widgets.movie_output = cw_bgroup(row, ['Screen', 'JPEGs', 'MPEG'], $
+    self.widgets.movie_output = cw_bgroup(row, ['Screen', 'JPEGs', 'MPEG', 'TIFF'], $
                                             label_left='Output:', row=1, $
                                             set_value=0, /exclusive)
     col1 = widget_base(row, /column, /align_center)
@@ -645,7 +712,7 @@ function tomo_display::init
                                         /column, xsize=10, value=1)
 
     row = widget_base(col, /row)
-    self.widgets.movie_file = cw_field(row, title="JPEG/MPEG file name:", $
+    self.widgets.movie_file = cw_field(row, title="JPEG/MPEG/TIFF file name:", $
                                         xsize=40)
 
     self.ptomo = obj_new('tomo')
@@ -750,7 +817,8 @@ pro tomo_display__define
     widgets={ tomo_display_widgets, $
         base: 0L, $
         change_directory: 0L, $
-        read_file: 0L, $
+        read_volume_file: 0L, $
+        read_camera_file: 0L, $
         free_memory: 0L, $
         exit: 0L, $
         processing_options: 0L, $
@@ -784,6 +852,7 @@ pro tomo_display__define
         disp_slice: 0L, $
         disp_slider: 0L, $
         display_slice: 0L, $
+        volume_render: 0L, $
         movie_output: 0L, $
         first_slice: 0L, $
         last_slice: 0L, $
