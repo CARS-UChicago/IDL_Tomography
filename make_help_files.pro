@@ -1,4 +1,4 @@
-dest = '/net/millenia/usr/local/apache/htdocs/software/'
+dest = '/millenia/usr/local/apache/htdocs/software/'
 mk_html_help, ['backproject.pro', $
                'gridrec.pro', $
                'read_tomo_data.pro', $
