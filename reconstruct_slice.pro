@@ -2,6 +2,7 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
                             pixel_size=pixel_size, normalize=normalize, $
                             scale=scale, back_project=back_project, $
                             resize=resize, angles=angles, center=center, $
+                            sinogram=singram, $
                             _REF_EXTRA=extra
 
 ;+
@@ -130,6 +131,7 @@ time2 = systime(1)
 ; f = remove_tomo_artifacts(t, /diffraction)
 if (keyword_set(back_project)) then begin
     s = sinogram(t1, angles, center=center, _EXTRA=extra)
+    singram = s
     time3 = systime(1)
     if keyword_set(noring) then g = s else g = remove_tomo_artifacts(s, /rings)
     time4 = systime(1)
@@ -155,6 +157,7 @@ if (keyword_set(back_project)) then begin
     print, 'Time to backproject:      ', time6-time5
 endif else begin
     s1 = sinogram(t1, angles, center=center, _EXTRA=extra)
+    singram = s1
     cent = -1
     s2 = sinogram(t2, angles, center=center, _EXTRA=extra)
     time3 = systime(1)
