@@ -726,12 +726,15 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
 ;   11-APR-2001  MLR  Added support for netCDF file format.  Added NETCDF keyword.
 ;   5-NOV-2001   MLR  Added XOFFSET, YOFFSET, ZOFFSET, XMAX, YMAX, ZMAX, and
 ;                     APPEND keywords
+;   24-JUN-2002  MLR  Fixed bug if input volume was 2-D rather than 3-D.
 ;-
 ;-
 
     if (n_elements(netcdf) eq 0) then netcdf=1
 
     size = size(volume)
+    ; If this is a 2-D array fake it out by setting third dimension to 1
+    if (size[0] eq 2) then size[3]=1
     if (keyword_set(raw)) then self.image_type = "RAW"
     if (keyword_set(corrected)) then self.image_type = "CORRECTED"
     if (keyword_set(reconstructed)) then self.image_type = "RECONSTRUCTED"
