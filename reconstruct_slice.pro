@@ -1,5 +1,4 @@
 function reconstruct_slice, slice, volume, image2, noring=noring, $
-                            filter_size=filter_size, stop=stop, $
                             pixel_size=pixel_size, normalize=normalize, $
                             scale=scale, back_project=back_project, $
                             resize=resize, angles=angles, center=center, $
@@ -23,16 +22,9 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
 ;   Volume:     The 3-D volume array from which the slice is extracted
 ;
 ; KEYWORD PARAMETERS:
-;   STOP: 
-;       Setting this keyword causes the function to execute an IDL STOP 
-;       statement before returning.  This allows one to examine intermediate 
-;       results in the reconstruction.
 ;   NORING:
 ;       Setting this keyword prevents the function from removing ring
 ;       artifacts.
-;   FILTER_SIZE:
-;       Sets the size of the filter kernal which is passed to TOMO_FILTER.  The
-;       default is 1/4 the size of the image.
 ;   PIXEL_SIZE:
 ;       Specifies the size of each pixel.  This is used only when the NORMALIZE
 ;       keyword is also set.  The normalized output will be in units of
@@ -44,14 +36,14 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
 ;       that the normalized output will be mu per pixel.
 ;   NORMALIZE:
 ;       Specifies that the output is to be normalized to absolute absorption
-;       units.  If the SCALE keyword is not specified then this is done by 
-;       normalizing the reconstructed slice to have the same integrated area 
+;       units.  If the SCALE keyword is not specified then this is done by
+;       normalizing the reconstructed slice to have the same integrated area
 ;       as the average sum of each row of the sinogram.
 ;   SCALE:
 ;       Specifies the scale factor to be used in normalizing the output.  This
 ;       is only meaningful when the NORMALIZE keyword is used.  The default
-;       value of SCALE is obtained normalizing the reconstructed slice to 
-;       have the same integrated area as the average sum of each row of the 
+;       value of SCALE is obtained normalizing the reconstructed slice to
+;       have the same integrated area as the average sum of each row of the
 ;       sinogram, and this value is printed out.  The SCALE value can also be
 ;       explicitly set.  This is typically done under the following conditions:
 ;          1) Reconstruct a few slices using /NORMALIZE but without specifying
@@ -64,22 +56,22 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
 ;       for normalizing each slice of the reconstructed volume.  This is
 ;       probably more accurate than using slightly different normalizing
 ;       factors for each slice.
-;   ANGLES: 
+;   ANGLES:
 ;       An array of angles (in degrees) at which each projection was collected.
 ;       If this keyword is not specified then the routine assumes that the data was
 ;       collected in evenly spaced increments of 180/n_angles.
 ;
-;   All keywords accepted by SINOGRAM, GRIDREC and BACKPROJECT are passed to 
+;   All keywords accepted by SINOGRAM, GRIDREC and BACKPROJECT are passed to
 ;   those routines via keyword inheritance
 ;
 ; OUTPUTS:
-;   This function returns the reconstructed slice.  It is a floating point 
+;   This function returns the reconstructed slice.  It is a floating point
 ;   array of dimensions NX x NX.
 ;
 ; PROCEDURE:
-;   Does the following:  extracts the slice, computes the sinogram with 
-;   centering and optional center tweaking, removes ring artifacts, filters 
-;   with a Shepp-Logan filter and backprojects.  It also prints the time 
+;   Does the following:  extracts the slice, computes the sinogram with
+;   centering and optional center tweaking, removes ring artifacts, filters
+;   with a Shepp-Logan filter and backprojects.  It also prints the time
 ;   required for each step at the end.
 ;
 ; EXAMPLE:
@@ -87,10 +79,10 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
 ;
 ; MODIFICATION HISTORY:
 ;   Written by: Mark Rivers, May 13, 1998
-;   05-APR-1999 MLR  Fixed serious error.  Angles were being computed wrong. 
-;                    Previously it was calculating 0 to 180, rather than 0 to 
+;   05-APR-1999 MLR  Fixed serious error.  Angles were being computed wrong.
+;                    Previously it was calculating 0 to 180, rather than 0 to
 ;                    180-angle_step
-;   05-APR-1999 MLR  Added FILTER_SIZE keyword, made the default be 1/4 of 
+;   05-APR-1999 MLR  Added FILTER_SIZE keyword, made the default be 1/4 of
 ;                    the image width
 ;   18-MAY-1999 MLR  Changed formal parameter _extra to _ref_extra to allow
 ;                    CENTER keyword value to be returned from sinogram
@@ -109,6 +101,11 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
 ;                    Removed "center" keyword in call to GRIDREC, since sinogram
 ;                    has padded the array to put the rotation axis in the center.
 ;   19-APR-2001 MLR  Changed units of ANGLES from radians to degrees
+;   25-NOV-2001 MLR  Removed FILTER_SIZE keyword.  This can now be passed to TOMO_FILTER
+;                    by keyword inheritance, and the default in TOMO_FILTER now is the
+;                    same as this routine previously used.
+;                    Removed /SHEPP_LOGAN keyword in call to TOMO_FILTER, this is the default.
+;                    Removed STOP keyword, the same result can be achieved with breakpoints.
 ;-
 
 time1 = systime(1)
@@ -128,7 +125,6 @@ endif else begin
     ; Assume evenly spaced angles 0 to 180-angle_step degrees
     angles = findgen(nangles)/(nangles) * 180.
 endelse
-if (n_elements(filter_size) eq 0) then filter_size = long(nx/4)
 time2 = systime(1)
 ; f = remove_tomo_artifacts(t, /diffraction)
 if (keyword_set(back_project)) then begin
@@ -136,9 +132,9 @@ if (keyword_set(back_project)) then begin
     time3 = systime(1)
     if keyword_set(noring) then g = s else g = remove_tomo_artifacts(s, /rings)
     time4 = systime(1)
-    ss = tomo_filter(g, /shepp_logan, filter_size)
+    ss = tomo_filter(g, _EXTRA=extra)
     time5 = systime(1)
-    r = backproject(ss, angles, _extra=extra)
+    r = backproject(ss, angles, _EXTRA=extra)
     time6 = systime(1)
     if (keyword_set(normalize)) then  begin
         sum = total(s, 1)
