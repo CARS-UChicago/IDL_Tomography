@@ -222,8 +222,8 @@ pro tomo::read_data_file, base_file, file_number, data, type, angle, debug, $
         n_views = dims[2]
         type = strarr(n_views)
         angle = fltarr(n_views)
-        start_angle = strmid(comment[0], 12)
-        angle_step = strmid(comment[1], 11)
+        start_angle = float(strmid(comment[0], 12))
+        angle_step = float(strmid(comment[1], 11))
         flat_fields = strmid(comment[2], 12)
         flat_fields = fix(strsplit(flat_fields, /extract))
         ang = start_angle
