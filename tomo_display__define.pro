@@ -54,7 +54,7 @@ pro tomo_display::reconstruct, slice
                               back_project=backproject, noring=noring, $
                               air_values=air_values, filter_size=filter_size, $
                               filter_name=filter_name, bilinear=bilinear, cubic=cubic, $
-                              resize=resize, cog=cog)
+                              resize=resize, sinogram=sinogram, cog=cog)
         ; If reconstruction was with backproject, rotate image so it is the same
         ; orientation as with gridrec
         if (backproject) then r = rotate(r, 4)
@@ -78,6 +78,11 @@ pro tomo_display::reconstruct, slice
                        '     Slice='+strtrim(string(slice),2)
         image_display, r, min=min, max=max, title=title, $
                           xdist=xdist, ydist=ydist
+        ; Display sinogram if desired
+        widget_control, self.widgets.display_sinogram, get_value=display_sinogram
+        if (display_sinogram) then begin
+            image_display, sinogram
+        endif
         ; Plot center-of-gravity if desired
         widget_control, self.widgets.plot_cog, get_value=plot_cog
         if (plot_cog) then begin
@@ -184,6 +189,9 @@ pro tomo_display::options_event, event
             ; Nothing to do
         end
         self.widgets.fluorescence: begin
+            ; Nothing to do
+        end
+        self.widgets.display_sinogram: begin
             ; Nothing to do
         end
         self.widgets.plot_cog: begin
@@ -762,6 +770,10 @@ function tomo_display::init
                                             label_top='Data type', row=1, $
                                             set_value=0, /exclusive)
     row = widget_base(col1, /row)
+    self.widgets.display_sinogram = cw_bgroup(row, ['No', 'Yes'], $
+                                            label_left='Display sinogram', row=1, $
+                                            set_value=0, /exclusive)
+    row = widget_base(col1, /row)
     self.widgets.plot_cog = cw_bgroup(row, ['No', 'Yes'], $
                                             label_left='Plot center-of-gravity', row=1, $
                                             set_value=0, /exclusive)
@@ -869,6 +881,7 @@ pro tomo_display__define
         remove_rings: 0L, $
         air_values: 0L, $
         fluorescence: 0L, $
+        display_sinogram: 0L, $
         plot_cog: 0L, $
         backproject_base: 0L, $
         filter_size: 0L, $
