@@ -46,6 +46,15 @@
 ;   LAST_ROW:
 ;       The ending row (slice) to be processed.  The defaults is the last row
 ;       in each image.  See comments under FIRST_ROW above.
+;   BUFF_ANGLES:
+;       The size of the buffer (in # of angles) to be used when writing the normalized
+;       data to the output file.  The default is no limit, so an array of size
+;       (ncols, nrows, nangles) is allocated.  If BUFF_ANGLES is specified then the
+;       output file is write in chunks of "BUFF_ANGLES" at a time, and an array
+;       of only (ncols, nrows, BUFF_ANGLES) is needed.  This keyword is useful
+;       when processing data sets with many angles.  The output file is identical
+;       whether or not this keyword is used, it only affects how many times the
+;       output file is opened and appended to.
 ;
 ;   WHITE:
 ;       The white field value, either a scaler or a 2-D array.  If this is a
@@ -58,7 +67,15 @@
 ;       ignorred.
 ;   OUTPUT:
 ;       The name of the output file.  The default is Base_file + '.volume'
-;
+;   STATUS_WIDGET:
+;       The widget ID of a text widget used to display the status of the
+;       preprocessing operation.  If this is a valid widget ID then
+;       informational messages will be written to this widget.
+;   ABORT_WIDGET
+;       The widget ID of a widget used to abort the preprocessing operation.
+;       If this is a valid widget ID then the "uvalue" of this widget will be
+;       checked periodically.  If it is 1 then this routine will clean up and
+;       return immediately.
 ;   DEBUG:
 ;       A debugging flag.  Allowed values are:
 ;           0: No informational output
@@ -179,23 +196,30 @@
 ;                   than being incrementally written as the data are processed.  This
 ;                   requires more memory, but is necessary to allow use of netCDF
 ;                   and other file formats.
+;   1-NOV-2001 MLR  Added BUFF_ANGLES keyword
+;   20-NOV-2001 MLR  Added ABORT_WIDGET and STATUS_WIDGET keywords
 ;-
 
 pro tomo::read_data_file, base_file, file_number, data, type, angle, debug, $
-                    threshold=threshold
+                    status_widget
    file = base_file + strtrim(file_number, 2) + '.SPE'
    read_princeton, file, data, header=header, comment=comment
    angle=float(strmid(comment[0], 6))
    type=strmid(comment[1], 5)
-   if (debug ne 0) then print, 'Reading file ', file, ' angle=', angle, $
-                               ' type=', type
+   str = 'Reading ' + file + ' angle=' + $
+                string(angle, format='(f6.2)') + ' type=' + type
+   if (widget_info(status_widget, /valid_id)) then $
+            widget_control, status_widget, set_value=str
+   if (debug ne 0) then print, str
 end
 
 
 pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
                     white=input_white, threshold=threshold, $
                     double_threshold=double_threshold, debug=debug, $
-                    first_row=first_row, last_row=last_row, output=output, setup=setup
+                    first_row=first_row, last_row=last_row, output=output, $
+                    setup=setup, buff_angles=buff_angles, $
+                    status_widget=status_widget, abort_widget=abort_widget
 
     nfiles = stop - start + 1
     if (n_elements(debug) eq 0) then debug=1
@@ -203,11 +227,13 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     if (n_elements(double_threshold) eq 0) then double_threshold=1.05
     if (n_elements(output) eq 0) then output=base_file + '.volume'
     if (n_elements(setup) eq 0) then setup=base_file + '.setup'
+    if (n_elements(status_widget) eq 0) then status_widget = -1L
+    if (n_elements(abort_widget) eq 0) then abort_widget = -1L
 
     status = self->read_setup(setup)
 
     ; Read one file to get the dimensions
-    self->read_data_file, base_file, 1, data, type, angle, debug
+    self->read_data_file, base_file, 1, data, type, angle, debug, status_widget
     size = size(data)
     ncols = size[1]
     nrows = size[2]
@@ -225,7 +251,7 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     image_type = strarr(nfiles)
     for i=0, nfiles-1 do begin
         self->read_data_file, base_file, start+i, data, type, angle, debug, $
-                   threshold=threshold
+                              status_widget
         if (subset) then begin
             data_buff[0,0,i]=data[*,ystart:ystop]
         endif  else begin
@@ -233,10 +259,23 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
         endelse
         angles[i]=angle
         image_type[i]=type
+        if (widget_info(abort_widget, /valid_id)) then begin
+            event = widget_event(/nowait, abort_widget)
+            widget_control, abort_widget, get_uvalue=abort
+            if (abort) then begin
+               if (widget_info(status_widget, /valid_id)) then $
+                   widget_control, status_widget, $
+                                   set_value='Preprocessing aborted'
+               return
+            endif
+        endif
     endfor
 
     ; Do dark current correction
-    if (debug ne 0) then print, 'Doing dark current correction ...'
+    str = 'Doing dark current correction ...'
+    if (widget_info(status_widget, /valid_id)) then $
+                widget_control, status_widget, set_value=str
+    if (debug ne 0) then print, str
     darks = where(image_type eq 'DARK_FIELD', ndarks)
     if (debug ge 2) then print, 'ndarks= ', ndarks, 'darks=', darks
     if (ndarks eq 0) then begin
@@ -277,7 +316,10 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     endelse
 
     ; Do flat field current correction and zinger removal on flat field frames
-    if (debug ne 0) then print, 'Doing white field correction ...'
+    str = 'Doing white field correction ...'
+    if (widget_info(status_widget, /valid_id)) then $
+                widget_control, status_widget, set_value=str
+    if (debug ne 0) then print, str
     whites = where(image_type eq 'FLAT_FIELD', nwhites)
     if (debug ge 2) then print, 'nwhites= ', nwhites, 'whites=', whites
     if (nwhites eq 0) and (n_elements(input_white) ne 0) then begin
@@ -324,13 +366,26 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
                 white = white1*(1.0-ratio) + white2*ratio
                 data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
             endfor
+            if (widget_info(abort_widget, /valid_id)) then begin
+                event = widget_event(/nowait, abort_widget)
+                widget_control, abort_widget, get_uvalue=abort
+                if (abort) then begin
+                    if (widget_info(status_widget, /valid_id)) then $
+                        widget_control, status_widget, $
+                        set_value='Preprocessing aborted'
+                    return
+                endif
+            endif
         endfor
     endelse
 
     ; Now we have normalized data.
     ; Correct for zingers now that flat field normalization is done
     ; Write out to disk file, sorted by angle, arranged by slice
-    if (debug ne 0) then print, 'Writing volume file ...'
+    str = 'Writing volume file ...'
+    if (widget_info(status_widget, /valid_id)) then $
+            widget_control, status_widget, set_value=str
+    if (debug ne 0) then print, str
     data_images = where(image_type eq 'NORMAL', nangles)
     angles = angles[data_images]
     sorted_indices = sort(angles)
@@ -341,17 +396,58 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     ncols = long(ncols)
     nrows = long(nrows)
     nangles = long(nangles)
-    vol = intarr(ncols, nrows, nangles)
+    if (n_elements(buff_angles) eq 0) then buff_angles = nangles
+    dummy = intarr(10,10,10)
+    self->write_volume, output, dummy, /corrected, xmax=ncols, ymax=nrows, $
+                        zmax=nangles
+    vol = intarr(ncols, nrows, buff_angles)
+    angle_index = 0
+    zoffset=0
     for i=0, nangles-1 do begin
         proj = reform(data_buff[*,*,data_images[i]])
         proj = remove_tomo_artifacts(proj, /zingers, threshold=threshold, $
                                 debug=debug)
-        if (debug ne 0) then print, 'Copying projection ' + strtrim(i+1,2) + '/' + $
-                                                       strtrim(nangles,2)
-        vol[0,0,i] = proj
+        str = 'Copying projection ' + strtrim(i+1,2) + '/' + $
+                                      strtrim(nangles,2)
+        if (widget_info(status_widget, /valid_id)) then $
+                    widget_control, status_widget, set_value=str
+        if (debug ne 0) then print, str
+        vol[0,0,angle_index] = proj
+        if (angle_index eq (buff_angles-1)) then begin
+            str = 'Writing volume file ...'
+            if (widget_info(status_widget, /valid_id)) then $
+            widget_control, status_widget, set_value=str
+            if (debug ne 0) then print, str
+            write_tomo_volume, output, vol, /corrected, /append, zoffset=zoffset
+            angle_index=0
+            zoffset = zoffset + buff_angles
+        endif else begin
+            angle_index = angle_index+1
+        endelse
+        if (widget_info(abort_widget, /valid_id)) then begin
+            event = widget_event(/nowait, abort_widget)
+            widget_control, abort_widget, get_uvalue=abort
+            if (abort) then begin
+               if (widget_info(status_widget, /valid_id)) then $
+                   widget_control, status_widget, $
+                                   set_value='Preprocessing aborted'
+               return
+            endif
+        endif
     endfor
-    self->write_volume, output, vol, /corrected
+    if (angle_index ne 0) then begin
+        ; We have a partially filled buffer that needs to be written
+        str = 'Writing volume file ...'
+        if (widget_info(status_widget, /valid_id)) then $
+                    widget_control, status_widget, set_value=str
+        if (debug ne 0) then print, str
+        write_tomo_volume, output, vol[*,*,0:angle_index-1], /corrected, /append, $
+                           zoffset=zoffset
+    endif
     status = self->write_setup(setup)
+    if (widget_info(status_widget, /valid_id)) then $
+        widget_control, status_widget, set_value='Preprocessing complete.'
+
 end
 
 
@@ -401,6 +497,15 @@ end
 ;       scale factor may need to be decreased to 1-5e5 to avoid integer overflow.
 ;       The inverse of the SCALE is stored as the attribute volume:scale_factor
 ;       in the netCDF file.
+;   STATUS_WIDGET:
+;       The widget ID of a text widget used to display the status of the
+;       preprocessing operation.  If this is a valid widget ID then
+;       informational messages will be written to this widget.
+;   ABORT_WIDGET
+;       The widget ID of a widget used to abort the preprocessing operation.
+;       If this is a valid widget ID then the "uvalue" of this widget will be
+;       checked periodically.  If it is 1 then this routine will clean up and
+;       return immediately.
 ;
 ; OUTPUTS:
 ;   This procedure writes its results to a file base_file+'_recon.volume'
@@ -441,22 +546,37 @@ end
 ;                    value which was used for the reconstruction.
 ;   12-APR-2001 MLR  Added SCALE and angles keywords since we need to process them
 ;                    here.
+;   22-NOV-2001 MLR  Added STATUS_WIDGET and ABORT_WIDGET keywords
 ;-
 
-pro tomo::reconstruct_volume, base_file, center=center, scale=scale, angles=angles, $
+pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
+                              angles=angles, abort_widget=abort_widget, $
+                              status_widget=status_widget, $
                               _ref_extra=extra
 
     status = self->read_setup(base_file+'.setup')
+    str = 'Reading volume file ...'
+    if (widget_info(status_widget, /valid_id)) then $
+        widget_control, status_widget, set_value=str
+    print, str
     vol = self->read_volume(base_file + '.volume', _extra=extra)
     if (n_elements(center) ne 0) then self.center = center[0]
     if (n_elements(angles) ne 0) then self.angles = ptr_new(angles)
     if (n_elements(scale) eq 0) then scale=1.e6
+    if (n_elements(status_widget) eq 0) then status_widget = -1L
+    if (n_elements(status_widget) eq 0) then abort_widget = -1L
+
     self.scale_factor = 1./scale
     ; This procedure reconstructs all of the slices for a tomography data set
     nrows = n_elements(vol[0,*,0])
     ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
     if (keyword_set(back_project)) then step=1 else step=2
     for i=0, nrows-1, step do begin
+        str = 'Reconstructing slice ' + strtrim(i,2) + '/' + $
+                                        strtrim(nrows-1,2)
+        if (widget_info(status_widget, /valid_id)) then $
+            widget_control, status_widget, set_value=str
+        print, str
         if (n_elements(center) eq 0) then cent=-1
         if (n_elements(center) eq 1) then cent=center
         if (n_elements(center) eq 2) then cent = $
@@ -467,14 +587,31 @@ pro tomo::reconstruct_volume, base_file, center=center, scale=scale, angles=angl
             ncols = n_elements(r[*,0])
             recon = intarr(ncols, ncols, nrows, /nozero)
         endif
-        print, 'reconstructing slice ', i
         recon[0,0,i] = r
         if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
             recon[0,0,i+1] = r2
         endif
+        if (widget_info(abort_widget, /valid_id)) then begin
+            event = widget_event(/nowait, abort_widget)
+            widget_control, abort_widget, get_uvalue=abort
+            if (abort) then begin
+                if (widget_info(status_widget, /valid_id)) then $
+                    widget_control, status_widget, $
+                                    set_value='Reconstruction aborted.'
+                return
+            endif
+        endif
     endfor
+    ; If there was no input angle array copy the one that reconstruct_slice
+    ; generated back into self
+    if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
+    if (widget_info(status_widget, /valid_id)) then $
+        widget_control, status_widget, set_value='Writing volume file ...'
     self->write_volume, base_file + 'recon.volume', recon, /reconstructed
     status = self->write_setup(base_file + '.setup')
+    if (widget_info(status_widget, /valid_id)) then $
+        widget_control, status_widget, set_value='Reconstruction complete.'
+
 end
 
 
@@ -741,6 +878,8 @@ ignore_error:
         endelse
     endif else begin
         ; This is a netCDF file
+        ; Clear any existing information
+        self->clear_setup
         ; Process the global attributes
         status = ncdf_inquire(file_id)
         for i=0, status.ngatts-1 do begin
@@ -818,6 +957,34 @@ end
 
 
 
+;+
+; NAME:
+;   TOMO::WRITE_SETUP
+;
+; PURPOSE:
+;   This function writes the setup information for a tomography data set to an
+;   ASCII file.
+;
+; CATEGORY:
+;   Tomography
+;
+; CALLING SEQUENCE:
+;   result = TOMO->WRITE_SETUP(File)
+;
+; INPUTS:
+;   File:
+;       The name of the output file.
+;
+; OUTPUTS:
+;   This function returns 0 if it was unable to write the file, 1 if it was
+;   successful.
+;
+; EXAMPLE:
+;       IDL>  status = TOMO->WRITE_SETUP('Sample1.setup')
+;
+; MODIFICATION HISTORY:
+;   Written by: Mark Rivers, Aug. 2001?
+
 function tomo::write_setup, file
     openw, lun, file, error=error, /get_lun
     if (error ne 0) then return, 0
@@ -840,7 +1007,37 @@ function tomo::write_setup, file
 end
 
 
+;+
+; NAME:
+;   TOMO::READ_SETUP
+;
+; PURPOSE:
+;   This function reads the setup information for a tomography data set from an
+;   ASCII file.
+;
+; CATEGORY:
+;   Tomography
+;
+; CALLING SEQUENCE:
+;   result = TOMO->READ_SETUP(File)
+;
+; INPUTS:
+;   File:
+;       The name of the input file.
+;
+; OUTPUTS:
+;   This function returns 0 if it was unable to read the file, 1 if it was
+;   successful.
+;
+; EXAMPLE:
+;       IDL>  status = TOMO->READ_SETUP('Sample1.setup')
+;
+; MODIFICATION HISTORY:
+;   Written by: Mark Rivers, Aug. 2001?
+
 function tomo::read_setup, file
+    ; Clear any existing information
+    self->clear_setup
     ncomments = 0
     comment = strarr(100)
     line = ''
@@ -876,6 +1073,61 @@ function tomo::read_setup, file
     free_lun, lun
     return, 1
 end
+
+;+
+; NAME:
+;   TOMO::GET_SETUP
+;
+; PURPOSE:
+;   This function returns the setup information for a tomography data set
+;
+; CATEGORY:
+;   Tomography
+;
+; CALLING SEQUENCE:
+;   setup = TOMO->GET_SETUP()
+;
+; OUTPUTS:
+;   This function returns a structure of type {TOMO} containing the information
+;   about the tomography dataset.  The current definition of the {TOMO}
+;   structure is:
+;       {tomo, $
+;        title: " ", $
+;        operator: " ", $
+;        camera: " ", $
+;        sample: " ", $
+;        comments: ptr_new(), $
+;        image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
+;        dark_current: 0., $
+;        center: 0., $
+;        energy: 0., $
+;        x_pixel_size: 0., $
+;        y_pixel_size: 0., $
+;        z_pixel_size: 0., $
+;        scale_factor: 0., $
+;        nx:     0L, $
+;        ny:     0L, $
+;        nz:     0L, $
+;        angles: ptr_new() $
+;    }
+;   This definition is subject to change in the future, but the above fields
+;   will not change, new fields may be added.
+;
+; EXAMPLE:
+;       IDL>  tomo = obj_new('TOMO')
+;       IDL>  status = TOMO->READ_SETUP('Sample1.setup')
+;       IDL>  setup = TOMO->GET_SETUP()
+;
+; MODIFICATION HISTORY:
+;   Written by: Mark Rivers, Nov. 18, 2001
+
+function tomo::get_setup
+    t = {tomo}
+    for i=0, n_tags(t)-1 do begin
+        t.(i)=self.(i)
+    endfor
+    return, t
+end
 
 
 function tomo::init, file
@@ -886,6 +1138,28 @@ end
 pro tomo::cleanup
     ptr_free, self.comments
     ptr_free, self.angles
+end
+
+pro tomo::clear_setup
+    self.title=""
+    self.operator=""
+    self.camera=""
+    self.sample=""
+    ptr_free, self.comments
+    self.comments=ptr_new()
+    self.image_type=""
+    self.dark_current=0.
+    self.center=0.
+    self.energy=0.
+    self.x_pixel_size=0.
+    self.y_pixel_size=0.
+    self.z_pixel_size=0.
+    self.scale_factor=0.
+    self.nx=0L
+    self.ny=0L
+    self.nz=0L
+    ptr_free, self.angles
+    self.angles=ptr_new()
 end
 
 
