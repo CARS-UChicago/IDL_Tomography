@@ -106,6 +106,7 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
 ;                    same as this routine previously used.
 ;                    Removed /SHEPP_LOGAN keyword in call to TOMO_FILTER, this is the default.
 ;                    Removed STOP keyword, the same result can be achieved with breakpoints.
+;   16-AUG-2003 MLR  Made /NORMALIZE work with Gridrec, not just with /BACKPROJECT
 ;-
 
 time1 = systime(1)
@@ -170,6 +171,27 @@ endif else begin
         r = congrid(r, nx, nx, /interp)
         image2 = congrid(image2, nx, nx, /interp)
     endif
+    if (keyword_set(normalize)) then  begin
+        sum1 = total(s1, 1)
+        sum2 = total(s2, 1)
+        mom1 = moment(sum1)
+        mom2 = moment(sum2)
+        mask = shift(dist(nx), nx/2, nx/2)
+        outside = where(mask gt nx/2)
+        r[outside] = 0.
+        image2[outside]=0.
+        n1 = mom1[0] / total(r) / pixel_size
+        n2 = mom2[0] / total(image2) / pixel_size
+        print, 'Average intensity in each row of sinogram1 = ', mom1[0], $
+                                                   '+-', sqrt(mom1[1])
+        print, 'Average intensity in each row of sinogram2 = ', mom2[0], $
+                                                   '+-', sqrt(mom2[1])
+        print, 'Normalizing scale factor1 = ', n1
+        print, 'Normalizing scale factor1 = ', n2
+        r = r * n1
+        image2 = image2 * n2
+    endif
+
     if (n_elements(scale) ne 0) then begin
         r = r * scale
         image2 = image2 * scale
