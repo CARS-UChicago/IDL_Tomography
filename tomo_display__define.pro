@@ -34,6 +34,7 @@ pro tomo_display::reconstruct, slice
     widget_control, self.widgets.scale, get_value=scale
     widget_control, self.widgets.backproject, get_value=backproject
     widget_control, self.widgets.remove_rings, get_value=ring
+    widget_control, self.widgets.ring_width, get_value=ring_width
     widget_control, self.widgets.air_values, get_value=air_values
     noring = 1-ring
     if (backproject) then begin
@@ -51,7 +52,7 @@ pro tomo_display::reconstruct, slice
     if (n_elements(slice) ne 0) then begin
         widget_control, /hourglass
         r = reconstruct_slice(slice, *self.pvolume, center=center, scale=scale, $
-                              back_project=backproject, noring=noring, $
+                              back_project=backproject, noring=noring, ring_width=ring_width, $
                               air_values=air_values, filter_size=filter_size, $
                               filter_name=filter_name, bilinear=bilinear, cubic=cubic, $
                               resize=resize, sinogram=sinogram, cog=cog)
@@ -105,7 +106,7 @@ pro tomo_display::reconstruct, slice
         widget_control, self.widgets.abort, set_uvalue=0
         widget_control, self.widgets.status, set_value=""
         self.ptomo->reconstruct_volume, base_file, center=center, scale=scale, $
-                              noring=noring, back_project=backproject, $
+                              noring=noring, ring_width=ring_width, back_project=backproject, $
                               air_values=air_values, filter_size=filter_size, $
                               filter_name=filter_name, bilinear=bilinear, cubic=cubic, $
                               resize=resize, $
@@ -186,6 +187,9 @@ pro tomo_display::options_event, event
             widget_control, self.widgets.gridrec_base, sensitive=1-sens
         end
         self.widgets.remove_rings: begin
+            ; Nothing to do
+        end
+        self.widgets.white_average: begin
             ; Nothing to do
         end
         self.widgets.fluorescence: begin
@@ -436,11 +440,14 @@ pro tomo_display::event, event
             widget_control, self.widgets.dark_current, get_value=dark_current
             widget_control, self.widgets.threshold, get_value=threshold
             widget_control, self.widgets.double_threshold, get_value=double_threshold
+            widget_control, self.widgets.white_average, get_value=white_average
+            widget_control, self.widgets.white_smooth, get_value=white_smooth
             widget_control, self.widgets.abort, set_uvalue=0
             widget_control, self.widgets.status, set_value=""
             self.ptomo->preprocess, base_file, first_file, last_file, $
                             dark=dark_current, $
                             threshold=threshold, double_threshold=double_threshold, $
+                            white_average=white_average, white_smooth=white_smooth, $
                             abort_widget=self.widgets.abort, $
                             status_widget=self.widgets.status
 
@@ -748,7 +755,12 @@ function tomo_display::init
                                         /column, xsize=10, value=1.25)
     self.widgets.double_threshold = cw_field(row, title='Double correlation (flat fields)', /float, $
                                         /column, xsize=10, value=1.05)
-
+    row = widget_base(col1, /row)
+    self.widgets.white_average = cw_bgroup(row, ['Interpolate', 'Average'], $
+                                           label_left='Flat field processing:', row=1, $
+                                           set_value=1, /exclusive)
+    self.widgets.white_smooth  = cw_field(row, title='Flat field smoothing', /integer, $
+                                        /column, xsize=10, value=0)
     col = widget_base(self.widgets.options_base, /column, /frame)
     recon_base=col
     t = widget_label(col, value='Reconstruction', font=self.fonts.heading1)
@@ -760,6 +772,8 @@ function tomo_display::init
     self.widgets.remove_rings = cw_bgroup(row, ['No', 'Yes'], $
                                             label_left='Ring artifact removal:', row=1, $
                                             set_value=1, /exclusive)
+    self.widgets.ring_width = cw_field(row, title='Ring smoothing width', /integer, $
+                                        /column, xsize=10, value=9)
     col1 = widget_base(col, /column, /frame)
     sinogram_base = col1
     t = widget_label(col1, value='Sinogram', font=self.fonts.heading2)
@@ -879,6 +893,7 @@ pro tomo_display__define
         double_threshold: 0L, $
         backproject: 0L, $
         remove_rings: 0L, $
+        ring_width: 0L, $
         air_values: 0L, $
         fluorescence: 0L, $
         display_sinogram: 0L, $
@@ -887,6 +902,8 @@ pro tomo_display__define
         filter_size: 0L, $
         backproject_filter: 0L, $
         backproject_interpolation: 0L, $
+        white_average: 0L, $
+        white_smooth: 0L, $
         gridrec_base: 0L, $
         gridrec_resize: 0L $
     }
