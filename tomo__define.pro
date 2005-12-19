@@ -35,7 +35,7 @@
 ;       dimensions as each frame in the data set.  In this case the specified
 ;       2-D dark current will be substracted from each frame in the data set.
 ;       Note that if the data set contains dark current frames (frame type =
-;       DARK_FIELD) then this keyword is ignorred.
+;       DARK_FIELD) then this keyword is normally not used.
 ;   FIRST_ROW:
 ;       The starting row (slice) to be processed.  The default is 0.  This
 ;       keyword, together with LAST_ROW below are provided for processing
@@ -55,7 +55,6 @@
 ;       when processing data sets with many angles.  The output file is identical
 ;       whether or not this keyword is used, it only affects how many times the
 ;       output file is opened and appended to.
-;
 ;   WHITE:
 ;       The white field value, either a scaler or a 2-D array.  If this is a
 ;       scaler value then each pixel in each data frame is normalized by this
@@ -64,7 +63,20 @@
 ;       frame in the data set is normalized by the specified 2-D array.
 ;       Note that if the data set contains white field frames (frame type =
 ;       FLAT_FIELD), which is typically the case, then this keyword is
-;       ignorred.
+;       normally not used.
+;   WHITE_AVERAGE:
+;       Set this flag to 1 to process the flat fields by averaging all of them
+;       together.  The default (WHITE_AVERAGE=0) is to interpolate flat fields in time.
+;       NOTE: The default value for this flag is 0 for backward compatibility.
+;       However, in general setting WHITE_AVERAGE=1 greatly reduces ring artifacts
+;       compared with the default interpolation method, so it's use is strongly
+;       recommended.
+;   WHITE_SMOOTH:
+;       The size of the smoothing kernal for smoothing the white fields.  Set this
+;       value to 2 or more to smooth the white fields before normalization.
+;       Since white fields generally do not have much high frequency content,
+;       smoothing can be used to reduce noise in the normalization.
+;       Default=0 (no smoothing).
 ;   OUTPUT:
 ;       The name of the output file.  The default is Base_file + '.volume'
 ;   STATUS_WIDGET:
@@ -200,8 +212,10 @@
 ;   20-NOV-2001 MLR  Added ABORT_WIDGET and STATUS_WIDGET keywords
 ;   25-APR-2002 MLR  Added support for reading 3-D .SPE files, created when doing
 ;                    fast scanning
+;   18-DEC-2005 MLR  Added white_average and white_smooth keywords.  
+;                    Setting white_average greatly reduces ring artifacts in many cases.
 ;-
-
+
 pro tomo::read_data_file, base_file, file_number, data, type, angle, debug, $
                     status_widget
    file = base_file + strtrim(file_number, 2) + '.SPE'
@@ -239,12 +253,13 @@ pro tomo::read_data_file, base_file, file_number, data, type, angle, debug, $
     endif
 end
 
-
+
 pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
                     white=input_white, threshold=threshold, $
                     double_threshold=double_threshold, debug=debug, $
                     first_row=first_row, last_row=last_row, output=output, $
                     setup=setup, buff_angles=buff_angles, $
+                    white_smooth=white_smooth, white_average=white_average, $
                     status_widget=status_widget, abort_widget=abort_widget
 
     nfiles = stop - start + 1
@@ -253,6 +268,8 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     if (n_elements(double_threshold) eq 0) then double_threshold=1.05
     if (n_elements(output) eq 0) then output=base_file + '.volume'
     if (n_elements(setup) eq 0) then setup=base_file + '.setup'
+    if (n_elements(white_smooth) eq 0) then white_smooth=0
+    if (n_elements(white_average) eq 0) then white_average=0
     if (n_elements(status_widget) eq 0) then status_widget = -1L
     if (n_elements(abort_widget) eq 0) then abort_widget = -1L
 
@@ -264,6 +281,7 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     dims = size(data, /dimensions)
     if (ndims eq 2) then begin
         ; This is data with 1 frame per file
+        nframes = nfiles
         ncols = dims[0]
         nrows = dims[1]
         ystart = 0
@@ -275,10 +293,10 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
         nrows = ystop - ystart + 1
         if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
 
-        data_buff = intarr(ncols, nrows, nfiles, /nozero)
-        angles = fltarr(nfiles)
-        image_type = strarr(nfiles)
-        for i=0, nfiles-1 do begin
+        data_buff = intarr(ncols, nrows, nframes, /nozero)
+        angles = fltarr(nframes)
+        image_type = strarr(nframes)
+        for i=0, nframes-1 do begin
             self->read_data_file, base_file, start+i, data, type, angle, debug, $
                                 status_widget
             if (subset) then begin
@@ -304,6 +322,7 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
         ncols = dims[0]
         nrows = dims[1]
         data_buff = temporary(data)
+        nframes = n_elements(data_buff[0,0,*])
         image_type = type
         angles=angle
     endif
@@ -315,32 +334,30 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     if (debug ne 0) then print, str
     darks = where(image_type eq 'DARK_FIELD', ndarks)
     if (debug ge 2) then print, 'ndarks= ', ndarks, 'darks=', darks
-    if (ndarks eq 0) then begin
-        if (n_elements(input_dark) ne 0) then begin
-            dark = input_dark
-            s = size(dark)  ; Input dark current
-            if (debug ge 2) then print, 'input_dark= ', input_dark, $
-                                  'size(input_dark)=', s
-            case s[0] of
-                0: begin ; Constant dark current
-                    for i=0, nfiles-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
-                    self.dark_current = dark
-                end
-                2: begin  ; Dark current array
-                    if (s[3] ne ncols) or (s[4] ne nrows) then $
-                                message, 'Wrong dims on dark'
-                    for i=0, nfiles-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
-                end
-                else: message, 'Wrong dims on dark'
-            endcase
-        endif
-    endif else begin
+    if (n_elements(input_dark) ne 0) then begin
+        dark = input_dark
+        s = size(dark)  ; Input dark current
+        if (debug ge 2) then print, 'input_dark= ', input_dark, $
+                              'size(input_dark)=', s
+        case s[0] of
+            0: begin ; Constant dark current
+                for i=0, nframes-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+                self.dark_current = dark
+            end
+            2: begin  ; Dark current array
+                if (s[1] ne ncols) or (s[2] ne nrows) then $
+                            message, 'Wrong dims on dark'
+                for i=0, nframes-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+            end
+            else: message, 'Wrong dims on dark'
+        endcase
+    endif else if (ndarks gt 0) then begin
         ; File contains one or more dark current images
         ; Files up to the first dark current use the first dark current
         dark = data_buff[*, *, darks[0]]
         for i=0, darks[0]-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
             ; Files after the last dark current use the last dark current
-            for i=darks[ndarks-1]+1, nfiles-1 do $
+            for i=darks[ndarks-1]+1, nframes-1 do $
                             data_buff[0,0,i]=data_buff[*,*,i] - dark
             ; Files in between the first dark and the last dark use the average of
             ; the dark current before and after
@@ -350,6 +367,8 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
                 for i=darks[j]+1, darks[j+1]-1 do $
                             data_buff[0,0,i]=data_buff[*,*,i] - dark
             endfor
+    endif else begin
+        message, 'Must specify dark keyword since no dark frames in data files'
     endelse
 
     ; Do flat field current correction and zinger removal on flat field frames
@@ -359,61 +378,101 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     if (debug ne 0) then print, str
     whites = where(image_type eq 'FLAT_FIELD', nwhites)
     if (debug ge 2) then print, 'nwhites= ', nwhites, 'whites=', whites
-    if (nwhites eq 0) and (n_elements(input_white) ne 0) then begin
+    if (n_elements(input_white) ne 0) then begin
         white = input_white
         s = size(white)  ; Input white field
         case s[0] of
             0: data_buff[0,0,0] = 10000 * (data_buff/float(white))  ; Constant
             2: begin  ; White field array
-                if (s[3] ne ncols) or (s[4] ne nrows) then $
+                if (s[1] ne ncols) or (s[2] ne nrows) then $
                                 message, 'Wrong dims on white'
-                for i=0, nfiles-1 do $
+                for i=0, nframes-1 do $
                     data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
             end
             else: message, 'Wrong dims on white'
         endcase
-    endif else begin
+    endif else if (nwhites gt 0) then begin
         ; File contains one or more white field images
-        ; Files up to the first white field use the first white field
-        white = data_buff[*, *, whites[0]]
-        white = remove_tomo_artifacts(white, /zingers, threshold=threshold, $
-                                 debug=debug)
-        for i=0, whites[0]-1 do data_buff[0,0,i] = $
-                        10000 * (data_buff[*,*,i]/float(white))
-        ; Files after the last white field use the last white field
-        white = data_buff[*,*,whites[nwhites-1]]
-        white = remove_tomo_artifacts(white, /zingers, threshold=threshold, $
-                                 debug=debug)
-        for i=whites[nwhites-1]+1, nfiles-1 do $
-                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
-        ; Files in between the first white field and the last white field use the
-        ; weighted average of the white field before and after
-        nseries = nwhites-1
-        for j=0, nseries-1 do begin
-            white1 = data_buff[*,*,whites[j]]
-            white2 = data_buff[*,*,whites[j+1]]
-            ; Remove zingers with double correlation
-            white1 = remove_tomo_artifacts(white1, image2=white2, $
-                         /double_correlation, threshold=double_threshold, $
-                         debug=debug)
-            nframes = whites[j+1] - whites[j] - 1
-            for i=0, nframes-1 do begin
-                k = i + whites[j]+1
-                ratio = float(i)/float(nframes-1)
-                white = white1*(1.0-ratio) + white2*ratio
-                data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
+        ; Extract the white fields into their own array
+        white_data = fltarr(ncols, nrows, nwhites)
+        for i=0, nwhites-1 do white_data[0,0,i] = data_buff[*,*,whites[i]]
+        ; Remove zingers from white fields.  If there is more than 1 white field
+        ; do it with double correlation, else do it with spatial filter
+        if (nwhites eq 1) then begin
+            if (debug ge 1) then print, 'Single white field, correcting zingers with spatial'
+            white_data[0,0,0] = remove_tomo_artifacts(white_data[*,*,0], /zingers, threshold=threshold, $
+                               debug=debug)
+        endif else begin
+            if (debug ge 1) then print, 'Multiple white fields, correcting zingers with double correlation'
+            for i=0, nwhites-2 do begin
+                white_data[0,0,i] = remove_tomo_artifacts(white_data[*,*,i],   $
+                                                   image2=white_data[*,*,i+1], $
+                              /double_correlation, threshold=double_threshold, $
+                              debug=debug)
             endfor
-            if (widget_info(abort_widget, /valid_id)) then begin
-                event = widget_event(/nowait, abort_widget)
-                widget_control, abort_widget, get_uvalue=abort
-                if (abort) then begin
-                    if (widget_info(status_widget, /valid_id)) then $
-                        widget_control, status_widget, $
-                        set_value='Preprocessing aborted'
-                    return
+        endelse
+        ; If we are smoothing white fields ...
+        if (white_smooth gt 1) then begin
+            if (debug ge 1) then print, 'Smoothing white fields, smooth width=', white_smooth
+            for i=0, nwhites-1 do begin
+                white_data[0,0,i] = smooth(white_data[*,*,i], white_smooth)
+            endfor
+        endif
+        ; If we are averaging white fields ...
+        if keyword_set(white_average) then begin
+            if (debug ge 1) then print, 'Averaging white fields'
+            white = total(white_data, 3)/nwhites
+            for i=0, nframes-1 do begin
+                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
+                if (widget_info(abort_widget, /valid_id)) then begin
+                    event = widget_event(/nowait, abort_widget)
+                    widget_control, abort_widget, get_uvalue=abort
+                    if (abort) then begin
+                        if (widget_info(status_widget, /valid_id)) then $
+                            widget_control, status_widget, $
+                            set_value='Preprocessing aborted'
+                        return
+                    endif
                 endif
-            endif
-        endfor
+            endfor
+        endif else begin
+            if (debug ge 1) then print, 'Interpolating white fields'
+            ; We are interpolating white fields
+            ; Files up to the first white field use the first white field
+            white = white_data[*,*,0]
+            for i=0, whites[0]-1 do $
+                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
+            ; Files after the last white field use the last white field
+            white = white_data[*,*,[nwhites-1]]
+            for i=whites[nwhites-1]+1, nframes-1 do $
+                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
+            ; Files in between the first white field and the last white field use the
+            ; weighted average of the white field before and after
+            nseries = nwhites-1
+            for j=0, nseries-1 do begin
+                white1 = white_data[*,*,j]
+                white2 = white_data[*,*,j+1]
+                nf = whites[j+1] - whites[j] - 1
+                for i=0, nf-1 do begin
+                    k = i + whites[j]+1
+                    ratio = float(i)/float(nf-1)
+                    white = white1*(1.0-ratio) + white2*ratio
+                    data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
+                endfor
+                if (widget_info(abort_widget, /valid_id)) then begin
+                    event = widget_event(/nowait, abort_widget)
+                    widget_control, abort_widget, get_uvalue=abort
+                    if (abort) then begin
+                        if (widget_info(status_widget, /valid_id)) then $
+                            widget_control, status_widget, $
+                            set_value='Preprocessing aborted'
+                        return
+                    endif
+                endif
+            endfor
+        endelse  ; Interpolate
+    endif else begin
+        message, 'Must specify white keyword since no white frames in data files'
     endelse
 
     ; Now we have normalized data.
