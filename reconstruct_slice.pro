@@ -2,7 +2,7 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
                             pixel_size=pixel_size, normalize=normalize, $
                             scale=scale, back_project=back_project, $
                             resize=resize, angles=angles, center=center, $
-                            sinogram=singram, $
+                            sinogram=singram, ring_width = ring_width, $
                             _REF_EXTRA=extra
 
 ;+
@@ -133,7 +133,7 @@ if (keyword_set(back_project)) then begin
     s = sinogram(t1, angles, center=center, _EXTRA=extra)
     singram = s
     time3 = systime(1)
-    if keyword_set(noring) then g = s else g = remove_tomo_artifacts(s, /rings)
+    if keyword_set(noring) then g = s else g = remove_tomo_artifacts(s, /rings, width=ring_width)
     time4 = systime(1)
     ss = tomo_filter(g, _EXTRA=extra)
     time5 = systime(1)
@@ -165,8 +165,8 @@ endif else begin
         g1 = s1
         g2 = s2
     endif else begin
-        g1 = remove_tomo_artifacts(s1, /rings)
-        g2 = remove_tomo_artifacts(s2, /rings)
+        g1 = remove_tomo_artifacts(s1, /rings, width=ring_width)
+        g2 = remove_tomo_artifacts(s2, /rings, width=ring_width)
     endelse
     time4 = systime(1)
     gridrec, g1, g2, angles, r, image2, _EXTRA=extra
