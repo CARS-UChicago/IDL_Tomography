@@ -55,7 +55,7 @@
 ;       when processing data sets with many angles.  The output file is identical
 ;       whether or not this keyword is used, it only affects how many times the
 ;       output file is opened and appended to.
-;   WHITE:
+;   WHITE_FIELD:
 ;       The white field value, either a scaler or a 2-D array.  If this is a
 ;       scaler value then each pixel in each data frame is normalized by this
 ;       constant value.  If this is a 2-D array then it must have the same
@@ -132,15 +132,17 @@
 ;   - Removes zingers from white field frames using REMOVE_TOMO_ARTIFACTS with
 ;     /DOUBLE_CORRELATION if possible, or /ZINGERS if not.
 ;   - Divides each data frame by the white field, using white field images in
-;     the data set if present, or the input white field if present.  If the
-;     data set contains multiple white field frames, then the correction is
-;     done as follows:
+;     the data set, or the input white field if present.  If the
+;     data set contains multiple white field frames, and WHITE_AVERAGE=0,
+;     then the correction is done as follows:
 ;         - Use the first white field for all frames collected before the
 ;           first white field
 ;         - Use the last white field for all frames collected after the last
 ;           white field
-;         - Use the average of the closest preceeding and following white
+;         - Use the weighted average of the closest preceeding and following white
 ;           fields for all frames collected between two white fields.
+;     If WHITE_AVERAGE=1 then all of the white fields in the data are averaged
+;     before normalizing.  This is recommended.
 ;     The ratio of each frame to the white field is multiplied by 10,000 to be
 ;     able to use 16 bit integers, rather than floats to store the results,
 ;     saving a factor of 2 in memory, which is important for these large 3-D
@@ -212,7 +214,8 @@
 ;   20-NOV-2001 MLR  Added ABORT_WIDGET and STATUS_WIDGET keywords
 ;   25-APR-2002 MLR  Added support for reading 3-D .SPE files, created when doing
 ;                    fast scanning
-;   18-DEC-2005 MLR  Added white_average and white_smooth keywords.  
+;   18-DEC-2005 MLR  Added white_average and white_smooth keywords. 
+;                    Renamed WHITE keyword to WHITE_FIELD 
 ;                    Setting white_average greatly reduces ring artifacts in many cases.
 ;-
 
@@ -255,7 +258,7 @@ end
 
 
 pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
-                    white=input_white, threshold=threshold, $
+                    white_field=input_white, threshold=threshold, $
                     double_threshold=double_threshold, debug=debug, $
                     first_row=first_row, last_row=last_row, output=output, $
                     setup=setup, buff_angles=buff_angles, $
