@@ -36,6 +36,7 @@ pro tomo_display::reconstruct, slice
     widget_control, self.widgets.remove_rings, get_value=ring
     widget_control, self.widgets.ring_width, get_value=ring_width
     widget_control, self.widgets.air_values, get_value=air_values
+    widget_control, self.widgets.fluorescence, get_value=fluorescence
     noring = 1-ring
     if (backproject) then begin
         widget_control, self.widgets.filter_size, get_value=filter_size
@@ -53,7 +54,7 @@ pro tomo_display::reconstruct, slice
         widget_control, /hourglass
         r = reconstruct_slice(slice, *self.pvolume, center=center, scale=scale, $
                               back_project=backproject, noring=noring, ring_width=ring_width, $
-                              air_values=air_values, filter_size=filter_size, $
+                              air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
                               filter_name=filter_name, bilinear=bilinear, cubic=cubic, $
                               resize=resize, sinogram=sinogram, cog=cog)
         ; If reconstruction was with backproject, rotate image so it is the same
