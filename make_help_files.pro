@@ -1,4 +1,4 @@
-dest = '/millenia/usr/local/apache/htdocs/software/'
+dest = '/home/epics/web_software/idl/'
 mk_html_help, ['backproject.pro', $
                'gridrec.pro', $
                'read_tomo_data.pro', $
