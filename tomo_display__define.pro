@@ -108,7 +108,7 @@ pro tomo_display::reconstruct, slice
         widget_control, self.widgets.status, set_value=""
         self.ptomo->reconstruct_volume, base_file, center=center, scale=scale, $
                               noring=noring, ring_width=ring_width, back_project=backproject, $
-                              air_values=air_values, filter_size=filter_size, $
+                              air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
                               filter_name=filter_name, bilinear=bilinear, cubic=cubic, $
                               resize=resize, $
                               abort_widget=self.widgets.abort, $
