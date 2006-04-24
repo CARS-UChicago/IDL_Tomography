@@ -373,7 +373,7 @@ pro tomo_display::event, event
         end
 
         self.widgets.read_camera_file: begin
-            file = dialog_pickfile(filter='*.spe', get_path=path)
+            file = dialog_pickfile(filter='*.SPE', get_path=path)
             if (file eq '') then break
             widget_control, /hourglass
             widget_control, self.widgets.status, $
