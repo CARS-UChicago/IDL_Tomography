@@ -434,6 +434,8 @@ pro tomo_display::event, event
         end
 
         self.widgets.preprocess_go: begin
+            ; Delete any volume array to free up memory
+            self->free_memory
             widget_control, self.widgets.base_file, get_value=base_file
             base_file = base_file[0]
             widget_control, self.widgets.first_file, get_value=first_file
