@@ -229,8 +229,6 @@ end
 pro tomo_display::display_slice, new_window=new_window
     if (ptr_valid(self.pvolume)) then begin
         widget_control, self.widgets.disp_slice, get_value=slice
-        widget_control, self.widgets.display_min, get_value=min
-        widget_control, self.widgets.display_max, get_value=max
         widget_control, self.widgets.direction, get_value=direction
         widget_control, self.widgets.volume_file, get_value=file
         ; Set the axis dimensions
@@ -303,6 +301,14 @@ pro tomo_display::event, event
         obj_destroy, self
         return
     endif
+
+    catch, err
+    if (err ne 0) then begin
+       t = dialog_message(!error_state.msg, /error)
+        widget_control, self.widgets.status, set_value=!error_state.msg
+        goto, end_event
+    endif
+
     case event.id of
         self.widgets.change_directory: begin
             f = dialog_pickfile(/directory, get_path=p)
@@ -355,8 +361,8 @@ pro tomo_display::event, event
             self.nz = dims[2]
             ; Set the intensity range
             min = min(*self.pvolume, max=max)
-            widget_control, self.widgets.display_min, set_value=min
-            widget_control, self.widgets.display_max, set_value=max
+            widget_control, self.widgets.data_min, set_value=min
+            widget_control, self.widgets.data_max, set_value=max
             ; Set the slice display range
             self->set_limits
             ; Build the angle array if it does not exist
@@ -396,8 +402,8 @@ pro tomo_display::event, event
                self.nz = dims[2]
                ; Set the intensity range
                min = min(*self.pvolume, max=max)
-               widget_control, self.widgets.display_min, set_value=min
-               widget_control, self.widgets.display_max, set_value=max
+               widget_control, self.widgets.data_min, set_value=min
+               widget_control, self.widgets.data_max, set_value=max
                ; Set the slice display range
                 self->set_limits
                ; Build the angle array if it does not exist
@@ -512,15 +518,22 @@ pro tomo_display::event, event
         self.widgets.make_movie: begin
             widget_control, self.widgets.disp_slice, get_value=slice
             if (ptr_valid(self.pvolume)) then begin
+                widget_control, self.widgets.auto_intensity, get_value=auto
+                if (auto) then begin
+                    widget_control, self.widgets.data_min, get_value=min
+                    widget_control, self.widgets.data_max, get_value=max
+                endif else begin
+                    widget_control, self.widgets.display_min, get_value=min
+                    widget_control, self.widgets.display_max, get_value=max
+                endelse
                 widget_control, self.widgets.movie_output, get_value=output
-                widget_control, self.widgets.display_min, get_value=min
-                widget_control, self.widgets.display_max, get_value=max
                 widget_control, self.widgets.direction, get_value=direction
                 widget_control, self.widgets.movie_file, get_value=file
                 widget_control, self.widgets.zoom, get_value=zoom, get_uvalue=all_zooms
                 widget_control, self.widgets.first_slice, get_value=start
                 widget_control, self.widgets.last_slice, get_value=stop
                 widget_control, self.widgets.slice_step, get_value=step
+                widget_control, self.widgets.movie_wait, get_value=wait
                 scale = all_zooms[zoom]
                 label=0
                 case output of
@@ -536,7 +549,7 @@ pro tomo_display::event, event
                 widget_control, self.widgets.status, set_value=""
                 make_movie, index=direction+1, scale=scale, *self.pvolume, $
                             jpeg_file=jpeg_file, tiff_file=tiff_file, mpeg_file=mpeg_file, $
-                            min=min, max=max, start=start, stop=stop, step=step, $
+                            min=min, max=max, start=start, stop=stop, step=step, wait=wait, $
                             label=label, abort_widget=self.widgets.abort, $
                             status_widget=self.widgets.status
             endif else begin
@@ -547,6 +560,7 @@ pro tomo_display::event, event
         else:  t = dialog_message('Unknown event')
     endcase
 
+end_event:
     ; If there is a valid volume array make the visualize base sensitive
     sensitive = ptr_valid(self.pvolume)
     widget_control, self.widgets.visualize_base, sensitive=sensitive
@@ -674,7 +688,13 @@ function tomo_display::init
                                xsize=18, value='')
 
     row = widget_base(col, /row, /base_align_center)
-    t = widget_label(row, value='Intensity range:')
+    t = widget_label(row, value='Actual intensity range:')
+    self.widgets.data_min = cw_field(row, title='Min.', /float, $
+                                        /column, xsize=10, value=0, /noedit)
+    self.widgets.data_max = cw_field(row, title='Max.', /float, $
+                                        /column, xsize=10, value=0, /noedit)
+    row = widget_base(col, /row, /base_align_center)
+    t = widget_label(row, value='Display intensity range:')
     self.widgets.display_min = cw_field(row, title='Min.', /float, $
                                         /column, xsize=10, value=0)
     self.widgets.display_max = cw_field(row, title='Max.', /float, $
@@ -728,6 +748,8 @@ function tomo_display::init
                                         /column, xsize=10, value=0)
     self.widgets.slice_step = cw_field(row, title='Step', /integer, $
                                         /column, xsize=10, value=1)
+    self.widgets.movie_wait = cw_field(row, title='Delay time', /float, $
+                                        /column, xsize=10, value=0.)
 
     row = widget_base(col, /row)
     self.widgets.movie_file = cw_field(row, title="JPEG/MPEG/TIFF file name:", $
@@ -875,6 +897,8 @@ pro tomo_display__define
         volume_type: 0L, $
         direction: 0L, $
         order: 0L, $
+        data_min: 0L, $
+        data_max: 0L, $
         display_min: 0L, $
         display_max: 0L, $
         auto_intensity: 0L, $
@@ -886,6 +910,7 @@ pro tomo_display__define
         first_slice: 0L, $
         last_slice: 0L, $
         slice_step: 0L, $
+        movie_wait: 0L, $
         zoom: 0L, $
         movie_file: 0L, $
         make_movie: 0L, $
