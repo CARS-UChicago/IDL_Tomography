@@ -27,10 +27,14 @@ pro tomo_display::rebin, image, x_dist, y_dist
 end
 
 
-pro tomo_display::reconstruct, slice
+pro tomo_display::reconstruct, islice
     ; This function is called to reconstruct a single slice or to reconstruct all
-    ; If slice is defined then we are to reconstruct a single slice
-    widget_control, self.widgets.rotation_center, get_value=center
+    ; If islice is defined then we are to reconstruct a single slice
+    if (not ptr_valid(self.pvolume)) then begin
+        t = dialog_message('Must read in volume file first.', /error)
+        return
+    endif
+    widget_control, /hourglass
     widget_control, self.widgets.scale, get_value=scale
     widget_control, self.widgets.backproject, get_value=backproject
     widget_control, self.widgets.remove_rings, get_value=ring
@@ -50,8 +54,10 @@ pro tomo_display::reconstruct, slice
         widget_control, self.widgets.gridrec_resize, get_value=resize
     endelse
 
-    if (n_elements(slice) ne 0) then begin
-        widget_control, /hourglass
+    if (n_elements(islice) ne 0) then begin
+        widget_control, self.widgets.rotation_center[islice], get_value=center
+        widget_control, self.widgets.recon_slice[islice], get_value=slice
+        slice = slice < (self.ny-1)
         r = reconstruct_slice(slice, *self.pvolume, center=center, scale=scale, $
                               back_project=backproject, noring=noring, ring_width=ring_width, $
                               air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
@@ -89,14 +95,12 @@ pro tomo_display::reconstruct, slice
         widget_control, self.widgets.plot_cog, get_value=plot_cog
         if (plot_cog) then begin
             angles = *self.setup.angles
-            wset, 0
-            plot, angles, cog[*,0], /ynozero, xmargin=[10,8], $
-                  ytitle='Center of gravity', xtitle='Angle (degrees)'
-            oplot, angles, cog[*,1]
+            iplot, angles, cog[*,0], ytitle='Center of gravity', xtitle='Angle (degrees)', $
+                   name='Measured', color=[0,0,255], identifier=id
+            iplot, angles, cog[*,1], /overplot,  $
+                   name='Fit', color=[255,0,0], identifier=id
             diff = cog[*,0]-cog[*,1]
-            min=min(diff, max=max)
-            axis, yaxis=1, /save, ytitle='Difference', yrange=[min, max]
-            oplot, angles, diff
+            iplot, angles, diff, ytitle='COG measured-fit', xtitle='Angle (degrees)', id=id
         endif
     endif else begin
         ; Reconstruct entire file
@@ -106,6 +110,17 @@ pro tomo_display::reconstruct, slice
         base_file = base_file[0]
         widget_control, self.widgets.abort, set_uvalue=0
         widget_control, self.widgets.status, set_value=""
+        widget_control, self.widgets.rotation_center[0], get_value=center0
+        widget_control, self.widgets.rotation_center[1], get_value=center1
+        widget_control, self.widgets.recon_slice[0], get_value=slice0
+        widget_control, self.widgets.recon_slice[1], get_value=slice1
+        slice = float([slice0, slice1])
+        cent = float([center0, center1])
+        ; Compute the rotation center of the first and last slices
+        coeffs = poly_fit(slice, cent, 1)
+        center0 = coeffs[0]
+        center1 = coeffs[0] + coeffs[1]*(self.ny-1)
+        center = [center0, center1]
         self.ptomo->reconstruct_volume, base_file, center=center, scale=scale, $
                               noring=noring, ring_width=ring_width, back_project=backproject, $
                               air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
@@ -114,6 +129,30 @@ pro tomo_display::reconstruct, slice
                               abort_widget=self.widgets.abort, $
                               status_widget=self.widgets.status
     endelse
+end
+
+
+pro tomo_display::optimize_rotation_center, index
+    if (not ptr_valid(self.pvolume)) then begin
+        t = dialog_message('Must read in volume file first.', /error)
+        return
+    endif
+    widget_control, /hourglass
+    widget_control, self.widgets.recon_slice[index], get_value=slice
+    slice = slice < (self.ny-1)
+    widget_control, self.widgets.rotation_optimize_range[index], get_value=range
+    widget_control, self.widgets.rotation_optimize_step[index], get_value=step
+    widget_control, self.widgets.rotation_center[index], get_value=center
+    npoints = long(range/step) + 1
+    centers = findgen(npoints)*step + (center-range/2.)
+    optimize_rotation_center, slice, *self.pvolume, centers, entropy
+    widget_control, self.widgets.volume_file, get_value=file
+    title = file + '   Slice='+strtrim(string(slice),2)
+    iplot, centers, entropy, xtitle='Rotation center', ytitle='Image entropy', sym_index=2, $
+           view_title=title
+    t = min(entropy, min_pos)
+    widget_control, self.widgets.rotation_center[index], set_value=centers[min_pos]
+    self->reconstruct, index
 end
 
 
@@ -131,7 +170,9 @@ pro tomo_display::set_base_file, base_file
                         set_value=self.setup.dark_current
     endif
     if (self.setup.center ne 0.) then begin
-        widget_control, self.widgets.rotation_center, $
+        widget_control, self.widgets.rotation_center[0], $
+                        set_value=self.setup.center
+        widget_control, self.widgets.rotation_center[1], $
                         set_value=self.setup.center
     endif
 end
@@ -161,7 +202,8 @@ pro tomo_display::set_limits
     widget_control, self.widgets.disp_slice, set_value=last_slice/2
     widget_control, self.widgets.disp_slider, set_slider_max=last_slice
     widget_control, self.widgets.disp_slider, set_value=last_slice/2
-    widget_control, self.widgets.recon_slice, set_value=self.ny/2
+    widget_control, self.widgets.recon_slice[0], set_value=self.ny*0.1
+    widget_control, self.widgets.recon_slice[1], set_value=self.ny*0.9
     widget_control, self.widgets.filter_size, set_value=self.nx/4
 end
 
@@ -259,7 +301,7 @@ pro tomo_display::display_slice, new_window=new_window
                 end
         endcase
         axes = ['X', 'Y', 'Z']
-        widget_control, self.widgets.rotation_center, get_value=center
+        widget_control, self.widgets.rotation_center[0], get_value=center
         title = file + '    Center='+strtrim(string(center),2) + $
                     '     '+axes[direction]+'='+strtrim(string(slice),2)
         widget_control, self.widgets.auto_intensity, get_value=auto
@@ -462,14 +504,20 @@ pro tomo_display::event, event
 
         end
 
-        self.widgets.reconstruct_slice: begin
-            if (ptr_valid(self.pvolume)) then begin
-                widget_control, self.widgets.recon_slice, get_value=slice
-                slice = slice < (self.ny-1)
-                self->reconstruct, slice
-            endif else begin
-                t = dialog_message('Must read in volume file first.', /error)
-            endelse
+        self.widgets.reconstruct_slice[0]: begin
+            self->reconstruct, 0
+        end
+
+        self.widgets.reconstruct_slice[1]: begin
+            self->reconstruct, 1
+        end
+
+        self.widgets.rotation_optimize[0]: begin
+            self->optimize_rotation_center, 0
+        end
+
+        self.widgets.rotation_optimize[1]: begin
+            self->optimize_rotation_center, 1
         end
 
         self.widgets.reconstruct_all: begin
@@ -656,18 +704,27 @@ function tomo_display::init
     col = widget_base(col0, /column, /frame)
     self.widgets.reconstruct_base = col
     t = widget_label(col, value='Reconstruct', font=self.fonts.heading1)
+    for i=0, 1 do begin
+        row = widget_base(col, /row)
+        self.widgets.recon_slice[i] = cw_field(row, /column, title='Slice', $
+                                          /integer, xsize=10, value=100)
+        self.widgets.rotation_center[i] = cw_field(row, /column, $
+                                                title='Rotation Center', /float, $
+                                                xsize=10, value=325.000)
+        self.widgets.rotation_optimize_range[i] = cw_field(row, /column, title='Optimize range', $
+                                      /float, xsize=10, value=2)
+        self.widgets.rotation_optimize_step[i] = cw_field(row, /column, title='Optimize step', $
+                                      /float, xsize=10, value=.25)
+        col1 = widget_base(row, /column)
+        self.widgets.reconstruct_slice[i] = widget_button(col1, $
+                                                       value='Reconstruct slice')
+        self.widgets.rotation_optimize[i] = widget_button(col1, $
+                                                       value='Optimize center')
+    endfor
     row = widget_base(col, /row)
-    self.widgets.rotation_center = cw_field(row, /column, $
-                                            title='Rotation Center', /integer, $
-                                            xsize=10, value=329)
     self.widgets.scale = cw_field(row, /column, title='Scale', $
                                       /float, xsize=15, value=1e6)
-    self.widgets.recon_slice = cw_field(row, /column, title='Slice', $
-                                      /integer, xsize=10, value=100)
-    col = widget_base(row, /column)
-    self.widgets.reconstruct_slice = widget_button(col, $
-                                                   value='Reconstruct slice')
-    self.widgets.reconstruct_all = widget_button(col, $
+    self.widgets.reconstruct_all = widget_button(row, $
                                                    value='Reconstruct all')
 
     ; Visualization
@@ -885,10 +942,13 @@ pro tomo_display__define
         dark_current: 0L, $
         preprocess_go: 0L, $
         reconstruct_base: 0L, $
-        rotation_center: 0L, $
         scale: 0L, $
-        recon_slice: 0L, $
-        reconstruct_slice: 0L, $
+        recon_slice: lonarr(2), $
+        rotation_center: lonarr(2), $
+        rotation_optimize_range: lonarr(2), $
+        rotation_optimize_step: lonarr(2), $
+        rotation_optimize: lonarr(2), $
+        reconstruct_slice: lonarr(2), $
         reconstruct_all: 0L, $
         visualize_base: 0L, $
         nx: 0L, $
