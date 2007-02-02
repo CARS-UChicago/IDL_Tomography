@@ -681,7 +681,7 @@ pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
         if (n_elements(center) eq 0) then cent=-1
         if (n_elements(center) eq 1) then cent=center
         if (n_elements(center) eq 2) then cent = $
-                     round(center[0] + float(i) / (nrows-1) * (center[1]-center[0]))
+                     center[0] + float(i) / (nrows-1) * (center[1]-center[0])
         r = reconstruct_slice(i, vol, r2, center=cent, scale=scale, angles=angles, $
                               _extra=extra)
         if (i eq 0) then begin
