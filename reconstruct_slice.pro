@@ -150,16 +150,17 @@ if (keyword_set(back_project)) then begin
                                                    '+-', sqrt(mom[1])
         print, 'Normalizing scale factor = ', scale
     endif
-    print, 'Time to extract slice:    ', time2-time1
+    print, 'Center= ', center
     print, 'Time to compute sinogram: ', time3-time2
-    print, 'Time to remove artifacts: ', time4-time3
     print, 'Time to filter sinogram:  ', time5-time4
     print, 'Time to backproject:      ', time6-time5
 endif else begin
-    s1 = sinogram(t1, angles, center=center, _EXTRA=extra)
+    ;s1 = sinogram(t1, angles, center=center, _EXTRA=extra)
+    s1 = sinogram(t1, angles, _EXTRA=extra)
     singram = s1
     cent = -1
-    s2 = sinogram(t2, angles, center=center, _EXTRA=extra)
+    ;s2 = sinogram(t2, angles, center=center, _EXTRA=extra)
+    s2 = sinogram(t2, angles, _EXTRA=extra)
     time3 = systime(1)
     if keyword_set(noring) then begin
         g1 = s1
@@ -169,7 +170,8 @@ endif else begin
         g2 = remove_tomo_artifacts(s2, /rings, width=ring_width)
     endelse
     time4 = systime(1)
-    gridrec, g1, g2, angles, r, image2, _EXTRA=extra
+    ;gridrec, g1, g2, angles, r, image2, _EXTRA=extra
+    gridrec, g1, g2, angles, r, image2, center=center, _EXTRA=extra
     if (keyword_set(resize)) then begin
         r = congrid(r, nx, nx, /interp)
         image2 = congrid(image2, nx, nx, /interp)
@@ -200,9 +202,8 @@ endif else begin
         image2 = image2 * scale
     endif
     time5 = systime(1)
-    print, 'Time to extract slice:    ', time2-time1
+    print, 'Center= ', center
     print, 'Time to compute sinogram: ', time3-time2
-    print, 'Time to remove artifacts: ', time4-time3
     print, 'Time to reconstruct:      ', time5-time4
 endelse
 if (keyword_set(stop)) then stop
