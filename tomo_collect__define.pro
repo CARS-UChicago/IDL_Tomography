@@ -73,6 +73,7 @@ pro tomo_collect::start_scan
     self->set_state, self.scan.states.MOTOR_WAIT
 
     self->move_sample_out
+    wait, .01 ; Wait for motors to definitely start moving
     self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
     widget_control, self.widgets.scan_timer, timer=self.scan_timer_interval
 end
@@ -936,6 +937,7 @@ function tomo_collect::init
             self.scan.ccd_ready = 1
         endelse
     endelse
+    catch, /cancel
     ; Go back to free-run timing mode and 1 image per file
     self.scan.rotation_start = 0.
     self.scan.rotation_stop  = 179.75
@@ -952,6 +954,7 @@ function tomo_collect::init
     self.scan.autoscan = 0
     self.scan.ezca_timeout = .005
     self.scan.ezca_retry_count = 10
+    cainit  ; Need to call this in case it was not called in startup script, i.e. Virtual Machine
     casettimeout, self.scan.ezca_timeout
     casetretrycount, self.scan.ezca_retry_count
     self.scan.flatfield =    0
