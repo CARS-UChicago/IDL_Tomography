@@ -1,2 +1,28 @@
-tar cvhf /home/epics/public_html/pub/idl_tomography.tar backproject.pro convert_princeton_header.pro get_font_name.pro gridrec.pro princeton_header__define.pro read_tomo_data.pro read_tomo_volume.pro reconstruct_slice.pro reconstruct_volume.pro remove_tomo_artifacts.pro sinogram.pro tomo__define.pro tomo_display.pro tomo_display.sav tomo_display__define.pro tomo_filter.pro write_tomo_volume.pro read_princeton.pro gcd.pro GridrecIDL.dll
+tar cvhf /home/epics/public_html/pub/idl_tomography.tar \
+backproject.pro \
+convert_princeton_header.pro \
+gcd.pro \
+get_font_name.pro \
+GridrecIDL.dll \
+GridrecIDL_Linux_32bits.so \
+GridrecIDL_Linux_64bits.so \
+gridrec.pro \
+make_tomo_display_sav.pro \
+princeton_header__define.pro \
+read_princeton.pro \
+read_tomo_data.pro \
+read_tomo_volume.pro \
+reconstruct_slice.pro \
+reconstruct_volume.pro \
+remove_tomo_artifacts.pro \
+sinogram.pro \
+tomo_collect.pro \
+tomo_collect.sav \
+tomo_collect__define.pro \
+tomo__define.pro \
+tomo_display__define.pro \
+tomo_display.pro \
+tomo_display.sav \
+tomo_filter.pro \
+write_tomo_volume.pro
 tar cvhf /home/epics/public_html/pub/idl_Gridrec.tar --directory /usr/local Gridrec 
