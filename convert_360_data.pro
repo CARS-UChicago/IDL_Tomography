@@ -10,14 +10,24 @@ pro convert_360_data, input, output, center, yrange=yrange
     nx = dims[0]
     ny = dims[1]
     nz = dims[2]
-    nxtotal = 2*center
+    if (center gt nx/2) then begin
+        nxtotal = 2*center
+    endif else begin
+        nxtotal = 2*(nx - center)
+    endelse
     vtotal = intarr(nxtotal, ny, nz/2, /nozero)
-    print, 'Copying left side of image ...'
-    vtotal[0,0,0] = vol[0:center-1, *, 0:nz/2-1]
-    print, 'Reversing and copying right side of image ...'
-    vtotal[center,0,0] = reverse(vol[0:center-1, *, nz/2:*], 1, /overwrite)
+    if (center gt nx/2) then begin
+        print, 'Copying left side of image ...'
+        vtotal[0,0,0] = vol[0:center-1, *, 0:nz/2-1]
+        print, 'Reversing and copying right side of image ...'
+        vtotal[center,0,0] = reverse(vol[0:center-1, *, nz/2:*], 1, /overwrite)
+    endif else begin
+        print, 'Copying right side of image ...'
+        vtotal[nxtotal/2,0,0] = vol[center:nx-1, *, 0:nz/2-1]
+        print, 'Reversing and copying right side of image ...'
+        vtotal[0,0,0] = reverse(vol[center:nx-1, *, nz/2:*], 1, /overwrite)
+    endelse
     print, 'Writing combined volume ', output
     write_tomo_volume, output, vtotal
 end
 
-    
