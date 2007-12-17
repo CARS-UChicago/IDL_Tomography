@@ -73,8 +73,8 @@ pro tomo_collect::start_scan
     self->set_state, self.scan.states.MOTOR_WAIT
 
     self->move_sample_out
-    wait, .01 ; Wait for motors to definitely start moving
     self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
+    wait, .01 ; Wait for motors to definitely start moving
     widget_control, self.widgets.scan_timer, timer=self.scan_timer_interval
 end
 
@@ -103,6 +103,9 @@ pro tomo_collect::scanPoll
                 t = caput(self.epics_pvs.external_trigger, 1)
                 ; Turn on the detector
                 t = self.scan.ccd->start()
+                ; The CoolSnap cameras need a delay after we start WinView acquisition
+                ; 1 second seems to work
+                wait, 1
             endif
             self->set_state, self.scan.states.DETECTOR_WAIT_READY
         endif else begin  ; Not a fast scan
@@ -146,10 +149,15 @@ pro tomo_collect::scanPoll
         ; If the beam has dumped, then set the mode back to MOTOR_WAIT, so it will start this
         ; exposure again when the beam comes back.
         if (self->check_beam() eq 0) then begin
-            ; WinView has incremented the file number, we need to decrement it
-            t = self.scan.ccd->getProperty(file_increment_number=file_increment_number)
-            t = self.scan.ccd->getProperty(file_increment_number=file_increment_number-1)
-            self->set_state, self.scan.states.BEAM_WAIT
+            ; WinView has incremented the file number, we need to decrement it.
+            ; Only do this for slow scans
+            if (not self.scan.fast_scan) then begin
+                t = self.scan.ccd->getProperty(file_increment_count=file_increment_count)
+                t = self.scan.ccd->getProperty(file_increment_count=file_increment_count-1)
+            endif
+            self->set_state, self.scan.states.MOTOR_WAIT
+            widget_control, self.widgets.status, $
+                            set_value=self.scan.state_strings[self.scan.states.BEAM_WAIT]
             return
         endif
 
@@ -177,6 +185,7 @@ pro tomo_collect::scanPoll
             endif
             self.scan.rotation_motor->move, (*self.scan.rotation_array)[self.scan.current_point]
             self->set_state, self.scan.states.MOTOR_WAIT
+            wait, .01 ; Wait for motor to definitely start moving, else we may sense done incorrectly
         endif else begin
             self.scan.current_point--
             self->stop_scan
