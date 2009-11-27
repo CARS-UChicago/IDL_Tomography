@@ -52,6 +52,9 @@ pro tomo_display::reconstruct, islice
         if (interp eq 2) then cubic=1
     endif else begin
         widget_control, self.widgets.gridrec_resize, get_value=resize
+        index = widget_info(self.widgets.gridrec_filter, /droplist_select)
+        widget_control, self.widgets.gridrec_filter, get_uvalue=choices
+        filter_name = choices[index]
     endelse
 
     if (n_elements(islice) ne 0) then begin
@@ -251,6 +254,9 @@ pro tomo_display::options_event, event
             ; Nothing to do
         end
         self.widgets.gridrec_resize: begin
+            ; Nothing to do
+        end
+        self.widgets.gridrec_filter: begin
             ; Nothing to do
         end
         else:  t = dialog_message('Unknown event')
@@ -598,7 +604,7 @@ pro tomo_display::event, event
                 make_movie, index=direction+1, scale=scale, *self.pvolume, $
                             jpeg_file=jpeg_file, tiff_file=tiff_file, mpeg_file=mpeg_file, $
                             min=min, max=max, start=start, stop=stop, step=step, wait=wait, $
-                            label=label, abort_widget=self.widgets.abort, $
+                            label=label, abort_widget=self.widgets.abort, /color, $
                             status_widget=self.widgets.status
             endif else begin
                 t = dialog_message('Must read in volume file first.', /error)
@@ -898,6 +904,15 @@ function tomo_display::init
                                             label_left='Resize image:', row=1, $
                                             set_value=1, /exclusive)
 
+    choices=['Shepp-Logan', 'Hann', 'Hamming', 'Ramlak']
+    uval_choices=['shepp', 'hann', 'hamming', 'ramlak']
+    row = widget_base(col1, /row)
+    t = widget_label(row, value='Filter: ', font=self.fonts.heading2)
+    self.widgets.gridrec_filter = widget_droplist(row, value=choices, $
+                                                  uvalue=uval_choices, /align_center)
+    ; Make the Hann filter be the default
+    widget_control, self.widgets.gridrec_filter, set_droplist_select=1
+    
     ; Make all of the base widgets the same size so they line up nicely
     g = widget_info(recon_base, /geometry)
     widget_control, preprocess_base, xsize=g.xsize
@@ -993,7 +1008,8 @@ pro tomo_display__define
         white_average: 0L, $
         white_smooth: 0L, $
         gridrec_base: 0L, $
-        gridrec_resize: 0L $
+        gridrec_resize: 0L, $
+        gridrec_filter: 0L $
     }
 
     fonts = {tomo_fonts, $
