@@ -40,7 +40,7 @@
 ;   X0:     The "X0" parameter used by grid.c.  Meaning not certain.  Default=0.0
 ;   Y0:     The "Y0" parameter used by grid.c.  Meaning not certain.  Default=0.0
 ;   LTBL:   The "ltbl" parameter used by grid.c.  Meaning not certain.  Default=512.
-;   FILTER: The "filter" parameter used by grid.c.  Character string. Default="shepp".
+;   FILTER_NAME: The "filter" parameter used by grid.c.  Character string. Default="shepp".
 ;   GEOM:   The "geom" parameter used by grid.c.
 ;               0 = The actual angles in degrees are passed to grid.c.  This is the
 ;                   default.
@@ -79,7 +79,7 @@
 pro gridrec, S1, S2, angles, I1, I2, $
              center=center, sampl=sampl, C=C, R=R, $
              MaxPixSiz=MaxPixSiz, X0=X0, Y0=Y0, ltbl=ltbl, $
-             filter=filter, geom=geom, debug=debug
+             filter_name=filter_name, geom=geom, debug=debug
 
     image_size = 0L
     n_ang = n_elements(S1[0,*])
@@ -94,7 +94,7 @@ pro gridrec, S1, S2, angles, I1, I2, $
     if (n_elements(X0) eq 0) then X0 = 0.
     if (n_elements(Y0) eq 0) then Y0 = 0.
     if (n_elements(ltbl) eq 0) then ltbl=512
-    if (n_elements(filter) eq 0) then filter="shepp"
+    if (n_elements(filter_name) eq 0) then filter_name="shepp"
     if (n_elements(geom) eq 0) then geom=0
     if (n_elements(debug) eq 0) then verbose=1 else verbose=0
     if (n_elements(center) eq 0) then center=n_det/2.
@@ -114,7 +114,7 @@ pro gridrec, S1, S2, angles, I1, I2, $
                           float(X0), $
                           float(Y0), $
                           long(ltbl), $
-                          [byte(filter), 0B], $
+                          [byte(filter_name), 0B], $
                           image_size)
 
     I1 = fltarr(image_size, image_size)
