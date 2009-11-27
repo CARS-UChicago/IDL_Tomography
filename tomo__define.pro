@@ -496,7 +496,7 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     nrows = long(nrows)
     nangles = long(nangles)
     if (n_elements(buff_angles) eq 0) then buff_angles = nangles
-    dummy = intarr(10,10,10)
+    dummy = intarr(2,2,2)
     self->write_volume, output, dummy, /corrected, xmax=ncols, ymax=nrows, $
                         zmax=nangles
     vol = intarr(ncols, nrows, buff_angles)
@@ -706,6 +706,8 @@ pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
     ; If there was no input angle array copy the one that reconstruct_slice
     ; generated back into self
     if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
+    ; We are all done with the vol array, free it
+    vol = 0
     if (widget_info(status_widget, /valid_id)) then $
         widget_control, status_widget, set_value='Writing volume file ...'
     self->write_volume, base_file + 'recon.volume', recon, /reconstructed
