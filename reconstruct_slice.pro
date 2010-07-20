@@ -131,11 +131,11 @@ time2 = systime(1)
 ; f = remove_tomo_artifacts(t, /diffraction)
 if (keyword_set(back_project)) then begin
     s = sinogram(t1, angles, center=center, _EXTRA=extra)
-    singram = s
     time3 = systime(1)
     if keyword_set(noring) then g = s else g = remove_tomo_artifacts(s, /rings, width=ring_width)
     time4 = systime(1)
     ss = tomo_filter(g, _EXTRA=extra)
+    singram = ss
     time5 = systime(1)
     r = backproject(ss, angles, _EXTRA=extra)
     time6 = systime(1)
