@@ -82,9 +82,10 @@ Function Gen_Hamming, x, d, alpha
     return, alpha * ramlak(x,d) + ((1.-alpha)/2) * (ramlak(x-1,d) + ramlak(x+1,d))
 end
 
-function tomo_filter, image, filter_size, d, filter_name=filter_name
+function tomo_filter, image, filter_size=filter_size, filter_param=d, filter_name=filter_name
     dims = size(image, /dimensions)
-    if (n_elements(filter_size) eq 0) then filter_size = dims[0]/4
+    if (n_elements(filter_size) eq 0) then filter_size = 0
+    if (filter_size eq 0) then filter_size = dims[0]/4
     nfilter = 2*filter_size+1
     x = findgen(nfilter)-filter_size
     if (n_elements(d) eq 0) then d=1.0
