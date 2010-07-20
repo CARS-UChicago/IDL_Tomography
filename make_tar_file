@@ -1,11 +1,15 @@
 tar cvhf /home/epics/public_html/pub/idl_tomography.tar \
+README \
 backproject.pro \
 convert_360_data.pro \
 convert_princeton_header.pro \
 correct_rotation_axis.pro \
 gcd.pro \
 get_font_name.pro \
-GridrecIDL.dll \
+GridrecIDL32.dll \
+GridrecIDL64.dll \
+win32dll \
+win64dll \
 GridrecIDL_Linux_32bits.so \
 GridrecIDL_Linux_64bits.so \
 gridrec.pro \
