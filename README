@@ -1,0 +1,26 @@
+To use Gridrec with IDL
+
+On Linux:
+
+- Define the environment variable GRIDREC_SHARE to point to
+GridrecIDL_Linux_32bits.so or GridrecIDL_Linux_64bits.so depending on whether
+you are running 32 or 64 bit IDL.
+
+- It is a good idea to install the patch for netCDF 4.0 if you are running IDL 7.1.
+This is not essential, but will let you write .volume files larger than 4GB.
+http://www.ittvis.com/download/download_splash.asp?wdiid=1557&si=226579
+
+
+On Windows:
+- You must be running at least IDL 7.1
+
+- You must install the patch for netCDF 4.0 in IDL 7.1 available here:
+http://www.ittvis.com/download/download_splash.asp?wdiid=1555&si=226579
+
+- Define the environment variable GRIDREC_SHARE to point to
+GridrecIDL32.dll or GridrecIDL64.dll depending on whether
+you are running 32 or 64 bit IDL.
+
+- Add the directory win32dll/ or win64dll/ to your Windows environment 
+variable "Path" so Windows will find the correct version of libfftw3f-3.dll.
+
