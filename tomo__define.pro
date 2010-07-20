@@ -873,6 +873,17 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
         if (n_elements(zoffset) ne 0) then offset[2]=zoffset
         count = [size[1], size[2], size[3]]
         stride=[1,1,1]
+        error = 0
+        catch, error
+        if (error ne 0) then begin
+            catch, /cancel
+            ncdf_close, file_id
+            print, 'Error calling ncdf_varput: ' + !error_state.msg
+            help, file_id, vol_id, volume, offset, count, stride
+            print, 'offset=', offset, ' count=', count, ' stride=', stride
+            message, !error_state.msg
+            return
+        endif
         ncdf_varput, file_id, vol_id, volume, $
                      offset=offset, count=count, stride=stride
 
