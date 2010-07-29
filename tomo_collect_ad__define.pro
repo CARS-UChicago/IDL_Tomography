@@ -11,7 +11,7 @@ pro tomo_collect_ad::start_scan
     if(name eq 'Roper Scientific') then begin
         self.scan.camera_manufacturer = self.camera_types.ROPER
     endif else if(name eq 'Prosilica') then begin
-        self.scan.camera_manufacturer = self.camera_tyeps.PROSILICA
+        self.scan.camera_manufacturer = self.camera_types.PROSILICA
     endif else begin
         widget_control, self.widgets.status, set_value='Unknown Camera Type'
         return
@@ -259,7 +259,15 @@ end
 pro tomo_collect_ad::PrepareScan
 
     ; begin clock
+    if(self.scan.num_flatfields eq 0) then begin
+        self.scan.num_groups = strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
+    endif else begin
+        self.scan.num_groups = strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
+    endelse
     widget_control, self.widgets.clock_timer, timer = .1
+
+    ; reset current scan
+    self.scan.current_point = 0
 
     ; turn off capturing
     self.scan.ccd->setProperty,'ImageMode',0
@@ -273,6 +281,20 @@ pro tomo_collect_ad::PrepareScan
          self.scan.flatfield_increment = (self.scan.num_angles)
     endif
     self->copy_settings_to_widgets
+
+    ; set number of flat fields in each flat field scan <=180, >1 for OTF scans, and >0 for Fast/slow scans
+    if(self.scan.num_flatfields gt 180) then begin
+        self.scan.num_flatfields = 180
+        widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
+    endif
+    if(self.scan.num_flatfields eq 1 AND self.scan.fast_scan eq 2) then begin
+        self.scan.num_flatfields = 2
+        widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
+    endif
+    if(self.scan.num_flatfields eq 0 AND self.scan.fast_scan ne 2) then begin
+        self.scan.num_flatfields = 1
+        widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
+    endif
 
     ; In case of OTF
     if (self.scan.fast_scan eq 2) then begin
@@ -330,10 +352,21 @@ pro tomo_collect_ad::PrepareScan
             if (fix(i/2.) eq i/2.) then (*self.scan.otf_rotation_array)[i] = i/2.*self.scan.flatfield_increment * self.scan.rotation_step + self.scan.rotation_start
             if ((*self.scan.otf_rotation_array)[i] gt self.scan.rotation_stop) then (*self.scan.otf_rotation_array)[i] = self.scan.num_angles * self.scan.rotation_step + self.scan.rotation_start
         endfor
+        ; if the number of flat fields is 0, change the path of the OTF code to skip all flat field collections
+        if(self.scan.num_flatfields eq 0) then begin
+            ptr_free, self.scan.otf_rotation_array
+            otf_rotation_array_size = ceil(1.0*self.scan.num_angles/(1.0*self.scan.flatfield_increment))+1
+            self.scan.otf_rotation_array = ptr_new(fltarr(otf_rotation_array_size))
+            (*self.scan.otf_rotation_array)[0] = self.scan.rotation_start
+            for i = 1, otf_rotation_array_size - 1 do begin
+                (*self.scan.otf_rotation_array)[i] = i*self.scan.flatfield_increment * self.scan.rotation_step + self.scan.rotation_start
+                if ((*self.scan.otf_rotation_array)[i] gt self.scan.rotation_stop) then (*self.scan.otf_rotation_array)[i] = self.scan.num_angles * self.scan.rotation_step + self.scan.rotation_start
+            endfor
+        endif
+        ; move the motor into the initial position
         (*self.scan.otf_rotation_array) = (*self.scan.otf_rotation_array) - self.scan.rotation_step
         self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]
         self.scan.rotation_motor->wait
-
 
         ; Write the setup file
         status = self->save_settings(self.scan.filename + '.setup')
@@ -372,6 +405,18 @@ pro tomo_collect_ad::PrepareScan
 
         ; send state to FLAT_FIELD
         self->set_state, self.scan.states.FLAT_FIELD
+
+        widget_control, self.widgets.num_groups, set_value = self.scan.num_groups
+
+        ; if the number of flat fields is 0, change the path of the OTF code to skip all flat field collections
+        if(self.scan.num_flatfields eq 0) then begin
+            self->set_state, self.scan.states.NORMAL
+            self.scan.current_point++
+            self->move_sample_in
+        endif else begin
+            self->move_sample_out
+        endelse
+
 
     ; In case of slow/fast scan
     endif else begin
@@ -432,6 +477,12 @@ pro tomo_collect_ad::PrepareScan
                 step = step + 1
             endfor
         endfor
+        ; if the motor reset is canceled, make sure fast scan does not return to initial position
+        if(self.scan.cancel_motor_reset) then begin
+            for i = self.scan.num_points - self.scan.num_flatfields - 1, self.scan.num_points - 1 do begin
+                   (*self.scan.rotation_array)[i] = self.scan.rotation_stop
+            endfor
+        endif
 
         self.scan.num_points = step
 
@@ -481,21 +532,10 @@ pro tomo_collect_ad::PrepareScan
 
         self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
         self->set_state, self.scan.states.MOTOR_WAIT
+        self->move_sample_out
     endelse
 
     ; end conditional setup
-
-    ; set number of flat fields in each flat field scan to be between 2 and 180
-    if(self.scan.num_flatfields gt 180) then begin
-        self.scan.num_flatfields = 180
-        widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
-    endif
-    if(self.scan.num_flatfields lt 2) then begin
-        self.scan.num_flatfields = 2
-        widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
-    endif
-    widget_control, self.widgets.num_groups, set_value = $
-                strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
 
     ; Start the scan
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -527,11 +567,8 @@ pro tomo_collect_ad::PrepareScan
     endif
 
     ; reset widgets to the start
-    self.scan.current_point = 0
     widget_control, self.widgets.start_scan, sensitive=0
     widget_control, self.widgets.abort_scan, sensitive=1
-
-    self->move_sample_out
 
     wait, .01 ; Wait for motors to definitely start moving
     widget_control, self.widgets.scan_timer, timer=self.scan_timer_interval
@@ -1130,10 +1167,6 @@ pro tomo_collect_ad::scanPoll
             return
         endif
 
-        ; set camera to external triggering
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then self.scan.ccd->setProperty, 'TriggerMode', 'Sync In 2' $
-        else self.scan.ccd->setProperty, 'TriggerMode',1
-
         ; move sample in
         self->move_sample_in
 
@@ -1162,6 +1195,10 @@ pro tomo_collect_ad::scanPoll
 
         ; prepare for OTF scanning
         widget_control, self.widgets.status, set_value='Normal Scan'
+
+        ; set camera to external triggering
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then self.scan.ccd->setProperty, 'TriggerMode', 'Sync In 2' $
+        else self.scan.ccd->setProperty, 'TriggerMode',1
 
         ; rotate motors back by one motor step
         self.scan.rotation_motor->move, -.001, relative = 1
@@ -1256,6 +1293,7 @@ pro tomo_collect_ad::scanPoll
                     ; stop acquisition
                     t = caput(self.epics_pvs.otf_trigger+'.StopAll',1)
                     self.scan.ccd -> setProperty,'Acquire',0
+                    if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
 
                     widget_control, self.widgets.status, set_value= 'Waiting for beam'
 
@@ -1284,9 +1322,16 @@ pro tomo_collect_ad::scanPoll
                     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
                         t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
                         if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
+                        wait, .1
+                        busy = 1
+                        while (busy) do begin
+                        	t = caget(self.scan.camera_name+':netCDF1:Capture',busy)
+                        	wait, .1
+                        endwhile
                         ; reset file increment count
                         t = caget(self.scan.camera_name+':netCDF1:FileNumber',file_increment_count)
                         t = caput(self.scan.camera_name+':netCDF1:FileNumber',file_increment_count-1)
+                        self->set_state, self.scan.states.NORMAL
                     endif else begin
                         ; for a Roper camera, it is necessary to empty the camera before going back to a Normal scan, else the program will hang up
                         nimages = self.scan.ccd->getProperty('NumImages', string = 0)
@@ -1308,10 +1353,7 @@ pro tomo_collect_ad::scanPoll
                             ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
                         endwhile
                         ; wait for winview
-                        wait, 5.*nimages/100/biny/binx
-                        ; take a second single image to empty camera
-                        self.scan.ccd -> setProperty,'Acquire',1
-                        wait, 5.*nimages/100/biny/binx
+                        wait, 10.*nimages/100/biny/binx
                         self.scan.ccd->setProperty, 'TriggerMode',1
                         self->set_state, self.scan.states.NORMAL
                     endelse
@@ -1360,8 +1402,8 @@ pro tomo_collect_ad::scanPoll
             busy1 = 1
             busy2 = 1
             while (busy1 eq 1 OR busy2 eq 1) do begin
-                      wait, .01
-                  busy1 = self.scan.ccd->getProperty('Acquire_RBV', string = 0)
+                wait, .01
+                busy1 = self.scan.ccd->getProperty('Acquire_RBV', string = 0)
                 t = caget(self.scan.camera_name+':netCDF1:WriteFile_RBV',busy2)
             endwhile
 
@@ -1425,10 +1467,32 @@ pro tomo_collect_ad::scanPoll
         self.scan.current_point++
         ; stop MCS
         t = caput(self.epics_pvs.otf_trigger+':StopAll',1)
-        ; move sample out
-        self->move_sample_out
+
+		; check position of motor, if in final position send to STOP
+        motor_position = self.scan.rotation_motor->get_position()
+        if (ABS(motor_position - (*self.scan.otf_rotation_array)[n_elements((*self.scan.otf_rotation_array))-1]) $
+                      lt 10.^(-5)) then begin
+            ; check for when flat field measurements are finished
+            ccd_busy1 = 1
+            ccd_busy2 = 1
+            while (ccd_busy1 OR ccd_busy2) do begin
+                wait, .01
+                ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
+                ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
+            endwhile
+            self->stop_scan
+            return
+        endif
+
         ; send state to Flat Field
         self->set_state, self.scan.states.FLAT_FIELD
+        if (self.scan.num_flatfields eq 0) then begin
+             self->set_state, self.scan.states.NORMAL
+        endif else begin
+            ; move sample out
+            self->move_sample_out
+        endelse
+
     endif
 end
 
@@ -1515,17 +1579,20 @@ pro tomo_collect_ad::stop_scan
         widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed
         self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
         t = caput(self.epics_pvs.rotation+'.SPMG',3)
-        self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]+self.scan.rotation_step
-        widget_control, self.widgets.status, set_value='Zeroing motors'
-        zeroing = 1
-        while (zeroing ne 0) do begin
-            if ((self.scan.rotation_motor->done() eq 1) AND $
-                (self.scan.sample_x_motor->done() eq 1) AND $
-                (self.scan.sample_y_motor->done() eq 1)) then $
-            zeroing = 0
-            wait, 1
-        endwhile
-        wait, 1.0
+        if(~self.scan.cancel_motor_reset) then begin
+            ; reset motor to original position
+            self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]+self.scan.rotation_step
+            widget_control, self.widgets.status, set_value='Zeroing motors'
+            zeroing = 1
+            while (zeroing ne 0) do begin
+                if ((self.scan.rotation_motor->done() eq 1) AND $
+                    (self.scan.sample_x_motor->done() eq 1) AND $
+                    (self.scan.sample_y_motor->done() eq 1)) then $
+                zeroing = 0
+                wait, 1
+            endwhile
+            wait, 1.0
+        endif
 
         ; save any remaining data
         if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -1561,7 +1628,7 @@ pro tomo_collect_ad::stop_scan
 
     ; In case of Fast scan
     endif else if (self.scan.fast_scan eq 1) then begin
-        self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
+        if(~self.scan.cancel_motor_reset) then self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
         ; Wait for 1 second for detector readout to complete
         ; We would like to wait for notScan to go high, but it seems to go high
         ; only very briefly and then stay low once the required number of frames have
@@ -1640,9 +1707,9 @@ pro tomo_collect_ad::stop_scan
             self.scan.ccd-> setProperty, 'TriggerMode',0
         endelse
 
-
     ; in case of slow scan
     endif else if (self.scan.fast_scan eq 0) then begin
+        if(~self.scan.cancel_motor_reset) then self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
         if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
             self.scan.ccd->setProperty,'Acquire',0
             wait, .1
@@ -1650,16 +1717,17 @@ pro tomo_collect_ad::stop_scan
             t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
             t = caput(self.scan.camera_name+':netCDF1:AutoIncrement',0)
             self.scan.ccd->setProperty,'TriggerMode',0
-            self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
             t = caput(self.scan.camera_name+':netCDF1:FileNumber',1)
             t = caput(self.scan.camera_name+':netCDF1:AutoSave',0)
         endif else begin
-            self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
             t = caput(self.scan.camera_name+':cam1:FileNumber',1)
             t = caput(self.scan.camera_name+':cam1:AutoIncrement',1)
             self.scan.ccd->setProperty,'TriggerMode',0
         endelse
+
     endif
+
+    if (self.scan.cancel_motor_reset) then self.scan.rotation_motor->set_position,self.scan.rotation_start
 
     ; empty comments
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -1674,7 +1742,7 @@ pro tomo_collect_ad::stop_scan
 
     widget_control, self.widgets.status, set_value='Zeroing motors'
     ; in case of Roper camera, wait for winview to return to idle state
-    if (self.scan.camera_manufacturer eq self.camera) then begin
+    if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
         widget_control, self.widgets.status, set_value='Waiting for WinView'
         busy = 1
         while (busy) do begin
@@ -1685,7 +1753,7 @@ pro tomo_collect_ad::stop_scan
     ; sensitize start widget
     widget_control, self.widgets.start_scan, sensitive=1
     widget_control, self.widgets.abort_scan, sensitive=0
-    ; sensitize camera/tower name widgets
+    ; sensitize camera name widgets
     widget_control, self.widgets.camera_name , sensitive = 1
 
     self->set_state, self.scan.states.SCAN_COMPLETE
@@ -2299,10 +2367,15 @@ pro tomo_collect_ad::event, event
                 current_motor_position = self.scan.rotation_motor->get_position(readback='rbv')
                 ncapture = floor(max([(current_motor_position-self.scan.rotation_start)/self.scan.rotation_step+1,0]))
                 images_collected = ncapture + max([0,ceil(self.scan.current_point/2.)*self.scan.num_flatfields])
-                num_groups = 2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1
-                self.scan.est_remaining_time = 1.*self.scan.elapsed_time/(1+images_collected)* $
+                num_groups = 1.0*self.scan.num_groups
+                if(self.scan.num_flatfields gt 0) then begin
+                    self.scan.est_remaining_time = 1.*self.scan.elapsed_time/(1+images_collected)* $
                                             ((num_groups-1)/2.*self.scan.flatfield_increment $
                                             +(num_groups+1)/2.*self.scan.num_flatfields-images_collected)
+                endif else begin
+                    self.scan.est_remaining_time = 1.*self.scan.elapsed_time/(1+images_collected)* $
+                                            ((num_groups)*self.scan.flatfield_increment-images_collected)
+                endelse
             endif
             hours = floor((self.scan.est_remaining_time)/3600.)
             minutes = floor((self.scan.est_remaining_time-hours*3600.)/60.)
@@ -2350,6 +2423,8 @@ pro tomo_collect_ad::event, event
             widget_control, self.widgets.rotation_step, set_value=self.scan.rotation_step
             widget_control, self.widgets.num_groups, set_value = $
                         strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
+            if (self.scan.num_flatfields eq 0) then widget_control, self.widgets.num_groups, set_value = $
+                        strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
         end
 
         self.widgets.num_passes: begin
@@ -2395,6 +2470,8 @@ pro tomo_collect_ad::event, event
             self.scan.flatfield_increment = value
             widget_control, self.widgets.num_groups, set_value = $
                         strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
+            if (self.scan.num_flatfields eq 0) then widget_control, self.widgets.num_groups, set_value = $
+                        strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
             self-> copy_settings_to_widgets
         end
 
@@ -2402,6 +2479,8 @@ pro tomo_collect_ad::event, event
             widget_control, self.widgets.num_flatfields, get_value = value
             self.scan.num_flatfields = value
             self->copy_settings_to_widgets
+            if (self.scan.num_flatfields eq 0) then widget_control, self.widgets.num_groups, set_value = $
+                        strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
         end
 
         self.widgets.fast_scan: begin
@@ -2413,6 +2492,8 @@ pro tomo_collect_ad::event, event
                 widget_control, self.widgets.num_groups, sensitive = 1
                 widget_control, self.widgets.num_groups, set_value = $
                             strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
+                if (self.scan.num_flatfields eq 0) then widget_control, self.widgets.num_groups, set_value = $
+                        strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
             endif
             if(event.index ne 2) then begin
                 widget_control, self.widgets.num_passes, sensitive = 1
@@ -2433,6 +2514,10 @@ pro tomo_collect_ad::event, event
 
         self.widgets.dark_current: begin
             self.scan.dark_current = event.select
+        end
+
+        self.widgets.cancel_motor_reset: begin
+            self.scan.cancel_motor_reset = event.select
         end
 
         self.widgets.autoscan: begin
@@ -2461,15 +2546,15 @@ pro tomo_collect_ad::event, event
             widget_control, self.widgets.status, set_value='Connected to '+self.scan.camera_name
 
             if(name eq 'Roper Scientific') then begin
-                 self.scan.camera_manufacturer = 0
+                self.scan.camera_manufacturer = self.camera_types.ROPER
             endif else if(name eq 'Prosilica') then begin
-                self.scan.camera_manufacturer = 1
+                self.scan.camera_manufacturer = self.camera_types.PROSILICA
             endif else begin widget_control, self.widgets.status, set_value='Unknown Camera Type'
                 return
             endelse
 
-            widget_control, self.widgets.PS_attributes_filename, sensitive = self.scan.camera_manufacturer
-            widget_control, self.widgets.PS_attributes, sensitive = self.scan.camera_manufacturer
+            widget_control, self.widgets.PS_attributes_filename, sensitive = ~self.scan.camera_manufacturer
+            widget_control, self.widgets.PS_attributes, sensitive = ~self.scan.camera_manufacturer
             if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
                 t = caget(self.scan.camera_name+':cam1:NDAttributesFile', file)
                 widget_control, self.widgets.PS_attributes_filename, set_value = strtrim(file,2)
@@ -2574,7 +2659,7 @@ function tomo_collect_ad::init
         self.scan.ccd->setProperty,'Acquire',0
         self.scan.ccd->setProperty,'ImageMode',0
         self.scan.ccd->setProperty,'NumImages',1
-        self.scan.ccd->setProperty,'TriggerMode',1
+        self.scan.ccd->setProperty,'TriggerMode',0
         self.scan.ccd_ready = 0
 
         t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
@@ -2658,7 +2743,7 @@ function tomo_collect_ad::init
                                             value = 'Base filename ...')
     self.widgets.PS_attributes = widget_button(file, $
                                             value = 'Prosilica attributes file ...')
-    widget_control, self.widgets.PS_attributes, sensitive = self.scan.camera_manufacturer
+    widget_control, self.widgets.PS_attributes, sensitive = ~self.scan.camera_manufacturer
     self.widgets.experiment_information = widget_button(file, $
                                             value = 'Experiment information ...')
     self.widgets.epics_process_variables = widget_button(file, $
@@ -2687,7 +2772,11 @@ function tomo_collect_ad::init
                                     /float, xsize = 10, value = undefined_position, /noedit)
         widget_control, self.widgets.num_groups, set_value = $
                         strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
+        if (self.scan.num_flatfields eq 0) then widget_control, self.widgets.num_groups, set_value = $
+                        strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
         widget_control, self.widgets.num_groups, sensitive=0
+    self.widgets.cancel_motor_reset = cw_bgroup(row, /column, ['Cancel Motor Reset'], /nonexclusive, $
+                                   set_value = [self.scan.cancel_motor_reset])
     row = widget_base(col0, /row)
     self.widgets.rotation_start = cw_field(row, /column, title='Start position', $
                                       /float, xsize=10, value=self.scan.rotation_start, /return_events)
@@ -2759,7 +2848,7 @@ function tomo_collect_ad::init
     self.widgets.num_flatfields = cw_field(row, /column, title = '# images per flat field scan' , $
                                       /integer, xsize = 10, value = self.scan.num_flatfields,/return_events)
 
-    ; Scan control
+    ; Data collection
     col0 = widget_base(self.widgets.base, /column, /frame)
     self.widgets.scan_base = col0
     row = widget_base(col0, /row, /align_center)
@@ -2791,7 +2880,7 @@ function tomo_collect_ad::init
     row = widget_base(col0, /row)
     self.widgets.PS_attributes_filename = cw_field(row, title="Prosilica image attributes .xml file:", $
                                       xsize=50, value=self.scan.PS_attributes_filename, /noedit)
-    widget_control, self.widgets.PS_attributes_filename, sensitive = self.scan.camera_manufacturer
+    widget_control, self.widgets.PS_attributes_filename, sensitive = ~self.scan.camera_manufacturer
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
         t = caget(self.scan.camera_name+':cam1:NDAttributesFile', file)
         widget_control, self.widgets.PS_attributes_filename, set_value = strtrim(file,2)
@@ -2959,6 +3048,8 @@ function tomo_collect_ad::init
     if (exists) then status = self->restore_settings(file)
     widget_control, self.widgets.num_groups, set_value = $
             strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
+    if (self.scan.num_flatfields eq 0) then widget_control, self.widgets.num_groups, set_value = $
+            strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
     widget_control, self.widgets.num_groups, sensitive=(self.scan.fast_scan eq 2)
     widget_control, self.widgets.num_passes, sensitive = (self.scan.fast_scan ne 2)
     t = self->validate_epics_pvs()
@@ -3020,6 +3111,7 @@ pro tomo_collect_ad__define
         autoscan_timer: 0L, $
         motor_speed: 0L, $
         num_groups: 0L, $
+        cancel_motor_reset: 0L, $
         num_flatfields: 0L, $
         camera_name: 0L, $
         dark_current: 0L, $
@@ -3113,7 +3205,7 @@ pro tomo_collect_ad__define
         PROSILICA: 0, $
         ROPER: 0 $
     }
-    
+
     scan = {tomo_scan, $
         rotation_start: 0.0, $
         rotation_stop: 0.0, $
@@ -3154,6 +3246,7 @@ pro tomo_collect_ad__define
         motor_speed: 0.0, $
         motor_speed_old: 0.0, $
         num_groups: 0L, $
+        cancel_motor_reset: 0L, $
         sub_size: 0L, $
         sub_stop_array: ptr_new(), $
         sub_index: 0L ,$
