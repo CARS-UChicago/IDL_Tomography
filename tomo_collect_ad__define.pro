@@ -282,9 +282,9 @@ pro tomo_collect_ad::PrepareScan
     endif
     self->copy_settings_to_widgets
 
-    ; set number of flat fields in each flat field scan <=180, >1 for OTF scans, and >0 for Fast/slow scans
-    if(self.scan.num_flatfields gt 180) then begin
-        self.scan.num_flatfields = 180
+    ; set number of flat fields in each flat field scan <=20, >1 for OTF scans, and >0 for Fast/slow scans
+    if(self.scan.num_flatfields gt 20) then begin
+        self.scan.num_flatfields = 20
         widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
     endif
     if(self.scan.num_flatfields eq 1 AND self.scan.fast_scan eq 2) then begin
@@ -292,8 +292,8 @@ pro tomo_collect_ad::PrepareScan
         widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
     endif
     if(self.scan.num_flatfields eq 0 AND self.scan.fast_scan ne 2) then begin
-        self.scan.num_flatfields = 1
-        widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
+        self.scan.flatfield_increment = self.scan.num_angles
+        widget_control, self.widgets.flatfield_increment, set_value=self.scan.flatfield_increment
     endif
 
     ; In case of OTF
@@ -401,7 +401,7 @@ pro tomo_collect_ad::PrepareScan
 
         ; set the external prescale according to the step size, use motor resolution steps per degree (user unit)
         motor_resolution = self.scan.rotation_motor->GET_SCALE()
-        t = caput(self.epics_pvs.otf_trigger+':Prescale', self.scan.rotation_step  * ABS(motor_resolution))
+        t = caput(self.epics_pvs.otf_trigger+':Prescale', self.scan.rotation_step  * FLOOR(ABS(motor_resolution)))
 
         ; send state to FLAT_FIELD
         self->set_state, self.scan.states.FLAT_FIELD
@@ -532,10 +532,24 @@ pro tomo_collect_ad::PrepareScan
 
         self.scan.rotation_motor->move, (*self.scan.rotation_array)[0]
         self->set_state, self.scan.states.MOTOR_WAIT
-        self->move_sample_out
+        if (self.scan.flatfield_axis ne 0) then begin
+           self.scan.sample_y_motor->move, (*self.scan.sample_y_array)[self.scan.current_point]
+        endif
+        if (self.scan.flatfield_axis ne 1) then begin
+           self.scan.sample_x_motor->move, (*self.scan.sample_x_array)[self.scan.current_point]
+        endif
     endelse
 
     ; end conditional setup
+
+    ; begin clock
+    if(self.scan.num_flatfields eq 0) then begin
+        self.scan.num_groups = strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
+    endif else begin
+        self.scan.num_groups = strtrim(2*CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment)+1,2)
+    endelse
+    widget_control, self.widgets.num_groups, set_value = self.scan.num_groups
+    widget_control, self.widgets.clock_timer, timer = .1
 
     ; Start the scan
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -913,9 +927,19 @@ pro tomo_collect_ad::scanPoll
                             comment3 = comment3 + strtrim(fix(i-(*self.scan.sub_stop_array)[self.scan.sub_index-2]),2) + ' '
                         endif
                     endfor
+                    comment4 = ''
+                    comment5 = ''
+                    if( ceil(strlen(comment3)/79.) gt 1) then begin
+                        holder = comment3
+                        comment3 = strmid(holder, 0, 79)
+                        comment4 = strmid(holder, 79, 79)
+                        comment5 = strmid(holder, 158, 79)
+                    endif
                     t = caput(self.scan.camera_name+':cam1:Comment1',[byte(comment1),0B])
                     t = caput(self.scan.camera_name+':cam1:Comment2',[byte(comment2),0B])
                     t = caput(self.scan.camera_name+':cam1:Comment3',[byte(comment3),0B])
+                    t = caput(self.scan.camera_name+':cam1:Comment4',[byte(comment4),0B])
+                    t = caput(self.scan.camera_name+':cam1:Comment5',[byte(comment5),0B])
 
                     ; Stop acquisition
                     widget_control, self.widgets.status, set_value='Stopping scan'
@@ -953,6 +977,8 @@ pro tomo_collect_ad::scanPoll
                     t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
                     t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
                     t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
+                    t = caput(self.scan.camera_name+':cam1:Comment4',[byte(''),0B])
+                    t = caput(self.scan.camera_name+':cam1:Comment5',[byte(''),0B])
 
                     ; wait for winview to be ready to begin capturing
                     nimages = self.scan.ccd->getProperty('NumImages', string = 0)
@@ -970,7 +996,7 @@ pro tomo_collect_ad::scanPoll
                     ; start camera
                     wait, 1
                     self.scan.ccd->setProperty, 'Acquire',1
-                    wait, .5
+                    wait, 2.*nimages/100/biny/binx
                     ccd_busy1 = 0
                     ccd_busy2 = 0
                     while (~ccd_busy1 OR ~ccd_busy2) do begin
@@ -1149,12 +1175,8 @@ pro tomo_collect_ad::scanPoll
             wait, 5.*nimages/100/biny/binx
         endelse
 
-        ; increase point index
-        self.scan.current_point++
-        ; check position of motor, if in final position send to STOP
-        motor_position = self.scan.rotation_motor->get_position()
-        if (ABS(motor_position - (*self.scan.otf_rotation_array)[n_elements((*self.scan.otf_rotation_array))-1]) $
-                      lt 10.^(-5)) then begin
+		; send OTF scan to STOP_SCAN if has finished
+       if(self.scan.current_point eq n_elements((*self.scan.otf_rotation_array))-1) then begin
             ; check for when flat field measurements are finished
             ccd_busy1 = 1
             ccd_busy2 = 1
@@ -1166,6 +1188,9 @@ pro tomo_collect_ad::scanPoll
             self->stop_scan
             return
         endif
+
+        ; increase point index
+        self.scan.current_point++
 
         ; move sample in
         self->move_sample_in
@@ -1197,8 +1222,12 @@ pro tomo_collect_ad::scanPoll
         widget_control, self.widgets.status, set_value='Normal Scan'
 
         ; set camera to external triggering
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then self.scan.ccd->setProperty, 'TriggerMode', 'Sync In 2' $
-        else self.scan.ccd->setProperty, 'TriggerMode',1
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
+            self.scan.ccd->setProperty, 'TriggerMode', 'Sync In 2'
+            self.scan.ccd->setProperty, 'ImageMode', 1
+        endif else begin
+            self.scan.ccd->setProperty, 'TriggerMode',1
+        endelse
 
         ; rotate motors back by one motor step
         self.scan.rotation_motor->move, -.001, relative = 1
@@ -1464,14 +1493,8 @@ pro tomo_collect_ad::scanPoll
             wait, 5.*nimages/100/biny/binx
         endelse
 
-        self.scan.current_point++
-        ; stop MCS
-        t = caput(self.epics_pvs.otf_trigger+':StopAll',1)
-
-		; check position of motor, if in final position send to STOP
-        motor_position = self.scan.rotation_motor->get_position()
-        if (ABS(motor_position - (*self.scan.otf_rotation_array)[n_elements((*self.scan.otf_rotation_array))-1]) $
-                      lt 10.^(-5)) then begin
+		; send OTF scan to STOP_SCAN if has finished
+        if(self.scan.current_point eq n_elements((*self.scan.otf_rotation_array))-1) then begin
             ; check for when flat field measurements are finished
             ccd_busy1 = 1
             ccd_busy2 = 1
@@ -1483,6 +1506,10 @@ pro tomo_collect_ad::scanPoll
             self->stop_scan
             return
         endif
+
+        self.scan.current_point++
+        ; stop MCS
+        t = caput(self.epics_pvs.otf_trigger+':StopAll',1)
 
         ; send state to Flat Field
         self->set_state, self.scan.states.FLAT_FIELD
@@ -1578,9 +1605,9 @@ pro tomo_collect_ad::stop_scan
         self.scan.motor_speed = self.scan.motor_speed_old
         widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed
         self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
-        t = caput(self.epics_pvs.rotation+'.SPMG',3)
         if(~self.scan.cancel_motor_reset) then begin
             ; reset motor to original position
+            t = caput(self.epics_pvs.rotation+'.SPMG',3)
             self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]+self.scan.rotation_step
             widget_control, self.widgets.status, set_value='Zeroing motors'
             zeroing = 1
@@ -1674,10 +1701,20 @@ pro tomo_collect_ad::stop_scan
                     comment3 = comment3 + strtrim(fix(i-(*self.scan.sub_stop_array)[self.scan.sub_index-1]),2) + ' '
                 endif
             endfor
-
+            comment4 = ''
+            comment5 = ''
+            if( ceil(strlen(comment3)/79.) gt 1) then begin
+                holder = comment3
+                comment3 = strmid(holder, 0, 79)
+                comment4 = strmid(holder, 79, 79)
+                comment5 = strmid(holder, 158, 79)
+            endif
             t = caput(self.scan.camera_name+':cam1:Comment1',[byte(comment1),0B])
             t = caput(self.scan.camera_name+':cam1:Comment2',[byte(comment2),0B])
             t = caput(self.scan.camera_name+':cam1:Comment3',[byte(comment3),0B])
+            t = caput(self.scan.camera_name+':cam1:Comment4',[byte(comment4),0B])
+            t = caput(self.scan.camera_name+':cam1:Comment5',[byte(comment5),0B])
+
             ; It is still acquiring and the data file is still open, close it
             widget_control, self.widgets.status, set_value='Stopping run'
 
@@ -1727,7 +1764,11 @@ pro tomo_collect_ad::stop_scan
 
     endif
 
-    if (self.scan.cancel_motor_reset) then self.scan.rotation_motor->set_position,self.scan.rotation_start
+    if (self.scan.cancel_motor_reset) then begin
+        wait, 1
+        t = caput(self.epics_pvs.rotation+'.SPMG',3)
+        self.scan.rotation_motor->set_position,self.scan.rotation_start
+    endif
 
     ; empty comments
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -1738,6 +1779,8 @@ pro tomo_collect_ad::stop_scan
         t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
         t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
         t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
+        t = caput(self.scan.camera_name+':cam1:Comment4',[byte(''),0B])
+        t = caput(self.scan.camera_name+':cam1:Comment5',[byte(''),0B])
     endelse
 
     widget_control, self.widgets.status, set_value='Zeroing motors'
@@ -1755,6 +1798,8 @@ pro tomo_collect_ad::stop_scan
     widget_control, self.widgets.abort_scan, sensitive=0
     ; sensitize camera name widgets
     widget_control, self.widgets.camera_name , sensitive = 1
+
+    self->update_screen, /force_update
 
     self->set_state, self.scan.states.SCAN_COMPLETE
 end
@@ -1789,7 +1834,41 @@ function tomo_collect_ad::validate_epics_pvs
     pvs_ok = 1
     ; Make the cursor be an hourglass, since timeouts take a while
     widget_control, /hourglass
-    for i=0, n_pvs-2 do begin
+
+    ; connect to camera through epics pvs
+    if (strlen(self.epics_pvs.(0)) gt 0) then begin
+        camera_name = self.epics_pvs.(0)
+        self.scan.camera_name = camera_name
+        widget_control, self.pv_widgets.camera_name,      set_value=self.epics_pvs.camera_name
+        self.scan.camera_name = self.epics_pvs.camera_name
+        obj_destroy, self.scan.ccd
+        self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+':cam1:')
+        self.ccd_valid = 1
+        widget_control, self.widgets.status, set_value='Connected to '+self.scan.camera_name
+
+        t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
+        if(t ne 0) then begin
+            widget_control, self.widgets.status, set_value='Could not connect to camera'
+            t = dialog_message('Could not connect to camera, invalid camera name')
+            pvs_ok = 0
+            name = ''
+        endif
+
+        if(name eq 'Roper Scientific') then begin
+            self.scan.camera_manufacturer = self.camera_types.ROPER
+        endif else if(name eq 'Prosilica') then begin
+            self.scan.camera_manufacturer = self.camera_types.PROSILICA
+        endif else begin
+            widget_control, self.widgets.status, set_value='Could not connect to camera'
+            pvs_ok = 0
+        endelse
+    endif else begin
+        widget_control, self.widgets.status, set_value='Could not connect to camera'
+        t = dialog_message('Could not connect to camera, invalid camera name')
+        pvs_ok = 0
+    endelse
+
+    for i=1, n_pvs-2 do begin
         pv = self.epics_pvs.(i)
         if (strlen(pv) eq 0) then begin
             t = dialog_message('Error: ' + tags[i] + ' is blank, not a valid EPICS PV name.')
@@ -1850,6 +1929,18 @@ function tomo_collect_ad::validate_epics_pvs
         t = caSetMonitor(self.epics_pvs.autoscan_sync)
         t = caSetMonitor(self.epics_pvs.autoscan_suffix)
         t = caSetMonitor(self.epics_pvs.rotation + '.VELO')
+
+        ; set up PS_attributes_filename
+        widget_control, self.widgets.PS_attributes_filename, sensitive = ~self.scan.camera_manufacturer
+        widget_control, self.widgets.PS_attributes, sensitive = ~self.scan.camera_manufacturer
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
+            t = caget(self.scan.camera_name+':cam1:NDAttributesFile', file)
+            widget_control, self.widgets.PS_attributes_filename, set_value = strtrim(file,2)
+            self.scan.PS_attributes_filename = strtrim(file,2)
+        endif else begin
+            widget_control, self.widgets.PS_attributes_filename, set_value = ''
+        endelse
+
     endif
 
     finish:
@@ -1901,6 +1992,7 @@ function tomo_collect_ad::save_settings, file, all=all
     endif
     ; Write all the other settings
     ; These are in self.epics_pvs
+    printf, lun, 'CAMERA_NAME: ',         self.epics_pvs.camera_name
     printf, lun, 'ROTATION_PV: ',         self.epics_pvs.rotation
     printf, lun, 'SAMPLE_X_PV: ',         self.epics_pvs.sample_x
     printf, lun, 'SAMPLE_Y_PV: ',         self.epics_pvs.sample_y
@@ -1918,12 +2010,15 @@ function tomo_collect_ad::save_settings, file, all=all
     printf, lun, 'NUM_PASSES: ',          self.scan.num_passes
     printf, lun, 'FLATFIELD_AXIS: ',      self.scan.flatfield_axis
     printf, lun, 'FLATFIELD_INCREMENT: ', self.scan.flatfield_increment
+    printf, lun, 'NUM_IMAGES_PER_FLATFIELD: ', self.scan.num_flatfields
     printf, lun, 'SAMPLE_X_IN: ',         self.scan.sample_x_in_position
     printf, lun, 'SAMPLE_X_OUT: ',        self.scan.sample_x_out_position
     printf, lun, 'SAMPLE_Y_IN: ',         self.scan.sample_y_in_position
     printf, lun, 'SAMPLE_Y_OUT: ',        self.scan.sample_y_out_position
     printf, lun, 'AUTOSCAN: ',            self.scan.autoscan
     printf, lun, 'FAST_SCAN: ',           self.scan.fast_scan
+    printf, lun, 'DARK_CURRENT_MEASUREMENT: ',        self.scan.dark_current
+    printf, lun, 'CANCEL_MOTOR_RESET: ',  self.scan.cancel_motor_reset
     free_lun, lun
     self.settings_file = file
     return, 1
@@ -1957,6 +2052,7 @@ function tomo_collect_ad::restore_settings, file
             'X_PIXEL_SIZE:':  self.expinfo.x_pixel_size = value
             'Y_PIXEL_SIZE:':  self.expinfo.y_pixel_size = value
             ; These are in self.epics_pvs
+            'CAMERA_NAME:':         self.epics_pvs.camera_name = value
             'ROTATION_PV:':         self.epics_pvs.rotation = value
             'SAMPLE_X_PV:':         self.epics_pvs.sample_x = value
             'SAMPLE_Y_PV:':         self.epics_pvs.sample_y = value
@@ -1974,12 +2070,15 @@ function tomo_collect_ad::restore_settings, file
             'NUM_PASSES:':          self.scan.num_passes = long(value)
             'FLATFIELD_AXIS:':      self.scan.flatfield_axis = value
             'FLATFIELD_INCREMENT:': self.scan.flatfield_increment = long(value)
+            'NUM_IMAGES_PER_FLATFIELD:': self.scan.num_flatfields = long(value)
             'SAMPLE_X_IN:':         self.scan.sample_x_in_position = float(value)
             'SAMPLE_X_OUT:':        self.scan.sample_x_out_position = float(value)
             'SAMPLE_Y_IN:':         self.scan.sample_y_in_position = float(value)
             'SAMPLE_Y_OUT:':        self.scan.sample_y_out_position = float(value)
             'AUTOSCAN:':            self.scan.autoscan = long(value)
             'FAST_SCAN:':           self.scan.fast_scan = long(value)
+            'DARK_CURRENT_MEASUREMENT:': self.scan.dark_current = long(value)
+            'CANCEL_MOTOR_RESET:':  self.scan.cancel_motor_reset = long(value)
             else: begin
                 t = dialog_message('Settings file contained unrecognized keyword: ' + tag)
             endelse
@@ -1992,6 +2091,7 @@ function tomo_collect_ad::restore_settings, file
     endfor
     ; Update the widgets
     self->copy_expinfo_to_widgets
+    widget_control, self.widgets.sample_info, set_value = self.expinfo.sample
     self->copy_settings_to_widgets
     free_lun, lun
     self.settings_file = file
@@ -2120,6 +2220,7 @@ end
 
 pro tomo_collect_ad::copy_settings_to_widgets
     ; These are in self.epics_pvs
+    widget_control, self.pv_widgets.camera_name,      set_value=self.epics_pvs.camera_name
     widget_control, self.pv_widgets.rotation,         set_value=self.epics_pvs.rotation
     widget_control, self.pv_widgets.sample_x,         set_value=self.epics_pvs.sample_x
     widget_control, self.pv_widgets.sample_y,         set_value=self.epics_pvs.sample_y
@@ -2142,15 +2243,20 @@ pro tomo_collect_ad::copy_settings_to_widgets
     widget_control, self.widgets.sample_y_in_position,  set_value=self.scan.sample_y_in_position
     widget_control, self.widgets.sample_y_out_position, set_value=self.scan.sample_y_out_position
     widget_control, self.widgets.autoscan,              set_value=self.scan.autoscan
+    ;if (self.scan.fast_scan ne self.widgets.fast_scan) then
     widget_control, self.widgets.fast_scan,             set_droplist_select=self.scan.fast_scan
-    widget_control, self.widgets.motor_speed,            set_value=self.scan.motor_speed
+    widget_control, self.widgets.motor_speed,           set_value=self.scan.motor_speed
     widget_control, self.widgets.num_flatfields,        set_value=self.scan.num_flatfields
-    widget_control, self.widgets.camera_name,            set_value = strtrim(self.scan.camera_name,2)
+    widget_control, self.widgets.camera_name,           set_value=self.epics_pvs.camera_name
+    widget_control, self.widgets.dark_current,          set_value = self.scan.dark_current
+    widget_control, self.widgets.cancel_motor_reset,    set_value = self.scan.cancel_motor_reset
 end
 
 
 pro tomo_collect_ad::copy_settings_from_widgets
     ; These are in self.epics_pvs
+    widget_control, self.pv_widgets.camera_name, get_value=value
+    self.epics_pvs.camera_name = value
     widget_control, self.pv_widgets.rotation, get_value=value
     self.epics_pvs.rotation = value
     widget_control, self.pv_widgets.sample_x, get_value=value
@@ -2202,6 +2308,11 @@ pro tomo_collect_ad::copy_settings_from_widgets
     self.scan.num_flatfields = value
     widget_control, self.widgets.camera_name, get_value = value
     self.scan.camera_name = value
+    widget_control, self.widgets.dark_current, get_value = value
+    self.scan.dark_current = value
+    widget_control, self.widgets.cancel_motor_reset, get_value = value
+    self.scan.cancel_motor_reset = value
+
 end
 
 
@@ -2336,6 +2447,8 @@ pro tomo_collect_ad::event, event
            ; Timer event for autoscan functions
            if ((self.scan.autoscan) and $
                (self.scan.current_state eq self.scan.states.SCAN_COMPLETE)) then begin
+               start = 0
+               sync_changed = 0
                sync_changed = caCheckMonitor(self.epics_pvs.autoscan_sync)
                t = caget(self.epics_pvs.autoscan_sync, start)
                if (sync_changed and start) then begin
@@ -2534,37 +2647,6 @@ pro tomo_collect_ad::event, event
            self->abort_scan
         end
 
-        self.widgets.camera_name: begin
-            widget_control, self.widgets.camera_name, get_value = camera_name
-            self.scan.camera_name = camera_name
-            self->copy_settings_to_widgets
-            obj_destroy, self.scan.ccd
-            self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+':cam1:')
-            t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
-            self.ccd_valid = 1
-            t=self->validate_epics_pvs()
-            widget_control, self.widgets.status, set_value='Connected to '+self.scan.camera_name
-
-            if(name eq 'Roper Scientific') then begin
-                self.scan.camera_manufacturer = self.camera_types.ROPER
-            endif else if(name eq 'Prosilica') then begin
-                self.scan.camera_manufacturer = self.camera_types.PROSILICA
-            endif else begin widget_control, self.widgets.status, set_value='Unknown Camera Type'
-                return
-            endelse
-
-            widget_control, self.widgets.PS_attributes_filename, sensitive = ~self.scan.camera_manufacturer
-            widget_control, self.widgets.PS_attributes, sensitive = ~self.scan.camera_manufacturer
-            if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
-                t = caget(self.scan.camera_name+':cam1:NDAttributesFile', file)
-                widget_control, self.widgets.PS_attributes_filename, set_value = strtrim(file,2)
-                self.scan.PS_attributes_filename = strtrim(file,2)
-            endif else begin
-                widget_control, self.widgets.PS_attributes_filename, set_value = ''
-            endelse
-
-        end
-
         else:  t = dialog_message('Unknown event')
     endcase
 
@@ -2641,38 +2723,13 @@ function tomo_collect_ad::init
     self.fonts.heading1 = get_font_name(/large, /bold)
     self.fonts.heading2 = get_font_name(/bold)
 
-    ; Try to connect to CCD
-
-    ; default camera variables names
-    self.scan.camera_name = '13BMDRP1'
-    self.camera_types.PROSILICA = 0
-    self.camera_types.ROPER = 1
-    self.scan.camera_manufacturer = self.camera_types.ROPER
-
-    catch, error
-    if (error ne 0) then begin
-        self.ccd_valid = 0
-    endif else begin
-        self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+':cam1:')
-        self.ccd_valid=1
-
-        self.scan.ccd->setProperty,'Acquire',0
-        self.scan.ccd->setProperty,'ImageMode',0
-        self.scan.ccd->setProperty,'NumImages',1
-        self.scan.ccd->setProperty,'TriggerMode',0
-        self.scan.ccd_ready = 0
-
-        t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
-        if(name eq 'Prosilica') then begin
-            t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
-            t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
-            if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
-            t = caput(self.scan.camera_name+':netCDF1:NumCapture',1)
-        endif
-    endelse
-    catch, /cancel
 
     ; Go back to free-run timing mode and 1 image per file
+
+    self.camera_types.PROSILICA = 0
+    self.camera_types.ROPER = 1
+    self.scan.camera_name = '13LABRP1'
+    self.scan.camera_manufacturer = self.camera_types.ROPER
     self.scan.rotation_start = 0.
     self.scan.rotation_stop  = 179.75
     self.scan.rotation_step  = 0.25
@@ -2688,6 +2745,8 @@ function tomo_collect_ad::init
     self.scan.fast_scan = 1
     self.scan.sub_size = 200
     self.scan.autoscan = 0
+    self.scan.dark_current = 0
+    self.scan.cancel_motor_reset = 0
     self.scan.ezca_timeout = .005
     self.scan.ezca_retry_count = 10
     cainit  ; Need to call this in case it was not called in startup script, i.e. Virtual Machine
@@ -2873,7 +2932,7 @@ function tomo_collect_ad::init
     t = widget_label(row, value='Status', font=self.fonts.heading1)
     row = widget_base(col0, /row)
     self.widgets.camera_name = cw_field(row, title="Camera name:", $
-                                      xsize=50, value = self.scan.camera_name, /return_events)
+                                      xsize=50, value = self.scan.camera_name, /noedit)
     row = widget_base(col0, /row)
     self.widgets.base_file = cw_field(row, title="Output file name:", $
                                       xsize=50, value=self.scan.base_filename, /noedit)
@@ -2944,6 +3003,9 @@ function tomo_collect_ad::init
     t = widget_label(hidden_base, value='Horizontal translation motor:')
     g = widget_info(t, /geometry)
     x_label_size = g.xsize
+    t = widget_label(row, value='Camera name:', xsize=x_label_size, /align_right)
+    self.pv_widgets.camera_name = widget_text(row,  xsize=x_entry_size, /editable)
+    row = widget_base(col0, /row)
     t = widget_label(row, value='Rotation motor:', xsize=x_label_size, /align_right)
     self.pv_widgets.rotation = widget_text(row,  xsize=x_entry_size, /editable)
     row = widget_base(col0, /row)
@@ -3054,6 +3116,31 @@ function tomo_collect_ad::init
     widget_control, self.widgets.num_passes, sensitive = (self.scan.fast_scan ne 2)
     t = self->validate_epics_pvs()
 
+
+    ; try to connect to camera
+    catch, error
+    if (error ne 0) then begin
+        self.ccd_valid = 0
+    endif else begin
+        self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+':cam1:')
+        self.ccd_valid=1
+
+        self.scan.ccd->setProperty,'Acquire',0
+        self.scan.ccd->setProperty,'ImageMode',0
+        self.scan.ccd->setProperty,'NumImages',1
+        self.scan.ccd->setProperty,'TriggerMode',0
+        self.scan.ccd_ready = 0
+
+        t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
+        if(name eq 'Prosilica') then begin
+            t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
+            t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
+            if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
+            t = caput(self.scan.camera_name+':netCDF1:NumCapture',1)
+        endif
+    endelse
+    catch, /cancel
+
     return, 1
 end
 
@@ -3123,6 +3210,7 @@ pro tomo_collect_ad__define
 
     ; These widgets are in the "EPICS process variables" page
     pv_widgets = {tomo_collect_pv_widgets, $
+        camera_name: 0L, $
         base: 0L, $
         rotation: 0L, $
         sample_x: 0L, $
@@ -3177,6 +3265,7 @@ pro tomo_collect_ad__define
 
     epics_pvs = {tomo_epics_pvs, $
         ; These are all saved to the settings file
+        camera_name: "", $
         rotation: "", $
         sample_x: "", $
         sample_y: "", $
