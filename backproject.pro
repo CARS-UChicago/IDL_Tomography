@@ -1,4 +1,5 @@
-function backproject, sinogram, angles, binlinear=bilinear, cubic=cubic
+function backproject, sinogram, angles, center = center, RADON = RADON, $
+                      linear = linear, bilinear=bilinear, cubic=cubic
 
 ;+
 ; NAME:
@@ -50,18 +51,33 @@ function backproject, sinogram, angles, binlinear=bilinear, cubic=cubic
 ;                   RECONSTRUCT_SLICE, since CENTER is also used by SINOGRAM.
 ;   20-FEB-2000 MLR Set all pixels outside reconstructed area to 0.
 ;   19-APR-2001 MLR Change units of ANGLES from radians to degrees
+;   16-SEP-2010 DTC Added CENTER keyword
+;   07-OCT-2010 DTC Added option for user to reconstruct with RADON backprojection
 ;-
 
-nx = n_elements(sinogram[*,0])
-nviews = n_elements(sinogram[0,*])
-b = fltarr(nx, nx)      ;Initial reconstructed image.
-for i=0,nviews-1 do begin
-        riemann, sinogram, b, angles[i]*!dtor, row=i, /backproject, $
-                         center=garbage, bilinear=bilinear, cubic=cubic
-endfor
-mask = shift(dist(nx), nx/2, nx/2)
-outside = where(mask gt nx/2)
+nrho = n_elements(sinogram[*,0])
+nangles = n_elements(sinogram[0,*])
+if (n_elements(RADON) eq 0) then radon = 0
+
+if (RADON eq 0) then begin ; in case of RIEMANN backprojection
+    b = fltarr(nrho, nrho)      ;Initial reconstructed image.
+    if n_elements(center) then ctr = center ;;;;;
+    for i=0,nangles-1 do begin
+            riemann, sinogram, b, angles[i]*!dtor, row=i, /backproject, $
+                             center=ctr, bilinear=bilinear, cubic=cubic
+    endfor
+    b = b*!pi/(1.*nangles)
+endif else if(RADON eq 1) then begin ; in case of RADON backprojection
+    if (n_elements(nx) eq 0) then nx = nrho
+    if (n_elements(ny) eq 0) then ny = nx
+    if (n_elements(center) eq 0) then center = (nrho-1)/2.
+    rhos = (findgen(nrho) - center)
+    angles = !pi*angles/180. ; convert angles to radians
+    b = radon(transpose(sinogram), /BACKPROJECT, rho = rhos, theta = angles, nx = nx, ny = ny, linear = linear)
+endif
+
+mask = shift(dist(nrho), nrho/2, nrho/2)
+outside = where(mask gt nrho/2.)
 b(outside) = 0.
 return, b
-
 end
