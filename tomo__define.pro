@@ -218,46 +218,89 @@
 ;                    Renamed WHITE keyword to WHITE_FIELD 
 ;                    Setting white_average greatly reduces ring artifacts in many cases.
 ;-
+;   24-JUN-2010 DTC Changed read_data_file to be able to process .nc files in addition to .SPE files
+;                   Changed preprocess to be able to concatenate multiple 3-D fast and OTF scan files into a single data set 
+;                   After dark field subtraction, added check against dividing by zero (replace all zeroes with ones?)
+;
 
-pro tomo::read_data_file, base_file, file_number, data, type, angle, debug, $
+pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, debug, $
                     status_widget
-   file = base_file + strtrim(file_number, 2) + '.SPE'
+   cd, current = current
+   file = base_file + strtrim(file_number, 2) + file_type
    str = 'Reading ' + file
    if (widget_info(status_widget, /valid_id)) then $
         widget_control, status_widget, set_value=str
-   read_princeton, file, data, header=header, comment=comment
+   if (file_type eq '.SPE') then read_princeton, file, data, header=header, comment=comment
+   if (file_type eq '.nc') then data = read_nd_netcdf(file, attributes=attributes)
+   if (file_type ne '.SPE' AND file_type ne '.nc') then message, 'No files found'
+
    ndims = size(data, /n_dimensions)
-   if (ndims eq 2) then begin
-        angle=float(strmid(comment[0], 6))
-        type=strmid(comment[1], 5)
+   if (ndims eq 2) then begin; slow scan data
+        if (file_type eq '.SPE') then begin      
+            angle=float(strmid(comment[0], 6))
+            type=strmid(comment[1], 5)
+        endif else if (file_type eq '.nc') then begin
+            angle= float(strmid( (*(attributes.pvalue)[7])[0], 6))
+            type= strmid( (*(attributes.pvalue)[8])[0], 5)
+        endif
         str = str + ' angle=' + string(angle, format='(f6.2)') + ' type=' + type
         if (widget_info(status_widget, /valid_id)) then $
-                widget_control, status_widget, set_value=str
+              widget_control, status_widget, set_value=str
         if (debug ne 0) then print, str
-    endif else if (ndims eq 3) then begin
+   endif else if (ndims eq 3) then begin ; fast or otf scan data
         dims = size(data, /dimensions)
         n_views = dims[2]
         type = strarr(n_views)
         angle = fltarr(n_views)
-        start_angle = float(strmid(comment[0], 12))
-        angle_step = float(strmid(comment[1], 11))
-        flat_fields = strmid(comment[2], 12)
-        flat_fields = fix(strsplit(flat_fields, /extract))
-        ang = start_angle
-        for i=0, n_views-1 do begin
-            angle[i] = ang
-            if (max(i eq flat_fields)) then begin
-                type[i] = 'FLAT_FIELD'
-            endif else begin
-                type[i] = 'NORMAL'
-                ang = ang + angle_step
-            endelse
-        endfor
-    endif
+        if (file_type eq '.SPE') then begin     
+            start_angle = float(strmid(comment[0], 12))
+            angle_step = float(strmid(comment[1], 11))
+            flat_fields = strmid(comment[2], 12)
+            flat_fields_2 = string(comment[3])
+            flat_fields_3 = string(comment[4])
+            flat_fields = flat_fields + flat_fields_2+flat_fields_3
+            if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
+            ang = start_angle
+            for i=0, n_views-1 do begin
+                angle[i] = ang
+                if (max(i eq flat_fields)) then begin
+                    type[i] = 'FLAT_FIELD'
+                endif else begin
+                    type[i] = 'NORMAL'
+                    ang = ang + angle_step
+                endelse
+            endfor
+            wait, 1
+        endif else if (file_type eq '.nc') then begin
+            start_angle = float(strmid( (*(attributes.pvalue)[7])[0], 12))
+            angle_step = float(strmid( (*(attributes.pvalue)[8])[0], 11))
+            flat_fields = strmid( (*(attributes.pvalue)[9])[0], 12)
+            UIDS = fix(*(attributes.pvalue)[0])
+            if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
+            ang = start_angle
+            index = UIDS[0]
+            FFS = 0
+            for i = 0, n_views-1 do begin
+                if (max(i eq flat_fields)) then begin
+                    type[i] = 'FLAT_FIELD'
+                    angle[i] = ang
+                    FFS = FFS+1
+                endif else begin
+                    type[i] = 'NORMAL'
+                    ang = ang + angle_step*(UIDS[i]-index-FFS)
+                    angle[i] = ang
+                    index = UIDS[i]
+                    FFS = 0
+                endelse 
+            endfor
+            wait, 1
+        endif
+
+   endif
 end
 
 
-pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
+pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
                     white_field=input_white, threshold=threshold, $
                     double_threshold=double_threshold, debug=debug, $
                     first_row=first_row, last_row=last_row, output=output, $
@@ -279,14 +322,13 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
     status = self->read_setup(setup)
 
     ; Read one file to get the dimensions
-    self->read_data_file, base_file, 1, data, type, angle, debug, status_widget
+    self->read_data_file, base_file, file_type, 1, data, type, angle, debug, status_widget
     ndims = size(data, /n_dimensions)
     dims = size(data, /dimensions)
-    if (ndims eq 2) then begin
-        ; This is data with 1 frame per file
+    ncols = dims[0]
+    nrows = dims[1]
+    if (ndims eq 2) then begin ; slow scan data
         nframes = nfiles
-        ncols = dims[0]
-        nrows = dims[1]
         ystart = 0
         ystop = nrows-1
         if (n_elements(first_row) ne 0) then ystart = first_row
@@ -300,7 +342,7 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
         angles = fltarr(nframes)
         image_type = strarr(nframes)
         for i=0, nframes-1 do begin
-            self->read_data_file, base_file, start+i, data, type, angle, debug, $
+            self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
                                 status_widget
             if (subset) then begin
                 data_buff[0,0,i]=data[*,ystart:ystop]
@@ -320,14 +362,49 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
                 endif
             endif
         endfor
-    endif else if (ndims eq 3) then begin
-        ; This is a file with all of the data in it
-        ncols = dims[0]
-        nrows = dims[1]
-        data_buff = temporary(data)
-        nframes = n_elements(data_buff[0,0,*])
-        image_type = type
-        angles=angle
+    endif else if (ndims eq 3) then begin ; fast and otf scan data
+        nframes = dims[2]*nfiles ; initial estimate: number of frames in first file times number of files
+        total_frames = dims[2] ; keeps track of number of frames written into the file
+        data_buff = intarr(ncols, nrows, nframes, /nozero)
+        data_buff[*,*,0:total_frames-1] = data
+        image_type = strarr(nframes)
+        image_type[0:total_frames-1] = type
+        angles = fltarr(nframes,/nozero)
+        angles[0:total_frames-1] = angle
+        if (nfiles gt 1) then begin
+            for i=1, nfiles-1 do begin
+                self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
+                                status_widget
+                dims = size(data, /dimensions)
+                ; if the total number of frames already copied plus the number of frames in next array is greater than previous data_buff size estimate
+                if (total_frames + dims[2] gt nframes) then begin
+                  data_temp = temporary(data_buff)
+                  data_buff = intarr(ncols, nrows, total_frames+dims[2],/nozero) ; increase size of buffer
+                  data_buff[*,*,0:(size(data_temp,/dimensions))[2]-1] = data_temp ; load previous data back into buffer
+                  angles_temp = temporary(angles)
+                  angles = fltarr(total_frames+dims[2],/nozero)
+                  angles[0:size(angles_temp,/dimensions)-1] = angles_temp
+                  image_type_temp = temporary(image_type)
+                  image_type = strarr(total_frames+dims[2])
+                  image_type[0:size(image_type_temp,/dimensions)-1] = image_type_temp
+                  nframes = total_frames+dims[2] ; nframes is still the size of the data_buffer
+                endif
+                data_buff[*,*,total_frames:total_frames+dims[2]-1] = data ; load new data into buffer
+                angles[total_frames: total_frames+ dims[2]-1] = angle
+                image_type[total_frames: total_frames+ dims[2]-1] = type
+                total_frames = total_frames + dims[2]
+                
+                if (widget_info(abort_widget, /valid_id)) then begin ; check for abort from user
+                  event = widget_event(/nowait, abort_widget)
+                  widget_control, abort_widget, get_uvalue=abort
+                  if (abort) then begin
+                  if (widget_info(status_widget, /valid_id)) then $
+                    widget_control, status_widget, set_value='Preprocessing aborted'
+                    return
+                  endif
+                endif
+            endfor
+        endif
     endif
 
     ; Do dark current correction
@@ -344,13 +421,25 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
                               'size(input_dark)=', s
         case s[0] of
             0: begin ; Constant dark current
-                for i=0, nframes-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+                for i=0, nframes-1 do begin
+                    data_temp =data_buff[*,*,i] - dark
+                    zeros = where(data_temp le 0, count)
+                    if (count gt 0) then data_temp[zeros] = 1
+                    data_buff[*,*,i] = data_temp  
+                endfor
                 self.dark_current = dark
             end
             2: begin  ; Dark current array
                 if (s[1] ne ncols) or (s[2] ne nrows) then $
                             message, 'Wrong dims on dark'
-                for i=0, nframes-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+                if (max(dark) ge 16.* max(data_buff[*,*,0])) then $
+                            message, 'Wrong data type on dark'
+                for i=0, nframes-1 do begin
+                    data_temp =data_buff[*,*,i] - dark
+                    zeros = where(data_temp le 0, count)
+                    if (count gt 0) then data_temp[zeros] = 1
+                    data_buff[*,*,i] = data_temp  
+                endfor
             end
             else: message, 'Wrong dims on dark'
         endcase
@@ -425,7 +514,7 @@ pro tomo::preprocess, base_file, start, stop, dark=input_dark, $
         if keyword_set(white_average) then begin
             if (debug ge 1) then print, 'Averaging white fields'
             white = total(white_data, 3)/nwhites
-            for i=0, nframes-1 do begin
+            for i=0, nframes-1 do begin ; we don't subtract the white fields, we divide them...
                 data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
                 if (widget_info(abort_widget, /valid_id)) then begin
                     event = widget_event(/nowait, abort_widget)
