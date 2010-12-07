@@ -16,6 +16,7 @@ gridrec.pro \
 make_tomo_display_sav.pro \
 optimize_rotation_center.pro \
 princeton_header__define.pro \
+read_nd_netcdf.pro \
 read_princeton.pro \
 read_tomo_data.pro \
 read_tomo_volume.pro \
