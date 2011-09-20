@@ -139,47 +139,75 @@ pro tomo_display::reconstruct, islice
         self.ptomo->reconstruct_volume, base_file, center=center, scale=scale, $
                               noring=noring, ring_width=ring_width, back_project=backproject, $
                               air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
-                              filter_name=filter_name, linear=linear, bilinear=bilinear, cubic=cubic, $
+                              filter_name=filter_name, RADON=RADON, linear=linear, bilinear=bilinear, cubic=cubic, $
                               resize=resize, sampl=sampl, padded_width=padded_width, $
+                              normalize=normalize, add_correction = add_correction, $
                               abort_widget=self.widgets.abort, $
-                              status_widget=self.widgets.status, $
-                              normalize=normalize, add_correction = add_correction
+                              status_widget=self.widgets.status
     endelse
 end
 
 
-pro tomo_display::optimize_rotation_center, index
+pro tomo_display::optimize_rotation_center, islice
     if (not ptr_valid(self.pvolume)) then begin
         t = dialog_message('Must read in volume file first.', /error)
         return
     endif
     widget_control, /hourglass
-    widget_control, self.widgets.recon_slice[index], get_value=slice
+    widget_control, self.widgets.recon_slice[islice], get_value=slice
     slice = slice < (self.ny-1)
-    widget_control, self.widgets.rotation_optimize_range[index], get_value=range
-    widget_control, self.widgets.rotation_optimize_step[index], get_value=step
-    widget_control, self.widgets.rotation_center[index], get_value=center
-    widget_control, self.widgets.gridrec_resize, get_value=resize
-    widget_control, self.widgets.gridrec_sampl_parameter, get_value = sampl
-    sampl = float(sampl[0])
-    index1 = widget_info(self.widgets.gridrec_filter, /droplist_select)
-    widget_control, self.widgets.gridrec_filter, get_uvalue=choices
-    filter_name = choices[index1]
-    index1 = widget_info(self.widgets.sino_padding, /droplist_select)
-    widget_control, self.widgets.sino_padding, get_uvalue = choices
-    padded_width = choices[index1]
+
+    widget_control, self.widgets.scale, get_value=scale
+    widget_control, self.widgets.backproject, get_value=backproject
+    widget_control, self.widgets.remove_rings, get_value=ring
+    widget_control, self.widgets.ring_width, get_value=ring_width
+    widget_control, self.widgets.normalize, get_value=normalize
+    widget_control, self.widgets.air_values, get_value=air_values
+    widget_control, self.widgets.fluorescence, get_value=fluorescence
+    noring = 1-ring
+    if (backproject) then begin
+        widget_control, self.widgets.filter_size, get_value=filter_size
+        index = widget_info(self.widgets.backproject_filter, /droplist_select)
+        widget_control, self.widgets.backproject_filter, get_uvalue=choices
+        filter_name = choices[index]
+        RADON = widget_info(self.widgets.backproject_method, /droplist_select)
+        widget_control, self.widgets.backproject_RIEMANN_interpolation, get_value=interp
+        if (interp eq 1) then bilinear=1
+        if (interp eq 2) then cubic=1
+        widget_control, self.widgets.backproject_RADON_interpolation, get_value=interp
+        if (interp eq 1) then linear = 1
+    endif else begin
+        widget_control, self.widgets.gridrec_resize, get_value=resize
+        widget_control, self.widgets.gridrec_add_correction, get_value = add_correction
+        index = widget_info(self.widgets.gridrec_filter, /droplist_select)
+        widget_control, self.widgets.gridrec_filter, get_uvalue=choices
+        filter_name = choices[index]
+        index = widget_info(self.widgets.sino_padding, /droplist_select)
+        widget_control, self.widgets.sino_padding, get_uvalue = choices
+        padded_width = choices[index]
+        widget_control, self.widgets.gridrec_sampl_parameter, get_value=sampl
+        sampl = float(sampl[0])
+    endelse
+
+    widget_control, self.widgets.rotation_optimize_range[islice], get_value=range
+    widget_control, self.widgets.rotation_optimize_step[islice], get_value=step
+    widget_control, self.widgets.rotation_center[islice], get_value=center
     npoints = long(range/step) + 1
     centers = findgen(npoints)*step + (center-range/2.)
-    optimize_rotation_center, slice, *self.pvolume, centers, entropy,$
-        resize = resize, sampl=sampl, padded_width=padded_width, filter_name=filter_name
+    optimize_rotation_center, slice, *self.pvolume, centers, entropy, scale=scale, $
+                              back_project=backproject, noring=noring, ring_width=ring_width, $
+                              air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
+                              filter_name=filter_name, RADON=RADON, linear=linear, bilinear=bilinear, cubic=cubic, $
+                              resize=resize, sampl=sampl, padded_width=padded_width, $
+                              normalize=normalize, add_correction = add_correction
     if(padded_width eq 0) then widget_control, self.widgets.sino_padding, set_droplist_select = 0
     widget_control, self.widgets.volume_file, get_value=file
     title = file + '   Slice='+strtrim(string(slice),2)
     iplot, centers, entropy, xtitle='Rotation center', ytitle='Image entropy', sym_index=2, $
            view_title=title
     t = min(entropy, min_pos)
-    widget_control, self.widgets.rotation_center[index], set_value=centers[min_pos]
-    self->reconstruct, index
+    widget_control, self.widgets.rotation_center[islice], set_value=centers[min_pos]
+    self->reconstruct, islice
 end
 
 
