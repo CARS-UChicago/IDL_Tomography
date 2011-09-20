@@ -39,6 +39,7 @@ pro tomo_display::reconstruct, islice
     widget_control, self.widgets.backproject, get_value=backproject
     widget_control, self.widgets.remove_rings, get_value=ring
     widget_control, self.widgets.ring_width, get_value=ring_width
+    widget_control, self.widgets.normalize, get_value=normalize
     widget_control, self.widgets.air_values, get_value=air_values
     widget_control, self.widgets.fluorescence, get_value=fluorescence
     noring = 1-ring
@@ -47,14 +48,23 @@ pro tomo_display::reconstruct, islice
         index = widget_info(self.widgets.backproject_filter, /droplist_select)
         widget_control, self.widgets.backproject_filter, get_uvalue=choices
         filter_name = choices[index]
-        widget_control, self.widgets.backproject_interpolation, get_value=interp
-        if (interp eq 1) then binlinear=1
+        RADON = widget_info(self.widgets.backproject_method, /droplist_select)
+        widget_control, self.widgets.backproject_RIEMANN_interpolation, get_value=interp
+        if (interp eq 1) then bilinear=1
         if (interp eq 2) then cubic=1
+        widget_control, self.widgets.backproject_RADON_interpolation, get_value=interp
+        if (interp eq 1) then linear = 1
     endif else begin
         widget_control, self.widgets.gridrec_resize, get_value=resize
+        widget_control, self.widgets.gridrec_add_correction, get_value = add_correction
         index = widget_info(self.widgets.gridrec_filter, /droplist_select)
         widget_control, self.widgets.gridrec_filter, get_uvalue=choices
         filter_name = choices[index]
+        index = widget_info(self.widgets.sino_padding, /droplist_select)
+        widget_control, self.widgets.sino_padding, get_uvalue = choices
+        padded_width = choices[index]
+        widget_control, self.widgets.gridrec_sampl_parameter, get_value=sampl
+        sampl = float(sampl[0])
     endelse
 
     if (n_elements(islice) ne 0) then begin
@@ -64,8 +74,10 @@ pro tomo_display::reconstruct, islice
         r = reconstruct_slice(slice, *self.pvolume, center=center, scale=scale, $
                               back_project=backproject, noring=noring, ring_width=ring_width, $
                               air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
-                              filter_name=filter_name, bilinear=bilinear, cubic=cubic, $
-                              resize=resize, sinogram=sinogram, cog=cog)
+                              filter_name=filter_name, RADON=RADON, linear=linear, bilinear=bilinear, cubic=cubic, $
+                              resize=resize, sampl=sampl, padded_width=padded_width, sinogram=sinogram, cog=cog, $
+                              normalize=normalize, add_correction = add_correction)
+        if(padded_width eq 0) then widget_control, self.widgets.sino_padding, set_droplist_select = 0
         ; If reconstruction was with backproject, rotate image so it is the same
         ; orientation as with gridrec
         if (backproject) then r = rotate(r, 4)
@@ -127,10 +139,11 @@ pro tomo_display::reconstruct, islice
         self.ptomo->reconstruct_volume, base_file, center=center, scale=scale, $
                               noring=noring, ring_width=ring_width, back_project=backproject, $
                               air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
-                              filter_name=filter_name, bilinear=bilinear, cubic=cubic, $
-                              resize=resize, $
+                              filter_name=filter_name, linear=linear, bilinear=bilinear, cubic=cubic, $
+                              resize=resize, sampl=sampl, padded_width=padded_width, $
                               abort_widget=self.widgets.abort, $
-                              status_widget=self.widgets.status
+                              status_widget=self.widgets.status, $
+                              normalize=normalize, add_correction = add_correction
     endelse
 end
 
@@ -146,9 +159,20 @@ pro tomo_display::optimize_rotation_center, index
     widget_control, self.widgets.rotation_optimize_range[index], get_value=range
     widget_control, self.widgets.rotation_optimize_step[index], get_value=step
     widget_control, self.widgets.rotation_center[index], get_value=center
+    widget_control, self.widgets.gridrec_resize, get_value=resize
+    widget_control, self.widgets.gridrec_sampl_parameter, get_value = sampl
+    sampl = float(sampl[0])
+    index1 = widget_info(self.widgets.gridrec_filter, /droplist_select)
+    widget_control, self.widgets.gridrec_filter, get_uvalue=choices
+    filter_name = choices[index1]
+    index1 = widget_info(self.widgets.sino_padding, /droplist_select)
+    widget_control, self.widgets.sino_padding, get_uvalue = choices
+    padded_width = choices[index1]
     npoints = long(range/step) + 1
     centers = findgen(npoints)*step + (center-range/2.)
-    optimize_rotation_center, slice, *self.pvolume, centers, entropy
+    optimize_rotation_center, slice, *self.pvolume, centers, entropy,$
+        resize = resize, sampl=sampl, padded_width=padded_width, filter_name=filter_name
+    if(padded_width eq 0) then widget_control, self.widgets.sino_padding, set_droplist_select = 0
     widget_control, self.widgets.volume_file, get_value=file
     title = file + '   Slice='+strtrim(string(slice),2)
     iplot, centers, entropy, xtitle='Rotation center', ytitle='Image entropy', sym_index=2, $
@@ -162,7 +186,21 @@ end
 pro tomo_display::set_base_file, base_file
     widget_control, self.widgets.base_file, set_value=base_file
     widget_control, self.widgets.first_file, set_value=1
-    files = findfile(base_file + '*.SPE', count=count)
+    widget_control, self.widgets.file_type, get_value=file_type
+    files = file_search(base_file + '*' + file_type, count=count)
+    
+    ; if the number of found files of the given type equals 0, try looking for other types
+    if(count eq 0) then begin
+      file_type = '*.SPE'
+      files = file_search(base_file + file_type, count=count)
+      if (count ne 0) then widget_control, self.widgets.file_type, set_value = '.SPE'
+    endif
+    if(count eq 0) then begin
+      file_type = '*.nc'
+      files = file_search(base_file + file_type, count=count)
+      if (count ne 0) then widget_control, self.widgets.file_type, set_value = '.nc'
+    endif
+    
     widget_control, self.widgets.last_file, set_value=count
     ; Read the setup file.  If there are non-zero values for the dark current
     ; or rotation axis then use them.
@@ -178,6 +216,14 @@ pro tomo_display::set_base_file, base_file
         widget_control, self.widgets.rotation_center[1], $
                         set_value=self.setup.center
     endif
+    
+    ; look for a dark current file
+    dc_file = file_search('Dark_Current_Measurement*',count = count)
+    if (count ne 0) then begin
+      cd, current = current
+      widget_control, self.widgets.dc_filename, set_value = current + '\'+ dc_file[0]
+    endif else widget_control, self.widgets.dc_filename, set_value = ''
+    
 end
 
 pro tomo_display::set_directory
@@ -185,7 +231,7 @@ pro tomo_display::set_directory
     widget_control, self.widgets.directory, set_value=current
     ; See if there are any .setup files in this directory
     ; If so, make the first one the default base file
-    files = findfile('*.setup', count=count)
+    files = file_search('*.setup', count=count)
     if (count ge 1) then begin
         file = files[0]
         index = strpos(file, '.setup')
@@ -207,13 +253,44 @@ pro tomo_display::set_limits
     widget_control, self.widgets.disp_slider, set_value=last_slice/2
     widget_control, self.widgets.recon_slice[0], set_value=self.ny*0.1
     widget_control, self.widgets.recon_slice[1], set_value=self.ny*0.9
-    widget_control, self.widgets.filter_size, set_value=self.nx/4
+    widget_control, self.widgets.filter_size, set_value=self.nx;;/4
 end
 
 pro tomo_display::free_memory
     ptr_free, self.pvolume
     widget_control, self.widgets.volume_file, set_value=''
 end
+
+
+; method for loading dark current data into program before preprocessing
+pro tomo_display::measure_dc, dc_filename, dark = dark_current, file_type = file_type
+    dark_old = dark_current
+    spe = strpos(dc_filename,'.SPE')
+    nc = strpos(dc_filename,'.nc')    
+    if (spe ne -1) then begin
+        if (file_type ne '.SPE') then begin
+          dark_current = dark_old
+          message, 'Wrong dark field file format'
+        endif
+        read_princeton, dc_filename, dc_data, header=header, comment=comment
+        image_type = strmid(comment[1],5)
+    endif else if (nc ne -1) then begin
+        if (file_type ne '.nc') then begin
+          dark_current = dark_old
+          message, 'Wrong dark field file format'
+        endif
+        dc_data = read_nd_netcdf(dc_filename, attributes=comment)
+        image_type = strmid((*(comment.pvalue)[8])[0],5)
+    endif
+    if (image_type ne 'DARK_FIELD') then begin ; if image is not the right type, return
+        dark_current = dark_old
+        return
+    endif else if (image_type eq 'DARK_FIELD') then begin ; average together dark fields, return averaged value
+        dark_current = total(dc_data, 3)/(size(dc_data,/dimensions))[2]
+        return
+    endif
+end
+
 
 
 pro tomo_options_event, event
@@ -231,6 +308,9 @@ pro tomo_display::options_event, event
             sens = event.value
             widget_control, self.widgets.backproject_base, sensitive=sens
             widget_control, self.widgets.gridrec_base, sensitive=1-sens
+            index = widget_info(self.widgets.backproject_method, /droplist_select)
+            widget_control, self.widgets.backproject_RADON_interpolation, sensitive = index
+            widget_control, self.widgets.backproject_RIEMANN_interpolation, sensitive = 1-index
         end
         self.widgets.remove_rings: begin
             ; Nothing to do
@@ -250,13 +330,33 @@ pro tomo_display::options_event, event
         self.widgets.backproject_filter: begin
             ; Nothing to do
         end
-        self.widgets.backproject_interpolation: begin
+        self.widgets.backproject_method: begin
+             index = widget_info(self.widgets.backproject_method, /droplist_select)
+             widget_control, self.widgets.backproject_RADON_interpolation, sensitive = index
+             widget_control, self.widgets.backproject_RIEMANN_interpolation, sensitive = 1-index
+        end        
+        self.widgets.backproject_RADON_interpolation: begin
+            ; Nothing to do
+        end
+        self.widgets.backproject_RIEMANN_interpolation: begin
             ; Nothing to do
         end
         self.widgets.gridrec_resize: begin
             ; Nothing to do
         end
+        self.widgets.normalize: begin
+            ; Nothing to do
+        end
+        self.widgets.gridrec_add_correction: begin
+            ; Nothing to do
+        end
         self.widgets.gridrec_filter: begin
+            ; Nothing to do
+        end
+        self.widgets.gridrec_sampl_parameter: begin
+            ; Nothing to do
+        end
+        self.widgets.sino_padding: begin
             ; Nothing to do
         end
         else:  t = dialog_message('Unknown event')
@@ -345,6 +445,7 @@ end
 
 pro tomo_display::event, event
     if (tag_names(event, /structure_name) eq 'WIDGET_KILL_REQUEST') then begin
+        widget_control, self.widgets.options_base, /destroy
         widget_control, event.top, /destroy
         obj_destroy, self
         return
@@ -487,11 +588,22 @@ pro tomo_display::event, event
             self->set_base_file, base_file[0]
         end
 
+        self.widgets.file_type: begin
+            widget_control, self.widgets.base_file, get_value=base_file
+            self->set_base_file, base_file[0]
+        end
+
+        self.widgets.flip_data: begin
+            ; Nothing to be doe
+        end
+        
         self.widgets.preprocess_go: begin
             ; Delete any volume array to free up memory
             self->free_memory
             widget_control, self.widgets.base_file, get_value=base_file
             base_file = base_file[0]
+            widget_control, self.widgets.file_type, get_value=file_type
+            file_type = file_type[0]
             widget_control, self.widgets.first_file, get_value=first_file
             widget_control, self.widgets.last_file, get_value=last_file
             widget_control, self.widgets.dark_current, get_value=dark_current
@@ -499,15 +611,27 @@ pro tomo_display::event, event
             widget_control, self.widgets.double_threshold, get_value=double_threshold
             widget_control, self.widgets.white_average, get_value=white_average
             widget_control, self.widgets.white_smooth, get_value=white_smooth
+            widget_control, self.widgets.flip_data, get_value = flip_data
             widget_control, self.widgets.abort, set_uvalue=0
             widget_control, self.widgets.status, set_value=""
-            self.ptomo->preprocess, base_file, first_file, last_file, $
+            ; dark current file loading
+            widget_control, self.widgets.dc_filename, get_value = dc_filename
+              dc_filename = dc_filename[0]
+              if (dc_filename ne '') then begin
+                self->measure_dc, dc_filename, dark = dark_current, file_type = file_type
+              endif
+            self.ptomo->preprocess, base_file, file_type, first_file, last_file, $
                             dark=dark_current, $
                             threshold=threshold, double_threshold=double_threshold, $
                             white_average=white_average, white_smooth=white_smooth, $
                             abort_widget=self.widgets.abort, $
-                            status_widget=self.widgets.status
+                            status_widget=self.widgets.status,$
+                            flip_data = flip_data
+        end
 
+        self.widgets.dc_search : begin
+            dc_filename = dialog_pickfile()
+            widget_control, self.widgets.dc_filename, set_value = dc_filename
         end
 
         self.widgets.reconstruct_slice[0]: begin
@@ -679,7 +803,10 @@ function tomo_display::init
     self.widgets.main_base = col
     t = widget_label(col, value='File/Status', font=self.fonts.heading1)
     self.widgets.base_file = cw_field(col, title="Base file name:", $
-                                        xsize=50, /return_events)
+                                        xsize=25, /return_events)
+    self.widgets.file_type = cw_field(col, title="Base file type:", $
+                                        xsize=25, /return_events)
+    widget_control, self.widgets.file_type, set_value = '.SPE'
     self.widgets.directory = cw_field(col, title="Working directory:", $
                                         xsize=50, /noedit)
     self.widgets.volume_file = cw_field(col, title="Volume file name:", $
@@ -703,8 +830,16 @@ function tomo_display::init
                                       /integer, xsize=10, value=1)
     self.widgets.dark_current = cw_field(row, /column, title='Dark current', $
                                       /integer, xsize=10, value=100)
+    self.widgets.flip_data = cw_bgroup(row, /column, ['Transpose Data'], /nonexclusive, $
+                                       set_value = 0)
     col1 = widget_base(row, /column)
     self.widgets.preprocess_go = widget_button(col1, value=' Preprocess ')
+    row = widget_base(col, /row, /base_align_bottom)
+    col1 = widget_base(row, /column)
+    self.widgets.dc_filename = cw_field(col1, title="Dark Field file name:", $
+                                        xsize=25)
+    self.widgets.dc_search = widget_button(row, value = ' Search for Dark Field file ')
+
 
     ; Reconstruction
     col = widget_base(col0, /column, /frame)
@@ -829,16 +964,17 @@ function tomo_display::init
     widget_control, self.widgets.base, /realize
 
     ; The "options" screen.  Normally not visible
-    self.widgets.options_base= widget_base(column=1, /tlb_kill_request_events, $
+    self.widgets.options_base= widget_base(row=1, /tlb_kill_request_events, $
                                    title='IDL Tomography Processing Options')
 
-    col = widget_base(self.widgets.options_base, /column, /frame)
+    c1 = widget_base(self.widgets.options_base, /column)
+    c2 = widget_base(self.widgets.options_base, /column)
+    col = widget_base(c1, /column, /frame)
     preprocess_base=col
     t = widget_label(col, value='Preprocessing', font=self.fonts.heading1)
-    col1 = widget_base(col, /column)
-    zinger_base = col1
-    t = widget_label(col1, value='Zinger thresholds', font=self.fonts.heading2)
+    col1 = col
     row = widget_base(col1, /row)
+    t = widget_label(row, value='Zinger thresholds')
     self.widgets.threshold = cw_field(row, title='Normal frames', /float, $
                                         /column, xsize=10, value=1.25)
     self.widgets.double_threshold = cw_field(row, title='Double correlation (flat fields)', /float, $
@@ -849,22 +985,10 @@ function tomo_display::init
                                            set_value=1, /exclusive)
     self.widgets.white_smooth  = cw_field(row, title='Flat field smoothing', /integer, $
                                         /column, xsize=10, value=0)
-    col = widget_base(self.widgets.options_base, /column, /frame)
-    recon_base=col
-    t = widget_label(col, value='Reconstruction', font=self.fonts.heading1)
-    row = widget_base(col, /row)
-    self.widgets.backproject = cw_bgroup(row, ['Gridrec', 'Backproject'], $
-                                            label_left='Reconstruction method:', row=1, $
-                                            set_value=0, /exclusive)
-    row = widget_base(col, /row)
-    self.widgets.remove_rings = cw_bgroup(row, ['No', 'Yes'], $
-                                            label_left='Ring artifact removal:', row=1, $
-                                            set_value=1, /exclusive)
-    self.widgets.ring_width = cw_field(row, title='Ring smoothing width', /integer, $
-                                        /column, xsize=10, value=9)
-    col1 = widget_base(col, /column, /frame)
+    col = widget_base(c1, /column, /frame)
+    t = widget_label(col, value='Sinogram', font=self.fonts.heading1)
+    col1 = col
     sinogram_base = col1
-    t = widget_label(col1, value='Sinogram', font=self.fonts.heading2)
     row = widget_base(col1, /row)
     self.widgets.air_values = cw_field(row, title='Air pixels', /integer, $
                                         /column, xsize=10, value=10)
@@ -879,6 +1003,23 @@ function tomo_display::init
     self.widgets.plot_cog = cw_bgroup(row, ['No', 'Yes'], $
                                             label_left='Plot center-of-gravity', row=1, $
                                             set_value=0, /exclusive)
+    col = widget_base(c2, /column, /frame)
+    recon_base=col
+    t = widget_label(col, value='Reconstruction', font=self.fonts.heading1)
+    row = widget_base(col, /row)
+    self.widgets.backproject = cw_bgroup(row, ['Gridrec', 'Backproject'], $
+                                            label_left='Reconstruction method:', row=1, $
+                                            set_value=0, /exclusive)
+    row = widget_base(col, /row)
+    self.widgets.remove_rings = cw_bgroup(row, ['No', 'Yes'], $
+                                            label_left='Ring artifact removal:', row=1, $
+                                            set_value=1, /exclusive)
+    self.widgets.ring_width = cw_field(row, title='Ring smoothing width', /integer, $
+                                        /column, xsize=10, value=9)
+    row = widget_base(col, /row)
+    self.widgets.normalize = cw_bgroup(row, ['No', 'Yes'], $
+                                            label_left='Normalize image to match sinogram:', row=1, $
+                                            set_value=0, /exclusive)
     col1 = widget_base(col, /column, /frame)
     self.widgets.backproject_base = col1
     widget_control, self.widgets.backproject_base, sensitive=0
@@ -892,17 +1033,28 @@ function tomo_display::init
                                                       uvalue=choices, /align_center)
     widget_control, self.widgets.backproject_filter, set_droplist_select=1
     row = widget_base(col1, /row)
-    self.widgets.backproject_interpolation = cw_bgroup(row, $
+    t = widget_label(row, value='Backprojection Method: ', font=self.fonts.heading2)
+    self.widgets.backproject_method = widget_droplist(row, value = ['RIEMANN', 'RADON'], $
+                                                      uvalue=['RIEMANN', 'RADON'], /align_center)
+    widget_control, self.widgets.backproject_method, set_droplist_select = 0
+    row = widget_base(col1, /row)
+    self.widgets.backproject_RIEMANN_interpolation = cw_bgroup(row, $
                                 ['None', 'Bilinear', 'Cubic'], $
-                                label_left='Interpolation', row=1, $
+                                label_left='Riemann Interpolation', row=1, $
                                 set_value=0, /exclusive)
+    row = widget_base(col1, /row)
+    self.widgets.backproject_RADON_interpolation = cw_bgroup(row, $
+                                ['None', 'Linear'], $
+                                label_left='Radon Interpolation', row=1, $
+                                set_value=0, /exclusive)                        
+    widget_control, self.widgets.backproject_RADON_interpolation, sensitive = 0  
     col1 = widget_base(col, /column, /frame)
     self.widgets.gridrec_base = col1
     t = widget_label(col1, value='Gridrec', font=self.fonts.heading2)
     row = widget_base(col1, /row)
     self.widgets.gridrec_resize = cw_bgroup(row, ['No', 'Yes'], $
                                             label_left='Resize image:', row=1, $
-                                            set_value=1, /exclusive)
+                                            set_value=0, /exclusive)
 
     choices=['Shepp-Logan', 'Hann', 'Hamming', 'Ramlak']
     uval_choices=['shepp', 'hann', 'hamming', 'ramlak']
@@ -912,12 +1064,29 @@ function tomo_display::init
                                                   uvalue=uval_choices, /align_center)
     ; Make the Hann filter be the default
     widget_control, self.widgets.gridrec_filter, set_droplist_select=1
+    row = widget_base(col1, /row)
+    t = widget_label(row, value='Sample Parameter: ', font=self.fonts.heading2)
+    self.widgets.gridrec_sampl_parameter = cw_field(row, title='', $
+                                        /row, xsize=10, value=2)    
+    row = widget_base(col1, /row)
+    t = widget_label(row, value = 'Padded Sinogram Width:', font = self.fonts.heading2)
+    choices = ['No Change', '1024','2048', '4096']
+    uval_choices = [0, 1024, 2048, 4096]
+    self.widgets.sino_padding = widget_droplist(row, value = choices, $
+                                                  uvalue = uval_choices, /align_center)
+    row = widget_base(col1, /row)
+    self.widgets.gridrec_add_correction = cw_bgroup(row, ['No', 'Yes'], $
+                                            label_left='Additive Correction:', row=1, $
+                                            set_value=0, /exclusive)
+    ; Make no added padding the default
+    widget_control, self.widgets.sino_padding, set_droplist_select = 0
     
     ; Make all of the base widgets the same size so they line up nicely
-    g = widget_info(recon_base, /geometry)
+    g = widget_info(c1, /geometry)
     widget_control, preprocess_base, xsize=g.xsize
-    widget_control, zinger_base, xsize=g.xsize
+    ;widget_control, zinger_base, xsize=g.xsize
     widget_control, sinogram_base, xsize=g.xsize
+    g = widget_info(c2, /geometry)
     widget_control, self.widgets.backproject_base, xsize=g.xsize
     widget_control, self.widgets.gridrec_base, xsize=g.xsize
 
@@ -947,6 +1116,7 @@ pro tomo_display__define
         processing_options: 0L, $
         main_base: 0L, $
         base_file: 0L, $
+        file_type: 0L, $
         directory: 0L, $
         volume_file: 0L, $
         status: 0L, $
@@ -956,6 +1126,8 @@ pro tomo_display__define
         last_file: 0L, $
         dark_current: 0L, $
         preprocess_go: 0L, $
+        dc_filename: 0L, $
+        dc_search: 0L, $
         reconstruct_base: 0L, $
         scale: 0L, $
         recon_slice: lonarr(2), $
@@ -989,6 +1161,7 @@ pro tomo_display__define
         zoom: 0L, $
         movie_file: 0L, $
         make_movie: 0L, $
+        flip_data: 0L, $
 
         ; These widgets are in the "options" page
         options_base: 0L, $
@@ -997,6 +1170,7 @@ pro tomo_display__define
         backproject: 0L, $
         remove_rings: 0L, $
         ring_width: 0L, $
+        normalize: 0L, $
         air_values: 0L, $
         fluorescence: 0L, $
         display_sinogram: 0L, $
@@ -1004,12 +1178,17 @@ pro tomo_display__define
         backproject_base: 0L, $
         filter_size: 0L, $
         backproject_filter: 0L, $
-        backproject_interpolation: 0L, $
+        backproject_RIEMANN_interpolation: 0L, $
+        backproject_RADON_interpolation: 0L, $
+        backproject_method: 0L, $
         white_average: 0L, $
         white_smooth: 0L, $
         gridrec_base: 0L, $
         gridrec_resize: 0L, $
-        gridrec_filter: 0L $
+        gridrec_add_correction: 0L, $
+        gridrec_filter: 0L, $
+        sino_padding: 0L, $
+        gridrec_sampl_parameter: 0L $
     }
 
     fonts = {tomo_fonts, $
