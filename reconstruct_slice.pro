@@ -1,9 +1,10 @@
 function reconstruct_slice, slice, volume, image2, noring=noring, $
                             pixel_size=pixel_size, normalize=normalize, $
                             scale=scale, back_project=back_project, $
-                            resize=resize, angles=angles, center=center, $
+                            resize=resize, padded_width = padded_width, $
+                            angles=angles, center=center, $
                             sinogram=singram, ring_width = ring_width, $
-                            _REF_EXTRA=extra
+                            add_correction=add_correction, _REF_EXTRA=extra
 
 ;+
 ; NAME:
@@ -108,11 +109,14 @@ function reconstruct_slice, slice, volume, image2, noring=noring, $
 ;                    Removed /SHEPP_LOGAN keyword in call to TOMO_FILTER, this is the default.
 ;                    Removed STOP keyword, the same result can be achieved with breakpoints.
 ;   16-AUG-2003 MLR  Made /NORMALIZE work with Gridrec, not just with /BACKPROJECT
+;   16-SEP-2010 DTC  Corrected call to BACKPROJECT to account for center
+;   23-SEP-2010 DTC  Pass RADON keyword to  use either RIEMANN or RADON function during BACKPROJECTION
 ;-
 
 time1 = systime(1)
 if (n_elements(pixel_size) eq 0) then pixel_size = 1
 if (n_elements(resize) eq 0) then resize=1
+if (n_elements(padded_width) eq 0) then padded_width = 0
 size = size(volume)
 nx = size[1]
 ny = size[2]
@@ -137,7 +141,8 @@ if (keyword_set(back_project)) then begin
     ss = tomo_filter(g, _EXTRA=extra)
     singram = ss
     time5 = systime(1)
-    r = backproject(ss, angles, _EXTRA=extra)
+    if (center ge (nx-1)/2) then ctr = center else ctr = center + 2*abs(round(center - (nx-1)/2))  
+    r = backproject(ss, angles, center=ctr, _EXTRA = extra)
     time6 = systime(1)
     if (keyword_set(normalize)) then  begin
         sum = total(s, 1)
@@ -149,7 +154,11 @@ if (keyword_set(back_project)) then begin
         print, 'Average intensity in each row of sinogram = ', mom[0], $
                                                    '+-', sqrt(mom[1])
         print, 'Normalizing scale factor = ', scale
-    endif
+    endif else begin
+        if (n_elements(scale) ne 0) then begin
+            r = r * scale
+        endif
+    endelse
     print, 'Center= ', center
     print, 'Time to compute sinogram: ', time3-time2
     print, 'Time to filter sinogram:  ', time5-time4
@@ -169,9 +178,49 @@ endif else begin
         g1 = remove_tomo_artifacts(s1, /rings, width=ring_width)
         g2 = remove_tomo_artifacts(s2, /rings, width=ring_width)
     endelse
+    
+    ; pad sinogram
+    if (padded_width ne 0) then begin
+        size = size(g1)
+        if (size[1] gt padded_width) then begin
+             t = dialog_message('Padded sinogram too small, proceed without padding')
+             padded_width = 0
+        endif else begin
+            data_temp1 = temporary(g1)
+            data_temp2 = temporary(g2)
+            g1 = fltarr(padded_width-1, size[2])
+            g2 = fltarr(padded_width-1, size[2])
+            p = (padded_width - size[1] -1)/2
+            g1[p:p+size[1]-1, *] = data_temp1
+            g2[p:p+size[1]-1, *] = data_temp2
+            center = center + p
+        endelse
+    endif
+        
     time4 = systime(1)
     ;gridrec, g1, g2, angles, r, image2, _EXTRA=extra
     gridrec, g1, g2, angles, r, image2, center=center, _EXTRA=extra
+    
+    ; crop results if sinogram was padded
+    if (padded_width ne 0 AND size[1] le padded_width) then begin
+        r = r[p:p+size[1] - 1,p:p+size[1] - 1]
+        image2 = image2[p:p+size[1] - 1, p:p+size[1] - 1]
+        center = center - p
+        if (keyword_set(add_correction)) then begin
+            print, 'Initial average of image 1= ', mean(r)
+            print, 'Initial average of image 2= ', mean(image2)
+            holder1 = mean(r)
+            holder2 = mean(image2)
+            diff1 = (total(g1)/nangles - total(r))/size[1]^2
+            r = r + diff1
+            diff2 = (total(g2)/nangles - total(image2))/size[1]^2
+            image2 = image2 + diff2
+            print, 'Normalizing scale factor 1 = ', diff1
+            print, 'Normalizing scale factor 2 = ', diff2
+            print, 'Ratios for slices 1 and 2 = ', diff1/holder1, diff2/holder2
+        endif
+    endif
+    
     if (keyword_set(resize)) then begin
         r = congrid(r, nx, nx, /interp)
         image2 = congrid(image2, nx, nx, /interp)
@@ -181,7 +230,8 @@ endif else begin
         sum2 = total(s2, 1)
         mom1 = moment(sum1)
         mom2 = moment(sum2)
-        mask = shift(dist(nx), nx/2, nx/2)
+        nx_new = (size(r))[1]
+        mask = shift(dist(nx_new), nx_new/2, nx_new/2)
         outside = where(mask gt nx/2)
         r[outside] = 0.
         image2[outside]=0.
