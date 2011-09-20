@@ -94,6 +94,8 @@
 ;           1: Prints each input filename as it is read, and prints limited
 ;              information on processing steps
 ;           2: Prints detailed information on processing steps
+;    FLIP_DATA
+;        Rotates image data 90 degrees
 ;
 ; OUTPUTS:
 ;   This function returns a 3-dimensional signed 16-bit integer volume array
@@ -221,10 +223,10 @@
 ;   24-JUN-2010 DTC Changed read_data_file to be able to process .nc files in addition to .SPE files
 ;                   Changed preprocess to be able to concatenate multiple 3-D fast and OTF scan files into a single data set 
 ;                   After dark field subtraction, added check against dividing by zero (replace all zeroes with ones?)
-;
+;   16-JUL-2011 DTC Added widget to transpose image data in the case that the camera is rotated 90 degrees
 
 pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, debug, $
-                    status_widget
+                    status_widget, flip_data
    cd, current = current
    file = base_file + strtrim(file_number, 2) + file_type
    str = 'Reading ' + file
@@ -236,6 +238,7 @@ pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, 
 
    ndims = size(data, /n_dimensions)
    if (ndims eq 2) then begin; slow scan data
+        if flip_data then data = transpose(data)
         if (file_type eq '.SPE') then begin      
             angle=float(strmid(comment[0], 6))
             type=strmid(comment[1], 5)
@@ -248,6 +251,7 @@ pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, 
               widget_control, status_widget, set_value=str
         if (debug ne 0) then print, str
    endif else if (ndims eq 3) then begin ; fast or otf scan data
+        if flip_data then data = transpose(data, [1,0,2])
         dims = size(data, /dimensions)
         n_views = dims[2]
         type = strarr(n_views)
@@ -306,7 +310,8 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
                     first_row=first_row, last_row=last_row, output=output, $
                     setup=setup, buff_angles=buff_angles, $
                     white_smooth=white_smooth, white_average=white_average, $
-                    status_widget=status_widget, abort_widget=abort_widget
+                    status_widget=status_widget, abort_widget=abort_widget, $
+                    flip_data = flip_data
 
     nfiles = stop - start + 1
     if (n_elements(debug) eq 0) then debug=1
@@ -322,7 +327,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     status = self->read_setup(setup)
 
     ; Read one file to get the dimensions
-    self->read_data_file, base_file, file_type, 1, data, type, angle, debug, status_widget
+    self->read_data_file, base_file, file_type, 1, data, type, angle, debug, status_widget, flip_data
     ndims = size(data, /n_dimensions)
     dims = size(data, /dimensions)
     ncols = dims[0]
@@ -343,7 +348,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
         image_type = strarr(nframes)
         for i=0, nframes-1 do begin
             self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-                                status_widget
+                                status_widget, flip_data
             if (subset) then begin
                 data_buff[0,0,i]=data[*,ystart:ystop]
             endif  else begin
@@ -363,48 +368,47 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
             endif
         endfor
     endif else if (ndims eq 3) then begin ; fast and otf scan data
-        nframes = dims[2]*nfiles ; initial estimate: number of frames in first file times number of files
-        total_frames = dims[2] ; keeps track of number of frames written into the file
-        data_buff = intarr(ncols, nrows, nframes, /nozero)
-        data_buff[*,*,0:total_frames-1] = data
-        image_type = strarr(nframes)
-        image_type[0:total_frames-1] = type
-        angles = fltarr(nframes,/nozero)
-        angles[0:total_frames-1] = angle
-        if (nfiles gt 1) then begin
-            for i=1, nfiles-1 do begin
+        if (nfiles eq 1) then begin
+            nframes = dims[2]
+            data_buff = temporary(data)
+            data_buff = fix(data_buff)
+            image_type = type
+            angles = angle
+        endif else begin
+            ; We have to read the data twice; once to figure out how many frames there are, and a second time
+            ; to put into the array
+            nframes = 0
+            for i=0, nfiles-1 do begin
                 self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-                                status_widget
+                                status_widget, flip_data
                 dims = size(data, /dimensions)
-                ; if the total number of frames already copied plus the number of frames in next array is greater than previous data_buff size estimate
-                if (total_frames + dims[2] gt nframes) then begin
-                  data_temp = temporary(data_buff)
-                  data_buff = intarr(ncols, nrows, total_frames+dims[2],/nozero) ; increase size of buffer
-                  data_buff[*,*,0:(size(data_temp,/dimensions))[2]-1] = data_temp ; load previous data back into buffer
-                  angles_temp = temporary(angles)
-                  angles = fltarr(total_frames+dims[2],/nozero)
-                  angles[0:size(angles_temp,/dimensions)-1] = angles_temp
-                  image_type_temp = temporary(image_type)
-                  image_type = strarr(total_frames+dims[2])
-                  image_type[0:size(image_type_temp,/dimensions)-1] = image_type_temp
-                  nframes = total_frames+dims[2] ; nframes is still the size of the data_buffer
-                endif
-                data_buff[*,*,total_frames:total_frames+dims[2]-1] = data ; load new data into buffer
-                angles[total_frames: total_frames+ dims[2]-1] = angle
-                image_type[total_frames: total_frames+ dims[2]-1] = type
-                total_frames = total_frames + dims[2]
+                nframes = nframes + dims[2]
+            endfor
+            data_buff = intarr(ncols, nrows, nframes, /nozero)
+            image_type = strarr(nframes)
+            angles = fltarr(nframes,/nozero)
+            current_frame = 0
+            for i=0, nfiles-1 do begin
+                self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
+                                status_widget, flip_data
+                dims = size(data, /dimensions)
+                data_buff[0, 0, current_frame] = data
+                data = 0
+                angles[current_frame] = angle
+                image_type[current_frame] = type
+                current_frame = current_frame + dims[2]
                 
                 if (widget_info(abort_widget, /valid_id)) then begin ; check for abort from user
-                  event = widget_event(/nowait, abort_widget)
-                  widget_control, abort_widget, get_uvalue=abort
-                  if (abort) then begin
-                  if (widget_info(status_widget, /valid_id)) then $
-                    widget_control, status_widget, set_value='Preprocessing aborted'
-                    return
-                  endif
+                    event = widget_event(/nowait, abort_widget)
+                    widget_control, abort_widget, get_uvalue=abort
+                    if (abort) then begin
+                    if (widget_info(status_widget, /valid_id)) then $
+                        widget_control, status_widget, set_value='Preprocessing aborted'
+                        return
+                    endif
                 endif
             endfor
-        endif
+        endelse
     endif
 
     ; Do dark current correction
@@ -593,6 +597,8 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     zoffset=0
     for i=0, nangles-1 do begin
         proj = reform(data_buff[*,*,data_images[i]])
+        negatives = where(proj lt 0, count)
+        if (count gt 0) then proj(negatives) = 2^15-1
         proj = remove_tomo_artifacts(proj, /zingers, threshold=threshold, $
                                 debug=debug)
         str = 'Copying projection ' + strtrim(i+1,2) + '/' + $
@@ -741,7 +747,7 @@ end
 
 pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
                               angles=angles, abort_widget=abort_widget, $
-                              status_widget=status_widget, $
+                              status_widget=status_widget, back_project=back_project, $
                               _ref_extra=extra
 
     if (n_elements(status_widget) eq 0) then status_widget = -1L
@@ -771,7 +777,7 @@ pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
         if (n_elements(center) eq 1) then cent=center
         if (n_elements(center) eq 2) then cent = $
                      center[0] + float(i) / (nrows-1) * (center[1]-center[0])
-        r = reconstruct_slice(i, vol, r2, center=cent, scale=scale, angles=angles, $
+        r = reconstruct_slice(i, vol, r2, center=cent, scale=scale, angles=angles, back_project=back_project, $
                               _extra=extra)
         if (i eq 0) then begin
             ncols = n_elements(r[*,0])
@@ -1193,7 +1199,7 @@ end
 ;-
 
 function tomo::write_setup, file
-    openw, lun, file, error=error, /get_lun
+    openw, lun, file, error=error, /get_lun, width=1024
     if (error ne 0) then return, 0
     printf, lun, 'TITLE: ', self.title
     printf, lun, 'OPERATOR: ', self.operator
@@ -1249,7 +1255,7 @@ function tomo::read_setup, file
     ncomments = 0
     comment = strarr(100)
     line = ''
-    openr, lun, file, error=error, /get_lun
+    openr, lun, file, error=error, /get_lun, width = 1024
     if (error ne 0) then return, 0
     while (not eof(lun)) do begin
         readf, lun, line
