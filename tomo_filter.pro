@@ -107,9 +107,9 @@ function tomo_filter, image, filter_size=filter_size, filter_param=d, filter_nam
         ; Pad array with data from first and last columns
         temp[0:nfilter-1] = image[0,i]
         temp[nfilter+ncols-1:ncols+2*nfilter-1] = image[ncols-1,i]
-        temp(nfilter) = image(*,i)
+        temp(nfilter) = image[*,i]
         temp = convol(temp, filter)
-        s(0,i) = temp(nfilter : nfilter+ncols-1)
+        s(0,i) = temp[nfilter : nfilter+ncols-1]
     endfor
     return, s
 end
