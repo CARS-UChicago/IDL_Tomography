@@ -1,5 +1,16 @@
 pro tomo_collect_ad::start_scan
 
+    ; check to see whether the desired filename exists or no
+    t = file_search(self.scan.filename+'1'+'*', count = count)
+    if (count ne 0) then t = dialog_message($
+        'File name already exists at that location. Overwrite data?',/default_no,/question)
+    if (t eq 'No') then begin
+        t = dialog_message('Scan canceled')
+        widget_control, self.widgets.status, set_value='Scan canceled'
+        t = caput(self.scan.camera_name + ':TC:ScanStatus', [byte('Scan canceled'),0B])
+        return
+    endif
+
     ; Get initial time and start clock widget
     self.scan.start_clock = systime(1,/seconds)
 
@@ -192,7 +203,7 @@ pro tomo_collect_ad::dark_current
             t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(''),0B])
             t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(''),0B])
 
-        endif else if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
+        endif else if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
             self.scan.ccd->setProperty,'ImageMode',0
             self.scan.ccd->setProperty,'TriggerMode',0
             self.scan.ccd->setProperty,'NumImages',dark_current_images
@@ -299,7 +310,7 @@ pro tomo_collect_ad::PrepareScan
     ; In case of OTF
     if (self.scan.fast_scan eq 2) then begin
 
-        ; send motor to initial position
+        ; remember old motor speed
         self.scan.motor_speed_old = self.scan.rotation_motor->get_slew_speed()
         widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed_old
         widget_control, self.widgets.status, set_value='Zeroing motors'
@@ -330,18 +341,6 @@ pro tomo_collect_ad::PrepareScan
             widget_control, self.widgets.flatfield_increment, set_value=self.scan.flatfield_increment
         endif
 
-        ; Set motor speed
-        biny = self.scan.ccd->getProperty('BinY', string = 0)
-        exposure = self.scan.ccd->getProperty('AcquireTime',string = 0)
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
-            self.scan.motor_speed = Min([1.0/(exposure*1.006),Min([25*biny,50])])*self.scan.rotation_step
-            ; Prosilica OTF speed calculation works for exposure times shorter than 10 seconds
-        if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then $
-            self.scan.motor_speed = self.scan.rotation_step/(exposure + 0.1/Min([biny,2]))
-
-        widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed
-        if (self.epics_pvs_valid) then self.scan.rotation_motor->SET_SLEW_SPEED, self.scan.motor_speed
-
         ; set up array to keep track of motor destinations during the OTF scan
         ptr_free, self.scan.otf_rotation_array
         otf_rotation_array_size = 2*ceil(1.0*self.scan.num_angles/(1.0*self.scan.flatfield_increment)) + 1
@@ -367,6 +366,20 @@ pro tomo_collect_ad::PrepareScan
         (*self.scan.otf_rotation_array) = (*self.scan.otf_rotation_array) - self.scan.rotation_step
         self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]
         self.scan.rotation_motor->wait
+
+        ; Set motor speed
+        biny = self.scan.ccd->getProperty('BinY', string = 0)
+        exposure = self.scan.ccd->getProperty('AcquireTime',string = 0)
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+            self.scan.motor_speed = Min([1.0/(exposure*1.006),Min([25*biny,50])])*self.scan.rotation_step
+            ; Prosilica OTF speed calculation works for exposure times shorter than 10 seconds
+        if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then $
+            self.scan.motor_speed = self.scan.rotation_step/(exposure + 0.1/Min([biny,2]))
+        motor_resolution = self.scan.rotation_motor->GET_SCALE()
+        self.scan.motor_speed = floor(abs(self.scan.motor_speed*motor_resolution))/abs(motor_resolution)
+
+        widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed
+        if (self.epics_pvs_valid) then self.scan.rotation_motor->SET_SLEW_SPEED, self.scan.motor_speed
 
         ; Write the setup file
         status = self->save_settings(self.scan.filename + '.setup')
@@ -400,8 +413,7 @@ pro tomo_collect_ad::PrepareScan
         t = caput(self.epics_pvs.otf_trigger+':ChannelAdvance',1)
 
         ; set the external prescale according to the step size, use motor resolution steps per degree (user unit)
-        motor_resolution = self.scan.rotation_motor->GET_SCALE()
-        t = caput(self.epics_pvs.otf_trigger+':Prescale', self.scan.rotation_step  * FLOOR(ABS(motor_resolution)))
+        t = caput(self.epics_pvs.otf_trigger+':Prescale', FLOOR(ABS(self.scan.rotation_step  * motor_resolution)))
 
         ; send state to FLAT_FIELD
         self->set_state, self.scan.states.FLAT_FIELD
@@ -589,8 +601,11 @@ pro tomo_collect_ad::PrepareScan
 end
 
 function tomo_collect_ad::check_beam
-    t = caget(self.epics_pvs.beam_ready, beam_ready)
-    return, beam_ready
+    t = 1
+    while (t ne 0) do begin
+        t = caget(self.epics_pvs.beam_ready, beam_ready)
+        return, beam_ready
+    endwhile
 end
 
 pro tomo_collect_ad::scanPoll
@@ -984,7 +999,7 @@ pro tomo_collect_ad::scanPoll
                     nimages = self.scan.ccd->getProperty('NumImages', string = 0)
                     biny = self.scan.ccd->getProperty('BinY', string = 0)
                     binx = self.scan.ccd->getProperty('BinX', string = 0)
-                    wait, 10.*nimages/100/biny/binx
+                    wait, 15.*nimages/100/biny/binx
 
                     ; set up next subdivision of images
                     self.scan.ccd->setProperty,'NumImages',$
@@ -996,7 +1011,7 @@ pro tomo_collect_ad::scanPoll
                     ; start camera
                     wait, 1
                     self.scan.ccd->setProperty, 'Acquire',1
-                    wait, 2.*nimages/100/biny/binx
+                    wait, 5.*nimages/100/biny/binx
                     ccd_busy1 = 0
                     ccd_busy2 = 0
                     while (~ccd_busy1 OR ~ccd_busy2) do begin
@@ -1075,13 +1090,14 @@ pro tomo_collect_ad::scanPoll
             self.scan.ccd->setProperty,'Acquire',0
             self.scan.ccd->setProperty, 'ImageMode',1
         endif else begin
-            ; set camera to trigger free run internally
-            self.scan.ccd->setProperty, 'TriggerMode', 0
-            ; set to take a fixed number of flat field measurements
-            self.scan.ccd->setProperty, 'ImageMode', 0
-            self.scan.ccd->setProperty, 'NumImages', self.scan.num_flatfields
-            ; start capturing
-
+print, 'wait for camera to be ready before flat fields' , self.scan.current_point
+            ; make sure camera is not still writing out
+            t = caget(self.scan.camera_name+':cam1:WriteFile',busy)
+            while (busy OR t ne 0) do begin
+                wait, .1
+                t = caget(self.scan.camera_name+':cam1:WriteFile',busy)
+            endwhile
+            ; make sure camera is not still acquiring
             ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
             ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
             while (ccd_busy1 OR ccd_busy2) do begin
@@ -1090,7 +1106,14 @@ pro tomo_collect_ad::scanPoll
                 ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
             endwhile
             wait,.1
-
+            ; set camera to trigger free run internally
+            self.scan.ccd->setProperty, 'TriggerMode', 0
+            ; set to take a fixed number of flat field measurements
+            self.scan.ccd->setProperty, 'ImageMode', 0
+            self.scan.ccd->setProperty, 'NumImages', self.scan.num_flatfields
+            wait, .1
+            ; start capturing
+print, 'begin capturing flat fields' , self.scan.current_point
             self.scan.ccd->setProperty, 'Acquire', 1
             wait,.1
 
@@ -1111,7 +1134,7 @@ pro tomo_collect_ad::scanPoll
                             set_value=self.scan.state_strings[self.scan.states.BEAM_WAIT]
             return
         endif
-
+print, 'save flat field images', self.scan.current_point
         ; save images and close file
         widget_control, self.widgets.status, set_value='Saving File'
         if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -1167,7 +1190,7 @@ pro tomo_collect_ad::scanPoll
             t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
             t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
             t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
-
+print, 'wait for winview to be ready', self.scan.current_point
             ; wait for winview
             nimages = self.scan.ccd->getProperty('NumImages', string = 0)
             biny = self.scan.ccd->getProperty('BinY', string = 0)
@@ -1175,7 +1198,7 @@ pro tomo_collect_ad::scanPoll
             wait, 5.*nimages/100/biny/binx
         endelse
 
-		; send OTF scan to STOP_SCAN if has finished
+       ; send OTF scan to STOP_SCAN if has finished
        if(self.scan.current_point eq n_elements((*self.scan.otf_rotation_array))-1) then begin
             ; check for when flat field measurements are finished
             ccd_busy1 = 1
@@ -1230,12 +1253,13 @@ pro tomo_collect_ad::scanPoll
         endelse
 
         ; rotate motors back by one motor step
-        self.scan.rotation_motor->move, -.001, relative = 1
+        motor_resolution = self.scan.rotation_motor->GET_SCALE()
+        self.scan.rotation_motor->move, 1./motor_resolution, relative = 1
         self.scan.rotation_motor->wait
 
         ; set number of MCS channels, camera stack size
         ; calculate number of images/struck triggers and set up camera to acquire that number
-        struck_triggers = ((*self.scan.otf_rotation_array)[self.scan.current_point]-(*self.scan.otf_rotation_array)[self.scan.current_point-1])/self.scan.rotation_step
+        struck_triggers = round(((*self.scan.otf_rotation_array)[self.scan.current_point]-(*self.scan.otf_rotation_array)[self.scan.current_point-1])/self.scan.rotation_step)
         t = caput(self.epics_pvs.otf_trigger+':NuseAll', ABS(struck_triggers))
         self.scan.ccd->setProperty, 'NumImages', ABS(struck_triggers)
         if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:NumCapture',ABS(struck_triggers))
@@ -1314,10 +1338,10 @@ pro tomo_collect_ad::scanPoll
                 set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start)/self.scan.rotation_step+1,0])),2) + $
                     '/' + strtrim(self.scan.num_angles,2)
             ; See if there is beam, reset motor, restart state machine, and exit if there is not
-            if (self->check_beam() eq 0) then begin
+            if (self->check_beam() eq 0 AND self->check_beam() eq 0) then begin
                 print, 'Check_beam failure', systime(0)
-                wait, .1
-                if (self->check_beam() eq 0) then begin
+                wait, 1.
+                if (self->check_beam() eq 0 AND self->check_beam() eq 0) then begin
                     print, 'Second check_beam failure in a row!', systime(0)
                     ; stop acquisition
                     t = caput(self.epics_pvs.otf_trigger+'.StopAll',1)
@@ -1327,10 +1351,20 @@ pro tomo_collect_ad::scanPoll
                     widget_control, self.widgets.status, set_value= 'Waiting for beam'
 
                     ; reset motor
-                    self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed_old
-                    self.scan.rotation_motor->move,(*self.scan.otf_rotation_array)[self.scan.current_point-1]
-                    self.scan.rotation_motor->wait
-                    self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
+                    t = caput(self.epics_pvs.rotation+'.SPMG',0)
+                    wait, 1
+                    if (self.scan.cancel_motor_reset) then begin
+                        wait, 1
+                        t = caput(self.epics_pvs.rotation+'.SPMG',3)
+                        self.scan.rotation_motor->set_position, (*self.scan.otf_rotation_array)[self.scan.current_point-1]
+                    endif else begin
+                        wait, .001
+                        self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed_old
+                        t = caput(self.epics_pvs.rotation+'.SPMG',3)
+                        self.scan.rotation_motor->move,(*self.scan.otf_rotation_array)[self.scan.current_point-1]
+                        self.scan.rotation_motor->wait
+                        self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
+                    endelse
 
                     ; wait for camera to be ready again
                     ccd_busy1 = 1
@@ -1354,8 +1388,8 @@ pro tomo_collect_ad::scanPoll
                         wait, .1
                         busy = 1
                         while (busy) do begin
-                        	t = caget(self.scan.camera_name+':netCDF1:Capture',busy)
-                        	wait, .1
+                            t = caget(self.scan.camera_name+':netCDF1:Capture',busy)
+                            wait, .1
                         endwhile
                         ; reset file increment count
                         t = caget(self.scan.camera_name+':netCDF1:FileNumber',file_increment_count)
@@ -1398,6 +1432,7 @@ pro tomo_collect_ad::scanPoll
         widget_control, self.widgets.status, set_value='Normal Scan Complete'
         ; stop motor
         ; send state to Normal_readout
+print, 'Send state to normal readout', self.scan.current_point
         self->set_state, self.scan.states.NORMAL_READOUT
 
     endif else if (self.scan.current_state eq self.scan.states.NORMAL_READOUT) then begin
@@ -1456,6 +1491,8 @@ pro tomo_collect_ad::scanPoll
             wait, 5.* exposure
             widget_control, self.widgets.status, set_value='Stopping run'
 
+print, 'Wait for camera to return to idle state', self.scan.current_point
+
             ; wait for camera to return to idle state
             ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
             ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
@@ -1470,30 +1507,51 @@ pro tomo_collect_ad::scanPoll
                 endif
             endwhile
             wait,.1
-
+print, 'begin saving images', self.scan.current_point
             ; save images
             widget_control, self.widgets.status, set_value='Saving data'
+            t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy); sets the monitor to 0
             t = caput(self.scan.camera_name+':cam1:WriteFile',1)
             wait, .1
-            t = caget(self.scan.camera_name+':cam1:WriteFile',busy)
-            while (busy) do begin
+            newmonitor = 0
+            while (~newmonitor) do begin ; check that the camera has begun writing out
                 wait, .01
-                t = caget(self.scan.camera_name+':cam1:WriteFile',busy)
+                newmonitor = caCheckmonitor(self.scan.camera_name+':cam1:WriteFile_RBV')
+                event = widget_event(/nowait, self.widgets.abort_scan)
+                if (event.id ne 0) then begin
+                    self->abort_scan
+                    return
+                endif
             endwhile
+print, 'WriteFile has started, wait until it ends'
+            t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy); sets the monitor to 0
+            newmonitor = 0
+            while (~newmonitor) do begin ; check that the camera has finished writing out
+                wait, .1
+                newmonitor = caCheckmonitor(self.scan.camera_name+':cam1:WriteFile_RBV')
+                event = widget_event(/nowait, self.widgets.abort_scan)
+                if (event.id ne 0) then begin
+                    self->abort_scan
+                    return
+                endif
+            endwhile
+            t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy); sets the monitor to 0
+print, newmonitor, t, busy
             ; close docfile and clear comments
             widget_control, self.widgets.status, set_value='Closing docFile'
             t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
             t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
             t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
-
+print, 'wait for winview to finish', self.scan.current_point
             ; wait for  winview
             nimages = self.scan.ccd->getProperty('NumImages', string = 0)
             biny = self.scan.ccd->getProperty('BinY', string = 0)
             binx = self.scan.ccd->getProperty('BinX', string = 0)
             wait, 5.*nimages/100/biny/binx
+            ; wait, 30
         endelse
 
-		; send OTF scan to STOP_SCAN if has finished
+       ; send OTF scan to STOP_SCAN if has finished
         if(self.scan.current_point eq n_elements((*self.scan.otf_rotation_array))-1) then begin
             ; check for when flat field measurements are finished
             ccd_busy1 = 1
@@ -1512,6 +1570,7 @@ pro tomo_collect_ad::scanPoll
         t = caput(self.epics_pvs.otf_trigger+':StopAll',1)
 
         ; send state to Flat Field
+print, 'send to flat field', self.scan.current_point
         self->set_state, self.scan.states.FLAT_FIELD
         if (self.scan.num_flatfields eq 0) then begin
              self->set_state, self.scan.states.NORMAL
@@ -1929,6 +1988,9 @@ function tomo_collect_ad::validate_epics_pvs
         t = caSetMonitor(self.epics_pvs.autoscan_sync)
         t = caSetMonitor(self.epics_pvs.autoscan_suffix)
         t = caSetMonitor(self.epics_pvs.rotation + '.VELO')
+        t = caSetmonitor(self.epics_pvs.beam_ready)
+        t = caSetmonitor(self.epics_pvs.camera_name+':cam1:WriteFile')
+        t = caSetmonitor(self.epics_pvs.camera_name+':cam1:WriteFile_RBV')
 
         ; set up PS_attributes_filename
         widget_control, self.widgets.PS_attributes_filename, sensitive = ~self.scan.camera_manufacturer
@@ -1968,7 +2030,7 @@ end
 
 
 function tomo_collect_ad::save_settings, file, all=all
-    openw, lun, file, error=error, /get_lun
+    openw, lun, file, error=error, /get_lun, width = 1024
     if (error ne 0) then return, 0
     ; Copy information from widgets
     self->copy_expinfo_from_widgets
@@ -2376,6 +2438,7 @@ pro tomo_collect_ad::event, event
     if (err ne 0) then begin
        t = dialog_message(!error_state.msg, /error)
         widget_control, self.widgets.status, set_value=!error_state.msg
+        self->stop_scan
         goto, end_event
     endif
 
@@ -2455,6 +2518,7 @@ pro tomo_collect_ad::event, event
                    ; The autoscan_sync PV has made a 0 to 1 transition so start a scan
                    status = caget(self.epics_pvs.autoscan_suffix, suffix)
                    self.scan.filename = self.scan.base_filename + '_' + suffix + '_'
+print, 'begin new file, ' , self.scan.filename
                    widget_control, self.widgets.base_file, set_value=self.scan.filename
                    self->start_scan
                endif else if (start) then begin
