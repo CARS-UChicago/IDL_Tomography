@@ -72,8 +72,8 @@ endif else if(RADON eq 1) then begin ; in case of RADON backprojection
     if (n_elements(ny) eq 0) then ny = nx
     if (n_elements(center) eq 0) then center = (nrho-1)/2.
     rhos = (findgen(nrho) - center)
-    angles = !pi*angles/180. ; convert angles to radians
-    b = radon(transpose(sinogram), /BACKPROJECT, rho = rhos, theta = angles, nx = nx, ny = ny, linear = linear)
+    rangles = !pi*angles/180. ; convert angles to radians
+    b = radon(transpose(sinogram), /BACKPROJECT, rho = rhos, theta = rangles, nx = nx, ny = ny, linear = linear)
 endif
 
 mask = shift(dist(nrho), nrho/2, nrho/2)
