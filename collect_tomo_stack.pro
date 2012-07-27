@@ -15,7 +15,7 @@ end
 
 pro collect_tomo_stack, y_start, y_step, points
 
-ystage = obj_new('epics_motor', '13BMD:m25')
+ystage = obj_new('epics_motor', '13BMD:m90')
 
 suffix = ['A', 'B', 'C', 'D', 'E', 'F', 'G',$
           'H', 'I', 'J', 'K', 'L', 'M', 'N',$
