@@ -17,6 +17,7 @@ pro optimize_rotation_center, slice, vol, center, entropy, _REF_EXTRA=extra
       ; Compute average of 2 slices if Gridrec is being used
       if (n_elements(r2) ne 0) then r = (r+r2)/2.
       h = histogram(r, min=mn, max=mx, bin=binsize) > 1
-      entropy[i] = -total(h*alog(h))/npixels
+      h = float(h) / npixels
+      entropy[i] = -total(h*alog(h))
    endfor
 end
