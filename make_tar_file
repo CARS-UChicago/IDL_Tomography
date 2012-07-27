@@ -6,17 +6,20 @@ convert_princeton_header.pro \
 correct_rotation_axis.pro \
 gcd.pro \
 get_font_name.pro \
-GridrecIDL32.dll \
-GridrecIDL64.dll \
+GSETomo_.txt \
+GridrecIDL_Win32_x86.dll \
+GridrecIDL_Win32_x86_64.dll \
 win32dll \
 win64dll \
-GridrecIDL_Linux_32bits.so \
-GridrecIDL_Linux_64bits.so \
+GridrecIDL_linux_x86.so \
+GridrecIDL_linux_x86_64.so \
 gridrec.pro \
 make_tomo_display_sav.pro \
 optimize_rotation_center.pro \
 princeton_header__define.pro \
 read_nd_netcdf.pro \
+read_2bm_hdf.pro \
+read_2bm_volume.pro \
 read_princeton.pro \
 read_tomo_data.pro \
 read_tomo_volume.pro \
@@ -33,4 +36,4 @@ tomo_display.pro \
 tomo_display.sav \
 tomo_filter.pro \
 write_tomo_volume.pro
-tar cvhf /home/epics/public_html/pub/idl_Gridrec.tar --directory /usr/local Gridrec 
+#tar cvhf /home/epics/public_html/pub/idl_Gridrec.tar --directory /usr/local Gridrec 
