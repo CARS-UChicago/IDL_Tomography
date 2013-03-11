@@ -16,6 +16,7 @@ GridrecIDL_linux_x86_64.so \
 gridrec.pro \
 make_tomo_display_sav.pro \
 optimize_rotation_center.pro \
+optimize_center.pro \
 princeton_header__define.pro \
 read_nd_netcdf.pro \
 read_2bm_hdf.pro \
@@ -35,5 +36,7 @@ tomo_display__define.pro \
 tomo_display.pro \
 tomo_display.sav \
 tomo_filter.pro \
+tomo_params__define.pro \
+tomo_recon.pro \
 write_tomo_volume.pro
 #tar cvhf /home/epics/public_html/pub/idl_Gridrec.tar --directory /usr/local Gridrec 
