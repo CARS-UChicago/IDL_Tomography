@@ -1,8 +1,38 @@
-To use Gridrec with IDL
+Displaying and Analysing GSECARS Tomography Data
+
+The IDL and ImageJ software for GSECARS tomography data is contained in this tar file:
+http://cars.uchicago.edu/software/idl/pub/idl_tomography.tar
+
+
+                               ImageJ
+
+To use ImageJ to read the netCDF .volume and recon.volume files:
+
+- Download the ImageJ netCDF plugin from:
+http://lmb.informatik.uni-freiburg.de/lmbsoft/imagej_plugins/netcdf.html
+
+Copy that NetCDF_.jar file to a location in the ImageJ/plugins folder directories,
+such as in plugins/Input-Output/
+
+- Take the GSE_tomo.txt file from the idl_tomography.tar file described above
+and place it in the ImageJ/plugins folder.
+
+
+                                IDL
+
+To use the IDL tomo_display software with an IDL license simply place the .pro files
+from the above tar file somewhere in the directories in your IDL_PATH.
+
+If you do not have an IDL license then download the IDL Virtual Machine from 
+http://www.ittvis.com/ProductsServices/IDL/IDLModules/IDLVirtualMachine.aspx
+
+You can run tomo_display.sav in the Virtual Machine.
+
+To use the Gridrec C library to reconstruct in tomo_display do the following:
 
 On Linux:
 
-- Define the environment variable GRIDREC_SHARE to point to
+- Define the environment variable GRIDREC_SHARE to point to the complete path to
 GridrecIDL_Linux_32bits.so or GridrecIDL_Linux_64bits.so depending on whether
 you are running 32 or 64 bit IDL.
 
@@ -14,10 +44,12 @@ http://www.ittvis.com/download/download_splash.asp?wdiid=1557&si=226579
 On Windows:
 - You must be running at least IDL 7.1
 
-- You must install the patch for netCDF 4.0 in IDL 7.1 available here:
+- If you are running IDL .7 1 you must install the patch for netCDF 4.0 in IDL 7.1 available here:
 http://www.ittvis.com/download/download_splash.asp?wdiid=1555&si=226579
 
-- Define the environment variable GRIDREC_SHARE to point to
+If you are running IDL 8.0 or later this step is not needed.
+
+- Define the environment variable GRIDREC_SHARE to point to the complete path to
 GridrecIDL32.dll or GridrecIDL64.dll depending on whether
 you are running 32 or 64 bit IDL.
 
