@@ -80,6 +80,9 @@ pro gridrec, S1, S2, angles, I1, I2, $
              center=center, sampl=sampl, C=C, R=R, $
              MaxPixSiz=MaxPixSiz, X0=X0, Y0=Y0, ltbl=ltbl, $
              filter_name=filter_name, geom=geom, debug=debug
+             
+    ; We use a common block just to store info through calls
+    common gridrec_common, gridrec_shareable_library
 
     image_size = 0L
     n_ang = n_elements(S1[0,*])
@@ -99,9 +102,18 @@ pro gridrec, S1, S2, angles, I1, I2, $
     if (n_elements(debug) eq 0) then verbose=1 else verbose=0
     if (n_elements(center) eq 0) then center=n_det/2.
 
-    shareable_object = getenv('GRIDREC_SHARE')
-    if (shareable_object eq '') then message, 'Gridrec shareable library not defined'
-    t = call_external(shareable_object, 'recon_init_IDL', $
+print, 'N=', n_elements(gridrec_shareable_library)
+    if (n_elements(gridrec_shareable_library) eq 0) then begin
+        gridrec_shareable_library = getenv('GRIDREC_SHARE')
+        if (gridrec_shareable_library eq "") then begin
+            file = 'GridrecIDL_' + !version.os + '_' + !version.arch
+            if (!version.os eq 'Win32') then file=file+'.dll' else file=file+'.so'
+print, 'File ', file
+            gridrec_shareable_library = file_which(file)
+        endif
+    endif
+    if (gridrec_shareable_library eq '') then message, 'Gridrec shareable library not defined'
+    t = call_external(gridrec_shareable_library, 'recon_init_IDL', $
                           long(n_ang), $
                           long(n_det), $
                           long(geom), $
@@ -119,10 +131,10 @@ pro gridrec, S1, S2, angles, I1, I2, $
 
     I1 = fltarr(image_size, image_size)
     I2 = fltarr(image_size, image_size)
-    t = call_external(shareable_object, 'do_recon_IDL', $
+    t = call_external(gridrec_shareable_library, 'do_recon_IDL', $
                           long(n_ang), $
                           long(n_det), $
-                          long(image_size), $
+                          long(image_size),$
                           float(S1), $
                           float(S2), $
                           I1, $
