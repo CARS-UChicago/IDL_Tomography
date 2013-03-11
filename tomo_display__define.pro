@@ -179,12 +179,12 @@ pro tomo_display::optimize_rotation_center, islice
     endif else begin
         widget_control, self.widgets.gridrec_resize, get_value=resize
         widget_control, self.widgets.gridrec_add_correction, get_value = add_correction
-        index = widget_info(self.widgets.gridrec_filter, /droplist_select)
+        index1 = widget_info(self.widgets.gridrec_filter, /droplist_select)
         widget_control, self.widgets.gridrec_filter, get_uvalue=choices
-        filter_name = choices[index]
-        index = widget_info(self.widgets.sino_padding, /droplist_select)
+        filter_name = choices[index1]
+        index1 = widget_info(self.widgets.sino_padding, /droplist_select)
         widget_control, self.widgets.sino_padding, get_uvalue = choices
-        padded_width = choices[index]
+        padded_width = choices[index1]
         widget_control, self.widgets.gridrec_sampl_parameter, get_value=sampl
         sampl = float(sampl[0])
     endelse
@@ -198,7 +198,7 @@ pro tomo_display::optimize_rotation_center, islice
                               back_project=backproject, noring=noring, ring_width=ring_width, $
                               air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
                               filter_name=filter_name, RADON=RADON, linear=linear, bilinear=bilinear, cubic=cubic, $
-                              resize=resize, sampl=sampl, padded_width=padded_width, $
+                              resize=resize, sampl=sampl, padded_width=padded_width, filter_name=filter_name, $
                               normalize=normalize, add_correction = add_correction
     if(padded_width eq 0) then widget_control, self.widgets.sino_padding, set_droplist_select = 0
     widget_control, self.widgets.volume_file, get_value=file
