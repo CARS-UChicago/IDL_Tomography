@@ -198,7 +198,7 @@ pro tomo_display::optimize_rotation_center, islice
                               back_project=backproject, noring=noring, ring_width=ring_width, $
                               air_values=air_values, filter_size=filter_size, fluorescence=fluorescence, $
                               filter_name=filter_name, RADON=RADON, linear=linear, bilinear=bilinear, cubic=cubic, $
-                              resize=resize, sampl=sampl, padded_width=padded_width, filter_name=filter_name, $
+                              resize=resize, sampl=sampl, padded_width=padded_width, $
                               normalize=normalize, add_correction = add_correction
     if(padded_width eq 0) then widget_control, self.widgets.sino_padding, set_droplist_select = 0
     widget_control, self.widgets.volume_file, get_value=file
