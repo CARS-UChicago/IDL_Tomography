@@ -168,7 +168,7 @@ end
 ;       The pswf (Prolated Spherical Waveform Function) parameter used by grid.c. Default=6.0
 ;   SAMPL:  
 ;       The "sampl" parameter used by grid.cpp. Default=1.0
-;   R:      
+;   ROI:      
 ;       The ROI parameter used by grid.c.  Default=1.0
 ;   MAXPIXSIZE: 
 ;       The MaxPixSize parameter used by grid.c.  Default=1.0
@@ -231,7 +231,7 @@ pro tomo_recon, input, $
                 dbgFile = dbgFile, $
                 sampl=sampl, $
                 pswfParam=pswfParam, $
-                R=R, $
+                ROI=ROI, $
                 MaxPixSiz=MaxPixSiz, $
                 X0=X0, $
                 Y0=Y0, $
@@ -244,9 +244,16 @@ pro tomo_recon, input, $
     common tomo_recon_common, tomo_recon_shareable_library
 
     s = size(input, /dimensions)
-    numPixels = s[0]
-    numSlices = s[1]
-    numProjections = s[2]
+    if (n_elements(s) eq 2) then begin
+        numPixels = s[0]
+        numSlices = 1
+        numProjections = s[1]
+    endif else begin
+        numPixels = s[0]
+        numSlices = s[1]
+        numProjections = s[2]
+    endelse
+
     if (n_elements(angles) ne 0) then begin
         if (n_elements(angles) ne numProjections) then message, 'Incorrect number of angles'
     endif else begin
@@ -291,7 +298,7 @@ pro tomo_recon, input, $
     ; *** Set default Gridrec parameters, may want to reset these based on experience **
     if (n_elements(pswfParam)  eq 0) then pswfParam = 6.0
     if (n_elements(sampl) eq 0) then sampl = 1.0
-    if (n_elements(R) eq 0) then R = 1.0
+    if (n_elements(ROI) eq 0) then ROI = 1.0
     if (n_elements(MaxPixSiz) eq 0) then MaxPixSiz = 1.0
     if (n_elements(X0) eq 0) then X0 = 0.
     if (n_elements(Y0) eq 0) then Y0 = 0.
@@ -314,7 +321,7 @@ pro tomo_recon, input, $
     tomoParams.debugFile = [byte(dbgFile), 0B]
     tomoParams.pswfParam = pswfParam
     tomoParams.sampl = sampl
-    tomoParams.R = R
+    tomoParams.R = ROI
     tomoParams.MaxPixSiz = MaxPixSiz
     tomoParams.X0 = X0
     tomoParams.Y0 = Y0
