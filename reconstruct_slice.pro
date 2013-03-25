@@ -118,10 +118,18 @@ if (n_elements(pixel_size) eq 0) then pixel_size = 1
 if (n_elements(resize) eq 0) then resize=1
 if (n_elements(padded_width) eq 0) then padded_width = 0
 size = size(volume)
-nx = size[1]
-ny = size[2]
-nangles = size[3]
-t1 = reform(volume[*,slice,*])
+if (size[0] eq 2) then begin
+    nx = size[1]
+    ny = 1
+    nangles = size[2]
+    t1 = volume[*,*]
+endif else begin
+    nx = size[1]
+    ny = size[2]
+    nangles = size[3]
+    t1 = reform(volume[*,slice,*])
+endelse
+
 ; Extract the next slice for GRIDREC
 if (slice lt ny-1) then t2 = reform(volume[*,slice+1,*]) else t2=t1
 
