@@ -181,7 +181,7 @@ if n_elements(acc_values) eq 0 then acc_values = 0
 ncols = n_elements(input(*,0))
 nrows = n_elements(input(0,*))
 ; If there are an even number of columns in the image throw out the last one
-if (ncols mod 2) eq 0 then ncols=ncols-1
+;if (ncols mod 2) eq 0 then ncols=ncols-1
 
 ; Throw out the acceleration values, convert data to floating point
 output = float(input(acc_values:ncols-acc_values-1, *))
