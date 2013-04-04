@@ -745,67 +745,84 @@ end
 ;   11-APR-2002 MLR  Fixed bug introduced on 02-APR with center
 ;-
 
-pro tomo::reconstruct_volume, base_file, center=center, scale=scale, $
+pro tomo::reconstruct_volume, tomoParams, base_file, center=center, $
                               angles=angles, abort_widget=abort_widget, $
-                              status_widget=status_widget, back_project=back_project, $
-                              _ref_extra=extra
+                              status_widget=status_widget
 
     if (n_elements(status_widget) eq 0) then status_widget = -1L
     if (n_elements(abort_widget) eq 0) then abort_widget = -1L
     status = self->read_setup(base_file+'.setup')
-    str = 'Reading volume file ...'
-    if (widget_info(status_widget, /valid_id)) then $
-        widget_control, status_widget, set_value=str
-    print, str
-    vol = self->read_volume(base_file + '.volume', _extra=extra)
-    if (n_elements(center) ne 0) then self.center = center[0]
     if (n_elements(angles) ne 0) then self.angles = ptr_new(angles)
     if (n_elements(scale) eq 0) then scale=1.e6
+    self.scale_factor = 1./tomoParams.reconScale
+    input_file = base_file + '.volume'
+    output_file = base_file + 'recon.volume'
+    center_offset = tomoParams.numPixels/2.
+    center_slope = 0.
+    if (n_elements(center) ge 1) then center_offset=center[0]
+    if (n_elements(center) eq 2) then center_slope = (center[1]-center[0])/float(tomoParams.numSlices)
+    cent = center_offset + findgen(tomoParams.numSlices)*center_slope
+    ; Use the center in the middle slice as the value written to the .setup file
+    self.center = cent[tomoParams.numSlices/2]
 
-    self.scale_factor = 1./scale
-    ; This procedure reconstructs all of the slices for a tomography data set
-    nrows = n_elements(vol[0,*,0])
-    ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
-    if (keyword_set(back_project)) then step=1 else step=2
-    for i=0, nrows-1, step do begin
-        str = 'Reconstructing slice ' + strtrim(i,2) + '/' + $
-                                        strtrim(nrows-1,2)
+    if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
+        tomo_recon_netcdf, tomoParams, input_file, output_file, $
+                center=cent, status_widget=status_widget, abort_widget=abort_widget
+    endif else begin
+        t0 = systime(1)
+        str = 'Reading volume file ...'
         if (widget_info(status_widget, /valid_id)) then $
             widget_control, status_widget, set_value=str
         print, str
-        if (n_elements(center) eq 0) then cent=-1
-        if (n_elements(center) eq 1) then cent=center
-        if (n_elements(center) eq 2) then cent = $
-                     center[0] + float(i) / (nrows-1) * (center[1]-center[0])
-        r = reconstruct_slice(i, vol, r2, center=cent, scale=scale, angles=angles, back_project=back_project, $
-                              _extra=extra)
-        if (i eq 0) then begin
-            ncols = n_elements(r[*,0])
-            recon = intarr(ncols, ncols, nrows, /nozero)
-        endif
-        recon[0,0,i] = r
-        if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
-            recon[0,0,i+1] = r2
-        endif
-        if (widget_info(abort_widget, /valid_id)) then begin
-            event = widget_event(/nowait, abort_widget)
-            widget_control, abort_widget, get_uvalue=abort
-            if (abort) then begin
-                if (widget_info(status_widget, /valid_id)) then $
-                    widget_control, status_widget, $
-                                    set_value='Reconstruction aborted.'
-                return
+        vol = self->read_volume(input_file)
+        t1 = systime(1)
+
+        ; This procedure reconstructs all of the slices for a tomography data set
+        nrows = n_elements(vol[0,*,0])
+        ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
+        for i=0, nrows-1, 2 do begin
+            str = 'Reconstructing slice ' + strtrim(i,2) + '/' + $
+                                            strtrim(nrows-1,2)
+            if (widget_info(status_widget, /valid_id)) then $
+                widget_control, status_widget, set_value=str
+            print, str
+            r = reconstruct_slice(tomoParams, i, vol, r2, center=cent[i], angles=angles)
+            if (i eq 0) then begin
+                ncols = n_elements(r[*,0])
+                recon = intarr(ncols, ncols, nrows, /nozero)
             endif
-        endif
-    endfor
-    ; If there was no input angle array copy the one that reconstruct_slice
-    ; generated back into self
-    if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
-    ; We are all done with the vol array, free it
-    vol = 0
-    if (widget_info(status_widget, /valid_id)) then $
-        widget_control, status_widget, set_value='Writing volume file ...'
-    self->write_volume, base_file + 'recon.volume', recon, /reconstructed
+            recon[0,0,i] = r
+            if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
+                recon[0,0,i+1] = r2
+            endif
+            if (widget_info(abort_widget, /valid_id)) then begin
+                event = widget_event(/nowait, abort_widget)
+                widget_control, abort_widget, get_uvalue=abort
+                if (abort) then begin
+                    if (widget_info(status_widget, /valid_id)) then $
+                        widget_control, status_widget, $
+                                        set_value='Reconstruction aborted.'
+                    return
+                endif
+            endif
+        endfor
+        ; If there was no input angle array copy the one that reconstruct_slice
+        ; generated back into self
+        if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
+        ; We are all done with the vol array, free it
+        vol = 0
+        if (widget_info(status_widget, /valid_id)) then $
+            widget_control, status_widget, set_value='Writing volume file ...'
+        t2 = systime(1)
+        self->write_volume, output_file, recon, /reconstructed
+        t3 = systime(1)
+        print, 'read_tomo_netcdf execution times:'
+        print, '              Reading input file:', t1-t0
+        print, '                  Reconstructing:', t2-t1
+        print, '             Writing output file:', t3-t2
+        print, '                           Total:', t3-t0
+    endelse
+    
     status = self->write_setup(base_file + '.setup')
     if (widget_info(status_widget, /valid_id)) then $
         widget_control, status_widget, set_value='Reconstruction complete.'
@@ -1090,29 +1107,29 @@ ignore_error:
         endelse
     endif else begin
         ; This is a netCDF file
-        ; Clear any existing information
-        self->clear_setup
         ; Process the global attributes
         status = ncdf_inquire(file_id)
         for i=0, status.ngatts-1 do begin
             name = ncdf_attname(file_id, /global, i)
             ncdf_attget, file_id, /global, name, value
             case name of
-                'title':        self.title =        strtrim(value,2)
-                'operator':     self.operator =     strtrim(value,2)
-                'camera':       self.camera =       strtrim(value,2)
-                'sample':       self.sample =       strtrim(value,2)
+; We rely on the .setup file for all information that is available there.
+;                'title':        self.title =        strtrim(value,2)
+;                'operator':     self.operator =     strtrim(value,2)
+;                'camera':       self.camera =       strtrim(value,2)
+;                'sample':       self.sample =       strtrim(value,2)
                 'image_type':   self.image_type =   strtrim(value,2)
-                'energy':       self.energy =       value
-                'dark_current': self.dark_current = value
-                'center':       self.center =       value
-                'x_pixel_size': self.x_pixel_size = value
-                'y_pixel_size': self.y_pixel_size = value
-                'z_pixel_size': self.z_pixel_size = value
+;                'energy':       self.energy =       value
+;                'dark_current': self.dark_current = value
+;                'center':       self.center =       value
+;                'x_pixel_size': self.x_pixel_size = value
+;                'y_pixel_size': self.y_pixel_size = value
+;                'z_pixel_size': self.z_pixel_size = value
                 'angles':       begin
                                     ptr_free, self.angles
                                     self.angles = ptr_new(value)
                                 end
+                else:
             endcase
         endfor
         ; Get the variable id
