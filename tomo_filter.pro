@@ -90,6 +90,7 @@ function tomo_filter, image, filter_size=filter_size, filter_param=d, filter_nam
     x = findgen(nfilter)-filter_size
     if (n_elements(d) eq 0) then d=1.0
     if (n_elements(filter_name) eq 0) then filter_name = 'SHEPP_LOGAN'
+    if (strlen(filter_name) eq 0) then filter_name = 'SHEPP_LOGAN'
     case strupcase(filter_name) of
         'GEN_HAMMING': filter = gen_hamming(x, d)
         'LP_COSINE':   filter = lp_cosine(x, d)
