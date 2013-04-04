@@ -18,7 +18,7 @@
 ;   Tomography data processing
 ;
 ; CALLING SEQUENCE:
-;   GRIDREC, Sinogram1, Sinogram2, Angles, Image1, Image2
+;   GRIDREC, tomoParams, Sinogram1, Sinogram2, Angles, Image1, Image2
 ;
 ; INPUTS:
 ;   Sinogram1:
@@ -32,21 +32,6 @@
 ; KEYWORD PARAMETERS:
 ;   CENTER: The column containing the rotation axis.  The default is the center
 ;           of the sinogram.
-;   SAMPL:  The "sampl" parameter used by grid.c.  Meaning not certain.  Default=1.2
-;   C:      The "C" parameter used by grid.c.  Meaning not certain.  Default=6.0
-;   R:      The "R" parameter used by grid.c.  Meaning not certain.  Default=1.0
-;   MAXPIXSIZE: The "MaxPixSize" parameter used by grid.c.  Meaning not certain.  
-;               Default=1.0
-;   X0:     The "X0" parameter used by grid.c.  Meaning not certain.  Default=0.0
-;   Y0:     The "Y0" parameter used by grid.c.  Meaning not certain.  Default=0.0
-;   LTBL:   The "ltbl" parameter used by grid.c.  Meaning not certain.  Default=512.
-;   FILTER_NAME: The "filter" parameter used by grid.c.  Character string. Default="shepp".
-;   GEOM:   The "geom" parameter used by grid.c.
-;               0 = The actual angles in degrees are passed to grid.c.  This is the
-;                   default.
-;               1 = Assume angles go from 0 to 180-delta, evenly spaced
-;               1 = Assume angles go from 0 to 360-delta, evenly spaced
-;   DEBUG:  Set this flag to enable debugging printing from the C code.
 ;
 ; OUTPUTS:
 ;   Image1:
@@ -76,11 +61,9 @@
 ;                   documentation header.
 ;-
 
-pro gridrec, S1, S2, angles, I1, I2, $
-             center=center, sampl=sampl, C=C, R=R, $
-             MaxPixSiz=MaxPixSiz, X0=X0, Y0=Y0, ltbl=ltbl, $
-             filter_name=filter_name, geom=geom, debug=debug
-             
+pro gridrec, tomoParams, S1, S2, angles, I1, I2, $
+             center=center
+
     ; We use a common block just to store info through calls
     common gridrec_common, gridrec_shareable_library
 
@@ -89,26 +72,13 @@ pro gridrec, S1, S2, angles, I1, I2, $
     n_det = n_elements(S1[*,0])
     if (n_elements(angles) ne n_ang) then message, 'Incorrect number of angles'
 
-    ; *** Set default values, may want to reset these based on experience **
-    if (n_elements(C)  eq 0) then C = 6.0
-    if (n_elements(sampl) eq 0) then sampl = 1.2
-    if (n_elements(R) eq 0) then R = 1.0
-    if (n_elements(MaxPixSiz) eq 0) then MaxPixSiz = 1.0
-    if (n_elements(X0) eq 0) then X0 = 0.
-    if (n_elements(Y0) eq 0) then Y0 = 0.
-    if (n_elements(ltbl) eq 0) then ltbl=512
-    if (n_elements(filter_name) eq 0) then filter_name="shepp"
-    if (n_elements(geom) eq 0) then geom=0
-    if (n_elements(debug) eq 0) then verbose=1 else verbose=0
     if (n_elements(center) eq 0) then center=n_det/2.
 
-print, 'N=', n_elements(gridrec_shareable_library)
     if (n_elements(gridrec_shareable_library) eq 0) then begin
         gridrec_shareable_library = getenv('GRIDREC_SHARE')
         if (gridrec_shareable_library eq "") then begin
             file = 'GridrecIDL_' + !version.os + '_' + !version.arch
             if (!version.os eq 'Win32') then file=file+'.dll' else file=file+'.so'
-print, 'File ', file
             gridrec_shareable_library = file_which(file)
         endif
     endif
@@ -116,17 +86,17 @@ print, 'File ', file
     t = call_external(gridrec_shareable_library, 'recon_init_IDL', $
                           long(n_ang), $
                           long(n_det), $
-                          long(geom), $
+                          tomoParams.geom, $
                           float(angles), $
                           float(center), $
-                          float(C), $
-                          float(sampl), $
-                          float(R), $
-                          float(MaxPixSiz), $
-                          float(X0), $
-                          float(Y0), $
-                          long(ltbl), $
-                          [byte(filter_name), 0B], $
+                          tomoParams.pswfParam, $
+                          tomoParams.sampl, $
+                          tomoParams.ROI, $
+                          tomoParams.MaxPixSize, $
+                          tomoParams.X0, $
+                          tomoParams.Y0, $
+                          tomoParams.ltbl, $
+                          tomoParams.GR_filterName, $
                           image_size)
 
     I1 = fltarr(image_size, image_size)
