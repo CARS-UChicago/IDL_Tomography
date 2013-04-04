@@ -1,5 +1,4 @@
-function backproject, sinogram, angles, center = center, RADON = RADON, $
-                      linear = linear, bilinear=bilinear, cubic=cubic
+function backproject, tomoParams, sinogram, angles, center = center
 
 ;+
 ; NAME:
@@ -12,7 +11,7 @@ function backproject, sinogram, angles, center = center, RADON = RADON, $
 ;   Tomography data processing
 ;
 ; CALLING SEQUENCE:
-;   Result = BACKPROJECT(Sinogram, Angles)
+;   Result = BACKPROJECT(tomoParams, Sinogram, Angles)
 ;
 ; INPUTS:
 ;   Sinogram:
@@ -22,16 +21,8 @@ function backproject, sinogram, angles, center = center, RADON = RADON, $
 ;       An array of dimensions NANGLES which contains the angle in degrees of 
 ;       each projection.
 ;
-; KEYWORD PARAMETERS:
-;   This function accepts the BILINEAR and CUBIC keywords accepted by the 
-;   IDL RIEMANN procedure.
-;
 ; OUTPUTS:
 ;   This function returns the reconstructed image.
-;
-; RESTRICTIONS:
-;   This function does not yet properly scale the result.  This will be fixed 
-;   in the near future.
 ;
 ; PROCEDURE:
 ;   This function simply calls the IDL RIEMANN procedure for each row in the 
@@ -43,37 +34,28 @@ function backproject, sinogram, angles, center = center, RADON = RADON, $
 ;
 ; MODIFICATION HISTORY:
 ;   Written by:     Mark Rivers, May 13, 1998
-;   21-APR-1999 MLR Changed function to use keyword inheritance (_EXTRA) rather
-;                   than hardcoding the BINLINEAR and CUBIC keywords
-;   18-MAY-1999 MLR Changed function back to hardcoding the BINLINEAR and 
-;                   CUBIC keywords, because the CENTER keyword was causing
-;                   problems with keyword inheritance when called from
-;                   RECONSTRUCT_SLICE, since CENTER is also used by SINOGRAM.
-;   20-FEB-2000 MLR Set all pixels outside reconstructed area to 0.
-;   19-APR-2001 MLR Change units of ANGLES from radians to degrees
-;   16-SEP-2010 DTC Added CENTER keyword
-;   07-OCT-2010 DTC Added option for user to reconstruct with RADON backprojection
 ;-
 
-nrho = n_elements(sinogram[*,0])
-nangles = n_elements(sinogram[0,*])
-if (n_elements(RADON) eq 0) then radon = 0
+nrho = tomoParams.numPixels
+nangles = tomoParams.numProjections
 
-if (RADON eq 0) then begin ; in case of RIEMANN backprojection
+if (tomoParams.BP_Method eq tomoParams.BP_MethodRiemann) then begin ; in case of Riemann backprojection
     b = fltarr(nrho, nrho)      ;Initial reconstructed image.
-    if n_elements(center) then ctr = center ;;;;;
+    if n_elements(center) then ctr = center
     for i=0,nangles-1 do begin
             riemann, sinogram, b, angles[i]*!dtor, row=i, /backproject, $
-                             center=ctr, bilinear=bilinear, cubic=cubic
+                     center=ctr, $
+                     bilinear=(tomoParams.RiemannInterpolation eq tomoParams.RiemannInterpolationBilinear), $
+                     cubic=(tomoParams.RiemannInterpolation eq tomoParams.RiemannInterpolationCubic)
     endfor
-    b = b*!pi/(1.*nangles)
-endif else if(RADON eq 1) then begin ; in case of RADON backprojection
-    if (n_elements(nx) eq 0) then nx = nrho
-    if (n_elements(ny) eq 0) then ny = nx
+    b = b*!pi/nangles
+
+endif else if(tomoParams.BP_Method eq tomoParams.BP_MethodRadon) then begin ; in case of Radon backprojection
     if (n_elements(center) eq 0) then center = (nrho-1)/2.
     rhos = (findgen(nrho) - center)
-    rangles = !pi*angles/180. ; convert angles to radians
-    b = radon(transpose(sinogram), /BACKPROJECT, rho = rhos, theta = rangles, nx = nx, ny = ny, linear = linear)
+    rangles = angles*!dtor ; convert angles to radians
+    b = radon(transpose(sinogram), /backproject, rho=rhos, theta=rangles, nx=nrho, ny=nrho, $
+                        linear=(tomoParams.RadonInterpolation eq tomoParams.RadonInterpolationLinear))
 endif
 
 mask = shift(dist(nrho), nrho/2, nrho/2)
