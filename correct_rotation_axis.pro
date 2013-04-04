@@ -7,13 +7,18 @@
 ;    - The calculation is only done for slices in which the maximum error in the fit is less
 ;      than max_error pixels (default=10).
 
-pro correct_rotation_axis, infile, outfile, air_values=air_values, max_error=max_error
+pro correct_rotation_axis, infile, outfile, airPixels=airPixels, max_error=max_error
 
    if (n_elements(max_error) eq 0) then max_error = 10
-   if (n_elements(air_values) eq 0) then air_values = 10
+   if (n_elements(airPixels) eq 0) then airPixels = 10
 
    print, 'Reading volume file ', infile
    vol = read_tomo_volume(infile)
+   
+   tomoParams = {tomo_params}
+   tomoParams = tomo_params_init(tomoParams, vol)
+   tomoParams.airPixels = airPixels
+   
    s = size(vol, /dimensions)
    nx = s[0]
    ny = s[1]
@@ -26,7 +31,7 @@ pro correct_rotation_axis, infile, outfile, air_values=air_values, max_error=max
    print, 'Determining rotation errors'
    for i=0, ny-1 do begin
       slice = reform(vol[*,i,*])
-      s = sinogram(slice, angles, cog=cog, air_values=air_values)
+      s = sinogram(tomoParams, slice, angles, cog=cog)
       x = findgen(nangles)
       y = reform(cog[*,0])
       yfit = reform(cog[*,1])
