@@ -200,15 +200,7 @@ pro tomo_recon, tomoParams, $
         centerArr = float(center)
     endelse    
 
-    if (n_elements(tomo_recon_shareable_library) eq 0) then begin
-        tomo_recon_shareable_library = getenv('TOMO_RECON_SHARE')
-        if (tomo_recon_shareable_library eq "") then begin
-            file = 'tomoRecon_' + !version.os + '_' + !version.arch
-            if (!version.os eq 'Win32') then file=file+'.dll' else file=file+'.so'
-            tomo_recon_shareable_library = file_which(file)
-        endif
-    endif
-    if (tomo_recon_shareable_library eq '') then message, 'tomoRecon shareable library not defined'
+    locate_tomo_recon_shareable_library
     if (create) then begin
         t = call_external(tomo_recon_shareable_library, 'tomoReconCreateIDL', $
                       tomoParams, $
