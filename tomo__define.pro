@@ -767,7 +767,7 @@ pro tomo::reconstruct_volume, tomoParams, base_file, center=center, $
 
     if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
         tomo_recon_netcdf, tomoParams, input_file, output_file, $
-                center=cent, status_widget=status_widget, abort_widget=abort_widget
+                angles=angles, center=cent, status_widget=status_widget, abort_widget=abort_widget
     endif else begin
         t0 = systime(1)
         str = 'Reading volume file ...'
@@ -1184,6 +1184,18 @@ ignore_error:
     return, volume
 end
 
+function tomo::get_angles
+    if (ptr_valid(self.angles)) then begin
+        return, *self.angles
+    endif else begin
+        return, 0
+    endelse
+end
+
+pro tomo::set_angles, angles
+    ptr_free, self.angles
+    self.angles = ptr_new(angles)
+end
 
 
 ;+
