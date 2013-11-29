@@ -17,6 +17,7 @@ pro tomo_display::set_tomo_params
     index = widget_info(self.widgets.sino_padding, /droplist_select)
     widget_control, self.widgets.sino_padding, get_uvalue=choices
     paddedSinogramWidth = choices[index]
+    widget_control, self.widgets.paddingAverage, get_value=paddingAverage
     widget_control, self.widgets.gridrec_sampl_parameter, get_value=sampl
     widget_control, self.widgets.numThreads, get_value=numThreads
     widget_control, self.widgets.slicesPerChunk, get_value=slicesPerChunk
@@ -25,6 +26,7 @@ pro tomo_display::set_tomo_params
             sinoScale = 0.0001, $
             reconScale = reconScale, $
             paddedSinogramWidth=paddedSinogramWidth, $
+            paddingAverage=paddingAverage, $
             airPixels = airPixels, $
             ringWidth = ringWidth, $
             fluorescence = fluorescence, $
@@ -94,7 +96,9 @@ pro tomo_display::reconstruct, islice
         widget_control, self.widgets.rotation_center[islice], get_value=center
         widget_control, self.widgets.recon_slice[islice], get_value=slice
         slice = slice < (self.ny-1)
-        r = reconstruct_slice(self.tomoParams, slice, *self.pvolume, center=center, sinogram=sinogram, cog=cog)
+        angles=*self.setup.angles
+        r = reconstruct_slice(self.tomoParams, angles=angles, slice, *self.pvolume, $
+                              center=center, sinogram=sinogram, cog=cog)
         ; If reconstruction was with backproject, rotate image so it is the same
         ; orientation as with gridrec
         if (self.tomoParams.reconMethod eq self.tomoParams.reconMethodBackproject) then r = rotate(r, 4)
@@ -154,8 +158,9 @@ pro tomo_display::reconstruct, islice
         center0 = coeffs[0]
         center1 = coeffs[0] + coeffs[1]*(self.ny-1)
         center = [center0, center1]
+        angles = *self.setup.angles
         self.ptomo->reconstruct_volume, self.tomoParams, base_file, $
-                              center=center, $
+                              angles=angles, center=center, $
                               abort_widget=self.widgets.abort, $
                               status_widget=self.widgets.status
     endelse
@@ -361,6 +366,9 @@ pro tomo_display::options_event, event
             ; Nothing to do
         end
         self.widgets.sino_padding: begin
+            ; Nothing to do
+        end
+        self.widgets.paddingAverage: begin
             ; Nothing to do
         end
         else:  t = dialog_message('Unknown event')
@@ -1078,6 +1086,10 @@ function tomo_display::init
     ; Make auto padding the default
     widget_control, self.widgets.sino_padding, set_droplist_select = 0
 
+    row = widget_base(col1, /row)
+    self.widgets.paddingAverage = cw_field(row, title='Pixels to average for padding (0=pad with 0.0)', /integer, $
+                                        /column, xsize=10, value=10)
+    row = widget_base(col1, /row)
     t = widget_label(col1, value='tomoRecon', font=self.fonts.heading2)
     row = widget_base(col1, /row)
     self.widgets.numThreads = cw_field(row, title='Number of of threads', /integer, $
@@ -1191,6 +1203,7 @@ pro tomo_display__define
         gridrec_base: 0L, $
         gridrec_filter: 0L, $
         sino_padding: 0L, $
+        paddingAverage: 0L, $
         gridrec_sampl_parameter: 0L, $
         numThreads: 0L, $
         slicesPerChunk: 0L $
