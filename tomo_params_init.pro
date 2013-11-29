@@ -16,6 +16,7 @@ function tomo_params_init, volume, $
             sinoScale = sinoScale, $
             reconScale = reconScale, $
             paddedSinogramWidth=paddedSinogramWidth, $
+            paddingAverage=paddingAverage, $
             airPixels = airPixels, $
             ringWidth = ringWidth, $
             fluorescence = fluorescence, $
@@ -67,6 +68,9 @@ function tomo_params_init, volume, $
     endif
     tp.paddedSinogramWidth = paddedSinogramWidth
     
+    if (n_elements(paddingAverage) eq 0) then paddingAverage = 10
+    tp.paddingAverage = paddingAverage
+
     if (n_elements(airPixels) eq 0) then airPixels = 10
     tp.airPixels = airPixels
 
