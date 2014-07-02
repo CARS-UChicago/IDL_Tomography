@@ -29,8 +29,10 @@ pro tomo_collect_ad::start_scan
     endelse
 
     ; set filename format
-    if(self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:FileTemplate',[byte('%s%s%d.nc'),0B])
-    if(self.scan.camera_manufacturer eq self.camera_types.ROPER)     then t = caput(self.scan.camera_name+':cam1:FileTemplate',[byte('%s%s%d.SPE'),0B])
+    if(self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $ 
+        t = caput(self.scan.camera_name+':netCDF1:FileTemplate',[byte('%s%s%d.nc'),0B])
+    if(self.scan.camera_manufacturer eq self.camera_types.ROPER) then $
+        t = caput(self.scan.camera_name+':cam1:FileTemplate',[byte('%s%s%d.SPE'),0B])
 
     ; need to acquire a single image to get image dimensions
     if(self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -56,9 +58,9 @@ pro tomo_collect_ad::start_scan
         t = caput(self.scan.camera_name+':cam1:AutoSave',0)
     endif
     ; set to capture one image
-    self.scan.ccd->setProperty,'ImageMode',0
-    self.scan.ccd->setProperty,'TriggerMode',0
-    self.scan.ccd->setProperty,'NumImages',1
+    self.scan.ccd->setProperty, 'ImageMode',0
+    self.scan.ccd->setProperty, 'TriggerMode',0
+    self.scan.ccd->setProperty, 'NumImages',1
     self.scan.ccd->setProperty, 'Acquire',1
     wait, .1
     ; wait for capturing to finish
@@ -89,15 +91,18 @@ pro tomo_collect_ad::start_scan
         widget_control, self.widgets.status, set_value='Measuring Dark Current'
         ; Initialize Dark current interruption widgets
         ; dark_current_widget1
-        self.dc_widgets.base_1 = WIDGET_BASE(/COLUMN,/TLB_KILL_REQUEST_EVENTS, title = 'Dark Current Measurements',scr_xsize = 500)
+        self.dc_widgets.base_1 = WIDGET_BASE(/COLUMN,/TLB_KILL_REQUEST_EVENTS, $
+            title = 'Dark Current Measurements',scr_xsize = 500)
         text = widget_label(self.dc_widgets.base_1, value = 'Close the beam shutter before proceeding')
-        self.dc_widgets.proceed = WIDGET_BUTTON(self.dc_widgets.base_1, value='Proceed with dark current measurements')
+        self.dc_widgets.proceed = WIDGET_BUTTON(self.dc_widgets.base_1, $
+            value='Proceed with dark current measurements')
         self.dc_widgets.cancel  = WIDGET_BUTTON(self.dc_widgets.base_1, value='Cancel')
         WIDGET_CONTROL, self.dc_widgets.base_1, /REALIZE, map=0
         widget_control, self.dc_widgets.base_1, set_uvalue=self
         XMANAGER, 'dc_widgets', self.dc_widgets.base_1, /no_block
         ; dark_current_widget2
-        self.dc_widgets.base_2 = widget_base(/column,/TLB_KILL_REQUEST_EVENTS, title = 'Dark Current Measurements', scr_xsize = 500)
+        self.dc_widgets.base_2 = widget_base(/column,/TLB_KILL_REQUEST_EVENTS, $
+            title = 'Dark Current Measurements', scr_xsize = 500)
         text =     widget_label(self.dc_widgets.base_2, value = 'Reopen the beam shutter before proceeding')
         self.dc_widgets.finished = widget_button(self.dc_widgets.base_2,value = 'Proceed', uvalue = 'Finished')
         widget_control, self.dc_widgets.base_2, /REALIZE, map=0
@@ -251,7 +256,8 @@ pro tomo_collect_ad::dark_current
 
         self.scan.dc_state = 2 ; send dark current measurement to next interruption
 
-    endif else if (self.scan.dc_state eq 2) then begin ; after dark current measurements, open second interruption widget before continuing
+    endif else if (self.scan.dc_state eq 2) then begin 
+        ; after dark current measurements, open second interruption widget before continuing
         widget_control, self.dc_widgets.base_1, map=0 ; unmap interruption widget 1
         widget_control, self.dc_widgets.base_2, map=1  ; map interruption widget 2
         self.scan.dc_state = 4 ;send dark current to polling state, wait until user selects an input
@@ -283,7 +289,8 @@ pro tomo_collect_ad::PrepareScan
     ; turn off capturing
     self.scan.ccd->setProperty,'ImageMode',0
     self.scan.ccd->setProperty,'TriggerMode',1
-    if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
+    if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+        t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
 
     widget_control, self.widgets.scan_point, set_value=''
 
@@ -347,9 +354,15 @@ pro tomo_collect_ad::PrepareScan
         self.scan.otf_rotation_array = ptr_new(fltarr(otf_rotation_array_size))
         (*self.scan.otf_rotation_array)[0] = self.scan.rotation_start
         for i = 1, otf_rotation_array_size-1 do begin
-            if (fix(i/2.) ne i/2.) then (*self.scan.otf_rotation_array)[i] = (i+1)/2.*self.scan.flatfield_increment * self.scan.rotation_step + self.scan.rotation_start
-            if (fix(i/2.) eq i/2.) then (*self.scan.otf_rotation_array)[i] = i/2.*self.scan.flatfield_increment * self.scan.rotation_step + self.scan.rotation_start
-            if ((*self.scan.otf_rotation_array)[i] gt self.scan.rotation_stop) then (*self.scan.otf_rotation_array)[i] = self.scan.num_angles * self.scan.rotation_step + self.scan.rotation_start
+            if (fix(i/2.) ne i/2.) then $
+                (*self.scan.otf_rotation_array)[i] = (i+1)/2.*self.scan.flatfield_increment * $
+                                                     self.scan.rotation_step + self.scan.rotation_start
+            if (fix(i/2.) eq i/2.) then $
+                (*self.scan.otf_rotation_array)[i] = i/2.*self.scan.flatfield_increment * $
+                                                     self.scan.rotation_step + self.scan.rotation_start
+            if ((*self.scan.otf_rotation_array)[i] gt self.scan.rotation_stop) then $
+                (*self.scan.otf_rotation_array)[i] = $
+                    self.scan.num_angles * self.scan.rotation_step + self.scan.rotation_start
         endfor
         ; if the number of flat fields is 0, change the path of the OTF code to skip all flat field collections
         if(self.scan.num_flatfields eq 0) then begin
@@ -358,8 +371,11 @@ pro tomo_collect_ad::PrepareScan
             self.scan.otf_rotation_array = ptr_new(fltarr(otf_rotation_array_size))
             (*self.scan.otf_rotation_array)[0] = self.scan.rotation_start
             for i = 1, otf_rotation_array_size - 1 do begin
-                (*self.scan.otf_rotation_array)[i] = i*self.scan.flatfield_increment * self.scan.rotation_step + self.scan.rotation_start
-                if ((*self.scan.otf_rotation_array)[i] gt self.scan.rotation_stop) then (*self.scan.otf_rotation_array)[i] = self.scan.num_angles * self.scan.rotation_step + self.scan.rotation_start
+                (*self.scan.otf_rotation_array)[i] = $
+                    i*self.scan.flatfield_increment * self.scan.rotation_step + self.scan.rotation_start
+                if ((*self.scan.otf_rotation_array)[i] gt self.scan.rotation_stop) then $
+                    (*self.scan.otf_rotation_array)[i] = $
+                        self.scan.num_angles * self.scan.rotation_step + self.scan.rotation_start
             endfor
         endif
         ; move the motor into the initial position
@@ -387,7 +403,8 @@ pro tomo_collect_ad::PrepareScan
         ; set filename
         if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
             t = caput(self.scan.camera_name+':netCDF1:FileName',$
-                [byte((strsplit(self.scan.filename,'\',/extract))[n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
+                [byte((strsplit(self.scan.filename,'\',/extract))$
+                [n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
             if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
                     t = caput(self.scan.camera_name+':netCDF1:FilePath',$
                         [byte(strjoin( (strsplit(self.scan.filename,'\',/extract))$
@@ -395,7 +412,8 @@ pro tomo_collect_ad::PrepareScan
             wait, .01
         endif else begin
             t = caput(self.scan.camera_name+':cam1:FileName',$
-                [byte((strsplit(self.scan.filename,'\',/extract))[n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
+                [byte((strsplit(self.scan.filename,'\',/extract))$
+                [n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
             if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
                      t = caput(self.scan.camera_name+':cam1:FilePath',$
                         [byte(strjoin( (strsplit(self.scan.filename,'\',/extract)) $
@@ -404,7 +422,8 @@ pro tomo_collect_ad::PrepareScan
         endelse
 
         ; set capture mode to stream capture
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',2)
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+            t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',2)
 
         widget_control, self.widgets.scan_point, $
             set_value=strtrim(0,2) + '/' + strtrim(self.scan.num_angles,2)
@@ -508,7 +527,8 @@ pro tomo_collect_ad::PrepareScan
             ; create array of stopping points for the fast scan subdivisions
             for i = 0, sub_array_size -1 do begin
                 (*self.scan.sub_stop_array)[i] = i*self.scan.sub_size
-                if (i*self.scan.sub_size ge self.scan.num_points) then (*self.scan.sub_stop_array)[i] = self.scan.num_points
+                if (i*self.scan.sub_size ge self.scan.num_points) then $
+                    (*self.scan.sub_stop_array)[i] = self.scan.num_points
             endfor
             self.scan.sub_index = 1
         endif
@@ -526,7 +546,8 @@ pro tomo_collect_ad::PrepareScan
         ; set filename
         if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
             t = caput(self.scan.camera_name+':netCDF1:FileName',$
-                [byte((strsplit(self.scan.filename,'\',/extract))[n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
+                [byte((strsplit(self.scan.filename,'\',/extract))$
+                [n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
             if(n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
                     t = caput(self.scan.camera_name+':netCDF1:FilePath',$
                         [byte(strjoin( (strsplit(self.scan.filename,'\',/extract))$
@@ -534,7 +555,8 @@ pro tomo_collect_ad::PrepareScan
             wait, .01
         endif else begin
             t = caput(self.scan.camera_name+':cam1:FileName',$
-                [byte((strsplit(self.scan.filename,'\',/extract))[n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
+                [byte((strsplit(self.scan.filename,'\',/extract)) $
+                [n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
             if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
                      t = caput(self.scan.camera_name+':cam1:FilePath',$
                         [byte(strjoin( (strsplit(self.scan.filename,'\',/extract)) $
@@ -589,7 +611,8 @@ pro tomo_collect_ad::PrepareScan
             t = caput(self.scan.camera_name+':netCDF1:AutoSave',1)
         endif
     endif else if (self.scan.fast_scan eq 2) then begin
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',2)
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+            t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',2)
     endif
 
     ; reset widgets to the start
@@ -625,11 +648,13 @@ pro tomo_collect_ad::scanPoll
             return
         endif
 
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',1)
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+            t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',1)
         if (self.scan.fast_scan eq 1) then begin
             ; If first point in the fast scan then start acquisition
             if (self.scan.current_point eq 0) then begin
-                if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:Capture',1) $
+                if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+                    t = caput(self.scan.camera_name+':netCDF1:Capture',1) $
                 else begin
                     t = caput(self.epics_pvs.external_trigger, 1)
                     ; Turn on the detector
@@ -683,13 +708,17 @@ pro tomo_collect_ad::scanPoll
             if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
                 ; record Prosilica comments at the start of each fast scan
                 if (self.scan.current_point eq (*self.scan.sub_stop_array)[self.scan.sub_index-1]) then begin
-                    ; Record the start angle, angle step, and image indexes corresponding to the flat fields in the data file
-                    comment1 = 'Start Angle=' + strtrim((*self.scan.rotation_array)[(*self.scan.sub_stop_array)[self.scan.sub_index-1]], 2)
+                    ; Record the start angle, angle step, and image indexes corresponding 
+                    ; to the flat fields in the data file
+                    comment1 = 'Start Angle=' + $
+                        strtrim((*self.scan.rotation_array)[(*self.scan.sub_stop_array)[self.scan.sub_index-1]], 2)
                     comment2 = 'Angle Step=' + strtrim(self.scan.rotation_step, 2)
                     comment3 = 'Flat Fields='
-                    for i=(*self.scan.sub_stop_array)[self.scan.sub_index-1], (*self.scan.sub_stop_array)[self.scan.sub_index]-1 do begin
+                    for i=(*self.scan.sub_stop_array)[self.scan.sub_index-1], $
+                          (*self.scan.sub_stop_array)[self.scan.sub_index]-1 do begin
                         if ((*self.scan.image_type_array)[i] eq self.scan.flatfield) then begin
-                            comment3 = comment3 + strtrim(fix(i-(*self.scan.sub_stop_array)[self.scan.sub_index-1]),2) + ' '
+                            comment3 = comment3 + $
+                                strtrim(fix(i-(*self.scan.sub_stop_array)[self.scan.sub_index-1]),2) + ' '
                         endif
                     endfor
                     ; use TIFF plugin text boxes as place holders for comments writing
@@ -825,7 +854,8 @@ pro tomo_collect_ad::scanPoll
                 t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(''),0B])
                    t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(''),0B])
             endif else begin
-                ; Save slow scan image: wait for detector to be idle, write file, wait for detector to be idle again
+                ; Save slow scan image: wait for detector to be idle, write file, 
+                ; wait for detector to be idle again
                 ccd_busy1 = 1
                 ccd_busy2 = 1
                 while (ccd_busy1 OR ccd_busy2) do begin
@@ -878,7 +908,8 @@ pro tomo_collect_ad::scanPoll
         widget_control, self.widgets.scan_point, $
             set_value=strtrim(self.scan.current_point,2) + '/' + strtrim(self.scan.num_points,2)
 
-        ; if the last image captured ended a fast scan subdivision of images, save the file and start collecting the next subdivision
+        ; if the last image captured ended a fast scan subdivision of images, 
+        ; save the file and start collecting the next subdivision
         if (self.scan.fast_scan eq 1) then begin
             if (self.scan.current_point eq (*self.scan.sub_stop_array)[self.scan.sub_index]) then begin
                 wait, 1.0
@@ -918,10 +949,13 @@ pro tomo_collect_ad::scanPoll
                     endwhile
 
                     ; set up next subdivision of images
-                    self.scan.ccd->setProperty,'NumImages',(*self.scan.sub_stop_array)[self.scan.sub_index]-(self.scan.sub_size*(self.scan.sub_index-1))
-                    t = caput(self.scan.camera_name+':netCDF1:NumCapture',(*self.scan.sub_stop_array)[self.scan.sub_index]-(self.scan.sub_size*(self.scan.sub_index-1)))
+                    self.scan.ccd->setProperty,'NumImages', $
+                        (*self.scan.sub_stop_array)[self.scan.sub_index]-(self.scan.sub_size*(self.scan.sub_index-1))
+                    t = caput(self.scan.camera_name+':netCDF1:NumCapture', $
+                        (*self.scan.sub_stop_array)[self.scan.sub_index]-(self.scan.sub_size*(self.scan.sub_index-1)))
                     t = caput(self.scan.camera_name+':netCDF1:FileName',$
-                           [byte((strsplit(self.scan.filename,'\',/extract))[n_elements(strsplit(self.scan.filename,'\',/extract))-1]),0B])
+                           [byte((strsplit(self.scan.filename,'\',/extract)) $
+                           [n_elements(strsplit(self.scan.filename,'\',/extract))-1]),0B])
                     wait, .1
                     t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',1)
                     t = caput(self.scan.camera_name+':netCDF1:Capture',1)
@@ -933,13 +967,17 @@ pro tomo_collect_ad::scanPoll
                     t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(''),0B])
 
                 endif else begin
-                    ; Record the start angle, angle step, and image indexes corresponding to the flat fields in the data file
-                    comment1 = 'Start Angle=' + strtrim((*self.scan.rotation_array)[(*self.scan.sub_stop_array)[self.scan.sub_index-2]], 2)
+                    ; Record the start angle, angle step, and image indexes corresponding 
+                    ; to the flat fields in the data file
+                    comment1 = 'Start Angle=' + $
+                        strtrim((*self.scan.rotation_array)[(*self.scan.sub_stop_array)[self.scan.sub_index-2]], 2)
                     comment2 = 'Angle Step=' + strtrim(self.scan.rotation_step, 2)
                     comment3 = 'Flat Fields='
-                    for i=(*self.scan.sub_stop_array)[self.scan.sub_index-2], (*self.scan.sub_stop_array)[self.scan.sub_index-1]-1 do begin
+                    for i=(*self.scan.sub_stop_array)[self.scan.sub_index-2], $
+                          (*self.scan.sub_stop_array)[self.scan.sub_index-1]-1 do begin
                         if ((*self.scan.image_type_array)[i] eq self.scan.flatfield) then begin
-                            comment3 = comment3 + strtrim(fix(i-(*self.scan.sub_stop_array)[self.scan.sub_index-2]),2) + ' '
+                            comment3 = comment3 + $
+                                strtrim(fix(i-(*self.scan.sub_stop_array)[self.scan.sub_index-2]),2) + ' '
                         endif
                     endfor
                     comment4 = ''
@@ -1047,7 +1085,8 @@ pro tomo_collect_ad::scanPoll
             t = caput(self.scan.camera_name+':netCDF1:NumCapture',self.scan.num_flatfields)
 
             ; write OTF comments
-            comment1 = 'Start angle= '+strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
+            comment1 = 'Start angle= ' + $
+                strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
             comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
             comment3 = 'Flat Fields= '
             for i = 0, self.scan.num_flatfields-1 do begin
@@ -1163,7 +1202,8 @@ print, 'save flat field images', self.scan.current_point
 
         endif else begin
             ; write OTF comments
-            comment1 = 'Start angle= '+strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
+            comment1 = 'Start angle= ' + $
+                strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
             comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
             comment3 = 'Flat Fields= '
             for i = 0, self.scan.num_flatfields-1 do begin
@@ -1259,14 +1299,17 @@ print, 'wait for winview to be ready', self.scan.current_point
 
         ; set number of MCS channels, camera stack size
         ; calculate number of images/struck triggers and set up camera to acquire that number
-        struck_triggers = round(((*self.scan.otf_rotation_array)[self.scan.current_point]-(*self.scan.otf_rotation_array)[self.scan.current_point-1])/self.scan.rotation_step)
+        struck_triggers = round(((*self.scan.otf_rotation_array)[self.scan.current_point] - $
+                                 (*self.scan.otf_rotation_array)[self.scan.current_point-1])/self.scan.rotation_step)
         t = caput(self.epics_pvs.otf_trigger+':NuseAll', ABS(struck_triggers))
         self.scan.ccd->setProperty, 'NumImages', ABS(struck_triggers)
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:NumCapture',ABS(struck_triggers))
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+            t = caput(self.scan.camera_name+':netCDF1:NumCapture',ABS(struck_triggers))
 
         ; write OTF comments in case of PS camera
         if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
-            comment1 = 'Start angle= '+strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
+            comment1 = 'Start angle= ' + $
+                strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
             comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
             comment3 = ''
             t = caput(self.scan.camera_name+':TIFF1:FileTemplate',[byte(comment1),0B])
@@ -1335,7 +1378,8 @@ print, 'wait for winview to be ready', self.scan.current_point
             ; update scan point widget
             widget_control, self.widgets.status, set_value='Normal Scan Image Acquisition'
             widget_control, self.widgets.scan_point, $
-                set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start)/self.scan.rotation_step+1,0])),2) + $
+                set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start) /  $
+                                                                       self.scan.rotation_step+1,0])),2) + $
                     '/' + strtrim(self.scan.num_angles,2)
             ; See if there is beam, reset motor, restart state machine, and exit if there is not
             if (self->check_beam() eq 0 AND self->check_beam() eq 0) then begin
@@ -1346,7 +1390,8 @@ print, 'wait for winview to be ready', self.scan.current_point
                     ; stop acquisition
                     t = caput(self.epics_pvs.otf_trigger+'.StopAll',1)
                     self.scan.ccd -> setProperty,'Acquire',0
-                    if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
+                    if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+                        t = caput(self.scan.camera_name+':netCDF1:Capture',0)
 
                     widget_control, self.widgets.status, set_value= 'Waiting for beam'
 
@@ -1396,7 +1441,8 @@ print, 'wait for winview to be ready', self.scan.current_point
                         t = caput(self.scan.camera_name+':netCDF1:FileNumber',file_increment_count-1)
                         self->set_state, self.scan.states.NORMAL
                     endif else begin
-                        ; for a Roper camera, it is necessary to empty the camera before going back to a Normal scan, else the program will hang up
+                        ; for a Roper camera, it is necessary to empty the camera before 
+                        ; going back to a Normal scan, else the program will hang up
                         nimages = self.scan.ccd->getProperty('NumImages', string = 0)
                         self.scan.ccd -> setProperty,'NumImages',1
                         self.scan.ccd -> setProperty,'TriggerMode',0
@@ -1427,8 +1473,9 @@ print, 'wait for winview to be ready', self.scan.current_point
         endif
         ; update widgets
         widget_control, self.widgets.scan_point, $
-            set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start)/self.scan.rotation_step+1,0])),2) + $
-            '/' + strtrim(self.scan.num_angles,2)
+            set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start) / $
+                                self.scan.rotation_step+1,0])),2) + $
+                                '/' + strtrim(self.scan.num_angles,2)
         widget_control, self.widgets.status, set_value='Normal Scan Complete'
         ; stop motor
         ; send state to Normal_readout
@@ -1444,7 +1491,8 @@ print, 'Send state to normal readout', self.scan.current_point
             t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',captured_images)
             t = caget(self.scan.camera_name+':netCDF1:NumCapture',total_images)
             CaptureState = 1
-            while (captured_images ne (total_images + self.scan.bad_frames - bad_frames - dropped_arrays) AND CaptureState ne 0) do begin
+            while (captured_images ne (total_images + self.scan.bad_frames - bad_frames - dropped_arrays) $
+                   AND CaptureState ne 0) do begin
                 wait, .1
                 t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',captured_images)
                 t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',CaptureState)
@@ -1479,7 +1527,8 @@ print, 'Send state to normal readout', self.scan.current_point
 
         endif else begin
             ; Record the image type, start and stop angle, and step size
-            comment1 = 'Start angle= '+strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
+            comment1 = 'Start angle= ' + $
+                strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
             comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
             comment3 = ''
             t = caput(self.scan.camera_name+':cam1:Comment1',[byte(comment1),0B])
@@ -1628,7 +1677,8 @@ pro tomo_collect_ad::stop_scan
                 wait,.1
 
                 ; write OTF comments
-                comment1 = 'Start angle= '+strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
+                comment1 = 'Start angle= ' + $
+                    strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
                 comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
                 comment3 = ''
                 t = caput(self.scan.camera_name+':cam1:Comment1',[byte(comment1),0B])
@@ -1709,7 +1759,8 @@ pro tomo_collect_ad::stop_scan
         self.scan.ccd->setProperty,'ImageMode',0
         self.scan.ccd->setproperty,'TriggerMode',0
         self.scan.ccd->setProperty,'NumImages',1
-        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then t = caput(self.scan.camera_name+':netCDF1:NumCapture',1)
+        if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
+            t = caput(self.scan.camera_name+':netCDF1:NumCapture',1)
 
 
     ; In case of Fast scan
@@ -1752,7 +1803,8 @@ pro tomo_collect_ad::stop_scan
             self.scan.ccd -> setProperty,'TriggerMode',0
         endif else begin
             ; write comments
-            comment1 = 'Start Angle=' + strtrim((*self.scan.rotation_array)[(*self.scan.sub_stop_array)[self.scan.sub_index-1]], 2)
+            comment1 = 'Start Angle=' + $
+                strtrim((*self.scan.rotation_array)[(*self.scan.sub_stop_array)[self.scan.sub_index-1]], 2)
             comment2 = 'Angle Step=' + strtrim(self.scan.rotation_step, 2)
             comment3 = 'Flat Fields='
             for i=(*self.scan.sub_stop_array)[self.scan.sub_index-1], self.scan.current_point-1 do begin
@@ -2536,9 +2588,11 @@ print, 'begin new file, ' , self.scan.filename
                 hours = floor((self.scan.elapsed_time)/3600.)
                 minutes = floor((self.scan.elapsed_time-hours*3600.)/60.)
                 seconds = floor(self.scan.elapsed_time-hours*3600.-minutes*60.)
-            widget_control, self.widgets.elapsed_time, set_value = strtrim(hours,2)+':'+strtrim(minutes,2)+':'+strtrim(seconds,2)
+            widget_control, self.widgets.elapsed_time, $
+                set_value = strtrim(hours,2)+':'+strtrim(minutes,2)+':'+strtrim(seconds,2)
             if (self.scan.fast_scan ne 2) then begin
-                self.scan.est_remaining_time = 1.*self.scan.elapsed_time/(1+self.scan.current_point)*(self.scan.num_points-self.scan.current_point)
+                self.scan.est_remaining_time = $
+                    1.*self.scan.elapsed_time/(1+self.scan.current_point)*(self.scan.num_points-self.scan.current_point)
             endif
             if (self.scan.fast_scan eq 2) then begin
                 current_motor_position = self.scan.rotation_motor->get_position(readback='rbv')
@@ -2557,7 +2611,9 @@ print, 'begin new file, ' , self.scan.filename
             hours = floor((self.scan.est_remaining_time)/3600.)
             minutes = floor((self.scan.est_remaining_time-hours*3600.)/60.)
             seconds = floor((self.scan.est_remaining_time-hours*3600.-minutes*60.)/5)*5
-            widget_control,self.widgets.est_remaining_time, set_value = strtrim(hours,2)+':'+strtrim(minutes,2)+':'+strtrim(seconds,2)
+            widget_control,self.widgets.est_remaining_time, set_value = string(hours,  2,format='(i2.2)') + ':' + $
+                                                                        string(minutes,2,format='(i2.2)') + ':' + $
+                                                                        string(seconds,2,format='(i2.2)')
             if (self.scan.current_state ne self.scan.states.SCAN_COMPLETE) then begin
                 widget_control, self.widgets.clock_timer, timer=.1
             endif else     widget_control, self.widgets.est_remaining_time, set_value=''
