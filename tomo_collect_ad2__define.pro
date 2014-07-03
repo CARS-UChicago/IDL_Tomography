@@ -23,7 +23,7 @@ pro tomo_collect_ad2::start_scan
     self.scan.camera_manufacturer = self.camera_types.ROPER
   endif else if(name eq 'Prosilica') then begin
     self.scan.camera_manufacturer = self.camera_types.PROSILICA
-  endif else if(name eq 'Point Grey') then begin
+  endif else if(name eq 'Point Grey Research') then begin
     self.scan.camera_manufacturer = self.camera_types.POINT_GREY
   endif else begin
     widget_control, self.widgets.status, set_value='Unknown Camera Type'
@@ -364,11 +364,12 @@ pro tomo_collect_ad2::PrepareScan
   ; Set motor speed
   biny = self.scan.ccd->getProperty('BinY', string = 0)
   exposure = self.scan.ccd->getProperty('AcquireTime',string = 0)
+  ;First (and only) time code works with exposure time with Point Grey - Peter Hong
   if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
     self.scan.motor_speed = Min([1.0/(exposure*1.006),Min([25*biny,50])])*self.scan.rotation_step
   ; Prosilica OTF speed calculation works for exposure times shorter than 10 seconds
   if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then $
-    self.scan.motor_speed = Min([1.0/(exposure*1.006),Min([25*biny,50])])*self.scan.rotation_step
+    self.scan.motor_speed = 0.99/(exposure+.007)*self.scan.rotation_step
   ; Need to determine overhead for Point Grey!!
   if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then $
     self.scan.motor_speed = self.scan.rotation_step/(exposure + 0.1/Min([biny,2]))
@@ -1251,7 +1252,7 @@ function tomo_collect_ad2::validate_epics_pvs
       self.scan.camera_manufacturer = self.camera_types.ROPER
     endif else if(name eq 'Prosilica') then begin
       self.scan.camera_manufacturer = self.camera_types.PROSILICA
-    endif else if(name eq 'Point Grey') then begin
+    endif else if(name eq 'Point Grey Research') then begin
       self.scan.camera_manufacturer = self.camera_types.POINT_GREY
     endif else begin
       widget_control, self.widgets.status, set_value='Could not connect to camera'
