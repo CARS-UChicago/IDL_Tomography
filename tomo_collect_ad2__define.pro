@@ -1,5 +1,7 @@
 pro tomo_collect_ad2::start_scan
 
+  if (not self.epics_pvs_valid) then return
+
   ; check to see whether the desired filename exists or no
   t = file_search(self.scan.filename+'1'+'*', count = count)
   if (count ne 0) then t = dialog_message($
@@ -7,7 +9,7 @@ pro tomo_collect_ad2::start_scan
   if (t eq 'No') then begin
     t = dialog_message('Scan canceled')
     widget_control, self.widgets.status, set_value='Scan canceled'
-    t = caput(self.scan.camera_name + ':TC:ScanStatus', [byte('Scan canceled'),0B])
+    t = caput(self.scan.camera_name + 'TC:ScanStatus', [byte('Scan canceled'),0B])
     return
   endif
 
@@ -17,55 +19,12 @@ pro tomo_collect_ad2::start_scan
   ; desensitize camera/tower name widgets
   widget_control, self.widgets.camera_name, sensitive = 0
 
-  ; acquire camera type
-  t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
-  if(name eq 'Roper Scientific') then begin
-    self.scan.camera_manufacturer = self.camera_types.ROPER
-  endif else if(name eq 'Prosilica') then begin
-    self.scan.camera_manufacturer = self.camera_types.PROSILICA
-  endif else if(name eq 'Point Grey Research') then begin
-    self.scan.camera_manufacturer = self.camera_types.POINT_GREY
-  endif else begin
-    widget_control, self.widgets.status, set_value='Unknown Camera Type'
-    return
-  endelse
-
-  ; set filename format
-  if(self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-    t = caput(self.scan.camera_name+':cam1:FileTemplate',[byte('%s%s%d.SPE'),0B])
-  endif else begin
-    t = caput(self.scan.camera_name+':netCDF1:FileTemplate',[byte('%s%s%d.nc'),0B])
-  endelse
-
   ; need to acquire a single image to get image dimensions
-  if(self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-    ; set filename and path
-    t = caput(self.scan.camera_name+':cam1:FileName',[byte('test_frame'),0B])
-    if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
-      t = caput(self.scan.camera_name+':cam1:FilePath',$
-      [byte(strjoin( (strsplit(self.scan.filename,'\',/extract)) $
-      [0:n_elements(strsplit(self.scan.filename,'\',/extract))-2], '/')+'/'),0B])
-    wait, .01
-    ; turn off autosave
-    t = caput(self.scan.camera_name+':cam1:AutoSave',0)
-  endif else begin
-    ; set filename and path
-    t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',1)
-    t = caput(self.scan.camera_name+':netCDF1:FileName',[byte('test_frame'),0B])
-    if(n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
-      t = caput(self.scan.camera_name+':netCDF1:FilePath',$
-      [byte(strjoin( (strsplit(self.scan.filename,'\',/extract))$
-      [0:n_elements(strsplit(self.scan.filename,'\',/extract))-2], '/')+'/'),0B])
-    wait, .01
-    ; turn off autosave
-    t = caput(self.scan.camera_name+':netCDF1:AutoSave',0)
-  endelse
-
-  ; set to capture one image
-  self.scan.ccd->setProperty, 'ImageMode',0
+  ; This is used in prepareScan to get ArraySize_RBV
+  self.scan.ccd->setProperty, 'ImageMode', 0
   self.scan.ccd->setProperty, 'TriggerMode', 0
-  self.scan.ccd->setProperty, 'NumImages',1
-  self.scan.ccd->setProperty, 'Acquire',1
+  self.scan.ccd->setProperty, 'NumImages', 1
+  self.scan.ccd->setProperty, 'Acquire', 1
   wait, .1
   ; wait for capturing to finish
   busy = self.scan.ccd->getProperty('Acquire_RBV',string=0)
@@ -121,38 +80,24 @@ pro tomo_collect_ad2::dark_current
     dark_current_images = 10
     comment2 = 'Type=DARK_FIELD'
 
-    if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-      ; set filename and path
-      t = caput(self.scan.camera_name+':cam1:FileName',[byte('Dark_Current_Measurement'),0B])
-      if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
-        t = caput(self.scan.camera_name+':cam1:FilePath',$
-        [byte(strjoin( (strsplit(self.scan.filename,'\',/extract)) $
-        [0:n_elements(strsplit(self.scan.filename,'\',/extract))-2], '/')+'/'),0B])
-      wait, .01
-      ; turn off autosave
-      t = caput(self.scan.camera_name+':cam1:AutoSave',0)
-    endif else begin
-      ; set filename and path
-      t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',1)
-      t = caput(self.scan.camera_name+':netCDF1:FileName',[byte('Dark_Current_Measurement'),0B])
-      if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
-        t = caput(self.scan.camera_name+':netCDF1:FilePath',$
-        [byte(strjoin( (strsplit(self.scan.filename,'\',/extract))$
-        [0:n_elements(strsplit(self.scan.base_filename,'\',/extract))-2], '/')+'/'),0B])
-      wait, .01
-      ; turn off autosave
-      t = caput(self.scan.camera_name+':netCDF1:AutoSave',0)
-    endelse
+    ; set filename and path
+    sep = path_sep()
+    t = caput(self.scan.file_control+'FileName', [byte('Dark_Current_Measurement'),0B])
+    if (n_elements(strsplit(self.scan.filename,sep,/extract)) ge 2) then $
+      t = caput(self.scan.file_control+'FilePath',$
+      [byte(strjoin( (strsplit(self.scan.filename,sep,/extract)) $
+      [0:n_elements(strsplit(self.scan.filename,sep,/extract))-2], sep)+sep),0B])
+    wait, .01
 
     ; set to capture dark current images
     if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
       self.scan.ccd->setProperty,'ImageMode',0
       self.scan.ccd->setProperty,'TriggerMode',0
       self.scan.ccd->setProperty,'NumImages',dark_current_images
-      t = caput(self.scan.camera_name+':cam1:FileNumber',1)
+      t = caput(self.scan.file_control+'FileNumber',1)
 
       ; write comments
-      t = caput(self.scan.camera_name+':cam1:Comment2',[byte(comment2),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment2',[byte(comment2),0B])
       ; start capturing
       ccd_busy1 = 1
       ccd_busy2 = 1
@@ -175,68 +120,63 @@ pro tomo_collect_ad2::dark_current
       self.scan.ccd->setProperty, 'Acquire',0
       wait, .1
       widget_control, self.widgets.status, set_value='Saving File'
-      t = caput(self.scan.camera_name+':cam1:WriteFile',1)
+      t = caput(self.scan.camera_name+'cam1:WriteFile',1)
       wait, .1
       busy = 1
       while (busy ne 0) do begin
         widget_control, self.widgets.status, set_value='Waiting for WinView on last frame'
         wait, .01
-        t = caget(self.scan.camera_name+':cam1:WriteFile_RBV', busy)
+        t = caget(self.scan.camera_name+'cam1:WriteFile_RBV', busy)
       endwhile
       wait, 1
       ; close docfile and clear comments
       widget_control, self.widgets.status, set_value='File Saved'
-      t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment1',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment2',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment3',[byte(''),0B])
     endif else begin ; Not Roper
-      self.scan.ccd->setProperty,'ImageMode',2
-      self.scan.ccd->setProperty,'TriggerMode',0
-      self.scan.ccd->setProperty,'NumImages',dark_current_images
-      t = caput(self.scan.camera_name+':netCDF1:NumCapture',dark_current_images)
-      t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',1)
-      t = caput(self.scan.camera_name+':netCDF1:Capture',1)
-      t = caput(self.scan.camera_name+':netCDF1:FileNumber',1)
+      ; This needs work
+      self.scan.ccd->setProperty,'ImageMode', 2
+      self.scan.ccd->setProperty,'TriggerMode', 0
+      self.scan.ccd->setProperty,'NumImages', dark_current_images
+      t = caput(self.scan.file_control+'NumCapture',dark_current_images)
+      t = caput(self.scan.file_control+'Capture', 1)
+      t = caput(self.scan.file_control+'FileNumber',1)
       ; write comments
-      t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(comment2),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FilePath',[byte(comment2),0B])
       ; check that capture stack is ready
-      t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
+      t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
       while (images_captured ne 0) do begin
         wait, .01
-        t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
+        t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
       endwhile
       wait, .1
       self.scan.ccd->setProperty, 'Acquire',1
       wait, .1
       ; check for when flat field measurements are finished
-      t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
+      t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
       while (images_captured ne dark_current_images) do begin
         wait, .01
-        t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
+        t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
       endwhile
-      self.scan.ccd->setProperty, 'Acquire',0
-      self.scan.ccd->setProperty, 'ImageMode',1
-      self.scan.ccd->setProperty, 'TriggerMode',1
-      t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
-      if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
+      self.scan.ccd->setProperty, 'Acquire', 0
+      self.scan.ccd->setProperty, 'ImageMode', 1
+      self.scan.ccd->setProperty, 'TriggerMode', 1
+      t = caput(self.scan.file_control+'Capture', 0)
 
-      widget_control, self.widgets.status, set_value='Saving File'
-      ; write out file
-      t = caput(self.scan.camera_name+':netCDF1:WriteFile',1)
       wait, .1
       busy1 = 1
       busy2 = 1
       while (busy1 eq 1 OR busy2 eq 1) do begin
         wait, .01
         busy1 = self.scan.ccd->getProperty('Acquire_RBV', string = 0)
-        t = caget(self.scan.camera_name+':netCDF1:WriteFile_RBV',busy2)
+        t = caget(self.scan.file_control+'WriteFile_RBV',busy2)
       endwhile
-      t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',nncdf)
-      ; close docfile and clear comments
+      ; Clear comments
       widget_control, self.widgets.status, set_value='File Saved'
-      t = caput(self.scan.camera_name+':TIFF1:FileTemplate',[byte(''),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(''),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileTemplate',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FilePath',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileName',[byte(''),0B])
     endelse
 
     self.scan.dc_state = 2 ; send dark current measurement to next interruption
@@ -257,6 +197,21 @@ pro tomo_collect_ad2::dark_current
   endif
 end
 
+pro tomo_collect_ad2::SetFileName
+  sep = path_sep()
+  filename = (strsplit(self.scan.filename, sep, /extract)) $
+    [n_elements(strsplit(self.scan.filename, sep, /extract))-1]
+  t = caput(self.scan.file_control+'FileName', [byte(filename), 0B])
+  if (n_elements(strsplit(self.scan.filename, sep, /extract)) ge 2) then begin
+    filepath = (strjoin((strsplit(self.scan.filename, sep, /extract)) $
+      [0:n_elements(strsplit(self.scan.filename, sep, /extract))-2], sep) + sep)
+    t = caput(self.scan.file_control+'FilePath', [byte(filepath), 0B])
+  endif
+  wait, .01
+  ; set capture mode to stream capture
+  t = caput(self.scan.file_control+'FileWriteMode', 'Stream')
+end
+
 
 pro tomo_collect_ad2::PrepareScan
 
@@ -270,12 +225,10 @@ pro tomo_collect_ad2::PrepareScan
 
   ; reset current scan
   self.scan.current_point = 0
-  
+
   ; turn off capturing
-  self.scan.ccd->setProperty,'ImageMode',0
   if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then begin
     self.scan.ccd->setProperty,'TriggerMode',1
-    t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
   endif else if (self.scan.camera_manufacturer ne self.camera_types.POINT_GREY) then begin
     self.scan.ccd->setProperty,'TriggerMode', 'Bulb'
   endif
@@ -286,28 +239,20 @@ pro tomo_collect_ad2::PrepareScan
   if(self.scan.flatfield_increment gt self.scan.num_angles) then begin
     self.scan.flatfield_increment = (self.scan.num_angles)
   endif
-  self->copy_settings_to_widgets
 
   ; set number of flat fields in each flat field scan <=20, >1 for OTF scans, and >0 for Fast/slow scans
   if(self.scan.num_flatfields gt 20) then begin
     self.scan.num_flatfields = 20
-    widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
   endif
   if(self.scan.num_flatfields eq 1) then begin
     self.scan.num_flatfields = 2
-    widget_control, self.widgets.num_flatfields, set_value=self.scan.num_flatfields
   endif
+  self->copy_settings_to_widgets
 
   ; remember old motor speed
   self.scan.motor_speed_old = self.scan.rotation_motor->get_slew_speed()
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed_old
   widget_control, self.widgets.status, set_value='Zeroing motors'
-
-  ; turn off motor backlash
-  ; WHY????
-  self.scan.rotation_motor->SET_BASE_SPEED, 0.0
-  t = caput(self.epics_pvs.rotation+'.BVEL',0)
-  self.scan.rotation_motor->SET_BACKLASH, 0.0
 
   ; Stop CCD acquisition, since we could be in focus mode
   self.scan.ccd->setProperty,'Acquire',0
@@ -325,9 +270,8 @@ pro tomo_collect_ad2::PrepareScan
       widget_control, self.widgets.flatfield_increment, set_value=self.scan.flatfield_increment
     endif
   endif else begin
-    t = caput(self.scan.camera_name+':netCDF1:Capture',0)
-    t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
-   endelse
+    t = caput(self.scan.file_control+'Capture', 0)
+  endelse
 
   ; set up array to keep track of motor destinations during the OTF scan
   ptr_free, self.scan.otf_rotation_array
@@ -367,7 +311,6 @@ pro tomo_collect_ad2::PrepareScan
   ; Set motor speed
   biny = self.scan.ccd->getProperty('BinY', string = 0)
   exposure = self.scan.ccd->getProperty('AcquireTime',string = 0)
-  ;First (and only) time code works with exposure time with Point Grey - Peter Hong
   if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then $
     ; This sets the time per angle to the largest of: exposure time*1.006; 20 ms; 40ms divided by biny
     ; This speed calculation works for exposure times shorter than 10 seconds
@@ -378,44 +321,22 @@ pro tomo_collect_ad2::PrepareScan
   if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then $
     ; Roper is assumed to have 100 msec readout unbinned, 50 ms if bin >= 2
     self.scan.time_per_angle = (exposure + 0.1/Min([biny,2]))
-  self.scan.motor_speed = self.scan.rotation_step / self.scan.time_per_angle
+  speed = self.scan.rotation_step / self.scan.time_per_angle
   motor_resolution = self.scan.rotation_motor->get_scale()
-  self.scan.motor_speed = floor(abs(self.scan.motor_speed*motor_resolution))/abs(motor_resolution)
+  self.scan.motor_speed = floor(abs(speed*motor_resolution))/abs(motor_resolution)
 
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed
-  if (self.epics_pvs_valid) then self.scan.rotation_motor->SET_SLEW_SPEED, self.scan.motor_speed
+  self.scan.rotation_motor->SET_SLEW_SPEED, self.scan.motor_speed
 
   ; Write the setup file
   status = self->save_settings(self.scan.filename + '.setup')
 
-  ; set filename
-  if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-    t = caput(self.scan.camera_name+':cam1:FileName',$
-      [byte((strsplit(self.scan.filename,'\',/extract))$
-      [n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
-    if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
-      t = caput(self.scan.camera_name+':cam1:FilePath',$
-      [byte(strjoin( (strsplit(self.scan.filename,'\',/extract)) $
-      [0:n_elements(strsplit(self.scan.filename,'\',/extract))-2], '/')+'/'),0B])
-    wait, .01
-  endif else begin
-    t = caput(self.scan.camera_name+':netCDF1:FileName',$
-      [byte((strsplit(self.scan.filename,'\',/extract))$
-      [n_elements(strsplit(self.scan.base_filename,'\',/extract))-1]),0B])
-    if (n_elements(strsplit(self.scan.filename,'\',/extract)) ge 2) then $
-      t = caput(self.scan.camera_name+':netCDF1:FilePath',$
-      [byte(strjoin( (strsplit(self.scan.filename,'\',/extract))$
-      [0:n_elements(strsplit(self.scan.filename,'\',/extract))-2], '/')+'/'),0B])
-    wait, .01
-    ; set capture mode to stream capture
-    t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',2)
-  endelse
 
   widget_control, self.widgets.scan_point, $
     set_value=strtrim(0,2) + '/' + strtrim(self.scan.num_angles,2)
 
   ; set the external prescale according to the step size, use motor resolution steps per degree (user unit)
-  t = caput(self.epics_pvs.otf_trigger+':Prescale', FLOOR(ABS(self.scan.rotation_step  * motor_resolution)))
+  t = caput(self.epics_pvs.otf_trigger+'Prescale', FLOOR(ABS(self.scan.rotation_step  * motor_resolution)))
 
   ; send state to FLAT_FIELD
   self->set_state, self.scan.states.FLAT_FIELD
@@ -440,14 +361,8 @@ pro tomo_collect_ad2::PrepareScan
   widget_control, self.widgets.clock_timer, timer = .1
 
   ; Start the scan
-  if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-    t = caput(self.scan.camera_name+':cam1:FileNumber',1)
-    t = caput(self.scan.camera_name+':cam1:AutoIncrement',1)
-  endif else begin
-    t = caput(self.scan.camera_name+':netCDF1:FileNumber',1)
-    t = caput(self.scan.camera_name+':netCDF1:AutoIncrement',1)
-    t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',2)
-  endelse
+  t = caput(self.scan.camera_name+'cam1:FileNumber', 1)
+  t = caput(self.scan.camera_name+'cam1:AutoIncrement', 1)
 
   ; reset widgets to the start
   widget_control, self.widgets.start_scan, sensitive=0
@@ -484,25 +399,33 @@ pro tomo_collect_ad2::scanPoll
       return
     endif
 
-    ; Put MCS in internal trigger mode 
-    t = caput(self.epics_pvs.otf_trigger+':ChannelAdvance', 'Internal')
+    ; Create OTF comments
+    comment1 = 'Start angle= ' + $
+      strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
+    comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
+    comment3 = 'Flat Fields= '
+    for i = 0, self.scan.num_flatfields-1 do begin
+      comment3 = comment3 + strtrim(i,2) + ' '
+    endfor
+
+    ; Put MCS in internal trigger mode
+    t = caput(self.epics_pvs.otf_trigger+'ChannelAdvance', 'Internal')
     ; Set MCS dwell time to time per angle
-    t = caput(self.epics_pvs.otf_trigger+':Dwell', self.scan.time_per_angle)
+    t = caput(self.epics_pvs.otf_trigger+'Dwell', self.scan.time_per_angle)
     ; set number of MCS channels, camera stack size
     ; calculate number of images/struck triggers and set up camera to acquire that number
     struck_triggers = self.scan.num_flatfields
-    t = caput(self.epics_pvs.otf_trigger+':NuseAll', ABS(struck_triggers))
+    t = caput(self.epics_pvs.otf_trigger+'NuseAll', ABS(struck_triggers))
     self.scan.ccd->setProperty, 'NumImages', ABS(struck_triggers)
     if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then $
-      t = caput(self.scan.camera_name+':netCDF1:NumCapture',ABS(struck_triggers))
+      t = caput(self.scan.file_control+'NumCapture',ABS(struck_triggers))
 
     if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-      print, 'wait for camera to be ready before flat fields' , self.scan.current_point
       ; make sure camera is not still writing out
-      t = caget(self.scan.camera_name+':cam1:WriteFile',busy)
+      t = caget(self.scan.file_control+'WriteFile',busy)
       while (busy OR t ne 0) do begin
         wait, .1
-        t = caget(self.scan.camera_name+':cam1:WriteFile',busy)
+        t = caget(self.scan.file_control+'WriteFile',busy)
       endwhile
       ; make sure camera is not still acquiring
       ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
@@ -520,11 +443,10 @@ pro tomo_collect_ad2::scanPoll
       self.scan.ccd->setProperty, 'NumImages', self.scan.num_flatfields
       wait, .1
       ; start capturing
-      print, 'begin capturing flat fields' , self.scan.current_point
       self.scan.ccd->setProperty, 'Acquire', 1
       wait,.1
       ; Start the MCS
-      t = caput(self.epics_pvs.otf_trigger+':EraseStart', 1)
+      t = caput(self.epics_pvs.otf_trigger+'EraseStart', 1)
 
       ; check for when flat field measurements are finished
       ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
@@ -542,48 +464,25 @@ pro tomo_collect_ad2::scanPoll
         self.scan.ccd->setProperty, 'TriggerMode', 'External'
       endelse
       ; set to take a fixed number of flat field measurements
-      t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',1)
       self.scan.ccd->setProperty, 'ImageMode', 'Multiple'
       self.scan.ccd->setProperty, 'NumImages', self.scan.num_flatfields
-      t = caput(self.scan.camera_name+':netCDF1:NumCapture',self.scan.num_flatfields)
-
-      ; write OTF comments
-      comment1 = 'Start angle= ' + $
-        strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
-      comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
-      comment3 = 'Flat Fields= '
-      for i = 0, self.scan.num_flatfields-1 do begin
-        comment3 = comment3 + strtrim(i,2) + ' '
-      endfor
-      t = caput(self.scan.camera_name+':TIFF1:FileTemplate',[byte(comment1),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(comment2),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(comment3),0B])
+      t = caput(self.scan.file_control+'NumCapture',self.scan.num_flatfields)
+      t = caput(self.scan.camera_name+'TIFF1:FileTemplate',[byte(comment1),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FilePath',[byte(comment2),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileName',[byte(comment3),0B])
       wait, .01
 
       ; start ncdf generator
-      t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',1)
-      t = caput(self.scan.camera_name+':netCDF1:Capture',1)
-      ; check that capture stack is ready
-      t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
-      while (images_captured ne 0) do begin
-        wait, .01
-        t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
-        ; allow for abort event
-        event = widget_event(/nowait, self.widgets.abort_scan)
-        if (event.id ne 0) then begin
-          self->abort_scan
-          return
-        endif
-      endwhile
+      t = caput(self.scan.file_control+'Capture',1)
       ; start capturing
       self.scan.ccd->setProperty, 'Acquire', 1
       wait, .5
       ; Start the MCS
-      t = caput(self.epics_pvs.otf_trigger+':EraseStart', 1)
+      t = caput(self.epics_pvs.otf_trigger+'EraseStart', 1)
       ; check for when flat field measurements are finished
       while (images_captured ne self.scan.num_flatfields) do begin
         wait, .01
-        t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
+        t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
         ; allow for abort event
         event = widget_event(/nowait, self.widgets.abort_scan)
         if (event.id ne 0) then begin
@@ -594,45 +493,30 @@ pro tomo_collect_ad2::scanPoll
       self.scan.ccd->setProperty,'Acquire',0
     endelse
 
-    ; restart flat field scan if there was a beam drop during flat field scan
-    if (self->check_beam() eq 0) then begin
-      self->set_state, self.scan.states.FLAT_FIELD
-      widget_control, self.widgets.status, $
-        set_value=self.scan.state_strings[self.scan.states.BEAM_WAIT]
-      return
-    endif
     ; save images and close file
     widget_control, self.widgets.status, set_value='Saving File'
     if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-      ; write OTF comments
-      comment1 = 'Start angle= ' + $
-        strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
-      comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
-      comment3 = 'Flat Fields= '
-      for i = 0, self.scan.num_flatfields-1 do begin
-        comment3 = comment3 + strtrim(i,2) + ' '
-      endfor
-      t = caput(self.scan.camera_name+':cam1:Comment1',[byte(comment1),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment2',[byte(comment2),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment3',[byte(comment3),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment1',[byte(comment1),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment2',[byte(comment2),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment3',[byte(comment3),0B])
       self.scan.ccd->setProperty, 'Acquire',0
 
       ; save file
       widget_control, self.widgets.status, set_value='Saving File'
-      t = caput(self.scan.camera_name+':cam1:WriteFile',1)
+      t = caput(self.scan.file_control+'WriteFile', 1)
       wait, .1
       busy = 1
       while (busy ne 0) do begin
         widget_control, self.widgets.status, set_value='Waiting for WinView on last frame'
         wait, .01
-        t = caget(self.scan.camera_name+':cam1:WriteFile_RBV', busy)
+        t = caget(self.scan.file_control+'WriteFile_RBV', busy)
       endwhile
       wait, .1
       ; close docfile and clear comments
       widget_control, self.widgets.status, set_value='File Saved'
-      t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment1',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment2',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment3',[byte(''),0B])
       print, 'wait for winview to be ready', self.scan.current_point
       ; wait for winview
       nimages = self.scan.ccd->getProperty('NumImages', string = 0)
@@ -640,42 +524,27 @@ pro tomo_collect_ad2::scanPoll
       binx = self.scan.ccd->getProperty('BinX', string = 0)
       wait, 5.*nimages/100/biny/binx
     endif else begin  ; Not Roper
-
-      ; write out file
-      t = caput(self.scan.camera_name+':netCDF1:WriteFile',1)
-      t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',nncdf)
-      t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',2)
       self.scan.ccd->setProperty, 'Acquire', 0
       wait, .1
-      t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
-      t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
-      if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
+      t = caget(self.scan.file_control+'Capture_RBV',capturing)
+      if (capturing ne 0) then t = caput(self.scan.file_control+'Capture',0)
       busy1 = 1
       busy2 = 1
       while (busy1 eq 1 OR busy2 eq 1) do begin
         wait, .01
         busy1 = self.scan.ccd->getProperty('Acquire_RBV', string = 0)
-        t = caget(self.scan.camera_name+':netCDF1:WriteFile_RBV',busy2)
+        t = caget(self.scan.file_control+'WriteFile_RBV',busy2)
       endwhile
       wait, 1
       ; Clear comments
       widget_control, self.widgets.status, set_value='File Saved'
-      t = caput(self.scan.camera_name+':TIFF1:FileTemplate',[byte(''),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(''),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileTemplate',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FilePath',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileName',[byte(''),0B])
     endelse
-
 
     ; send OTF scan to STOP_SCAN if has finished
     if(self.scan.current_point eq n_elements((*self.scan.otf_rotation_array))-1) then begin
-      ; check for when flat field measurements are finished
-      ccd_busy1 = 1
-      ccd_busy2 = 1
-      while (ccd_busy1 OR ccd_busy2) do begin
-        wait, .01
-        ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
-        ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
-      endwhile
       self->stop_scan
       return
     endif
@@ -695,23 +564,16 @@ pro tomo_collect_ad2::scanPoll
     if (self.scan.sample_x_motor->done() eq 0) then return
     if (self.scan.sample_y_motor->done() eq 0) then return
 
-    ; See if there is beam, exit if there is not
-    if (self->check_beam() eq 0) then begin
-      widget_control, self.widgets.status, set_value= 'Waiting for beam'
-      return
-    endif
-
     ; prepare for OTF scanning
     widget_control, self.widgets.status, set_value='Normal Scan'
 
     ; set camera to external triggering
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
       self.scan.ccd->setProperty, 'TriggerMode', 'Sync In 2'
-      self.scan.ccd->setProperty, 'ImageMode', 1
     endif else if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-      self.scan.ccd->setProperty, 'TriggerMode',1
+      self.scan.ccd->setProperty, 'TriggerMode', 1
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
-      self.scan.ccd->setProperty, 'TriggerMode','Bulb'
+      self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
     endif
 
     ; rotate motors back by one motor step
@@ -720,15 +582,15 @@ pro tomo_collect_ad2::scanPoll
     self.scan.rotation_motor->wait
 
     ; Put MCS in external trigger mode to be triggered by motor pulses
-    t = caput(self.epics_pvs.otf_trigger+':ChannelAdvance', "External")
+    t = caput(self.epics_pvs.otf_trigger+'ChannelAdvance', "External")
     ; set number of MCS channels, camera stack size
     ; calculate number of images/struck triggers and set up camera to acquire that number
     struck_triggers = round(((*self.scan.otf_rotation_array)[self.scan.current_point] - $
       (*self.scan.otf_rotation_array)[self.scan.current_point-1])/self.scan.rotation_step)
-    t = caput(self.epics_pvs.otf_trigger+':NuseAll', ABS(struck_triggers))
-    self.scan.ccd->setProperty, 'NumImages', ABS(struck_triggers)
+    t = caput(self.epics_pvs.otf_trigger+'NuseAll', abs(struck_triggers))
+    self.scan.ccd->setProperty, 'NumImages', abs(struck_triggers)
     if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then $
-      t = caput(self.scan.camera_name+':netCDF1:NumCapture',ABS(struck_triggers))
+      t = caput(self.scan.file_control+'NumCapture', abs(struck_triggers))
 
     ; write OTF comments
     if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then begin
@@ -736,14 +598,10 @@ pro tomo_collect_ad2::scanPoll
         strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
       comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
       comment3 = ''
-      t = caput(self.scan.camera_name+':TIFF1:FileTemplate',[byte(comment1),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(comment2),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(comment3),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileTemplate',[byte(comment1),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FilePath',[byte(comment2),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileName',[byte(comment3),0B])
     endif
-
-    ; check for camera readiness
-    busy = self.scan.ccd->getProperty('Acquire_RBV', string = 0)
-    if (busy ne 0) then return
 
     ; ready image capturing
     if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
@@ -756,13 +614,12 @@ pro tomo_collect_ad2::scanPoll
       endwhile
     endif else begin
       ; start netCDF generator
-      t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',1)
-      t = caput(self.scan.camera_name+':netCDF1:Capture',1)
+      t = caput(self.scan.file_control+'Capture', 1)
       ; check that capture stack is ready
-      t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
+      t = caget(self.scan.file_control+'NumCaptured_RBV', images_captured)
       while (images_captured ne 0) do begin
         wait, .1
-        t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',images_captured)
+        t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
         ; allow for abort event
         event = widget_event(/nowait, self.widgets.abort_scan)
         if (event.id ne 0) then begin
@@ -786,7 +643,7 @@ pro tomo_collect_ad2::scanPoll
       endwhile
     endif
     ; turn on MCS
-    t = caput(self.epics_pvs.otf_trigger+':EraseStart',1)
+    t = caput(self.epics_pvs.otf_trigger+'EraseStart', 1)
     wait, .1
     ; turn on motor, begin triggering camera through MCS
     self.scan.rotation_motor->move,(*self.scan.otf_rotation_array)[self.scan.current_point]
@@ -805,94 +662,6 @@ pro tomo_collect_ad2::scanPoll
         set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start) /  $
         self.scan.rotation_step+1,0])),2) + $
         '/' + strtrim(self.scan.num_angles,2)
-      ; See if there is beam, reset motor, restart state machine, and exit if there is not
-      if (self->check_beam() eq 0 AND self->check_beam() eq 0) then begin
-        print, 'Check_beam failure', systime(0)
-        wait, 1.
-        if (self->check_beam() eq 0 AND self->check_beam() eq 0) then begin
-          print, 'Second check_beam failure in a row!', systime(0)
-          ; stop acquisition
-          t = caput(self.epics_pvs.otf_trigger+'.StopAll',1)
-          self.scan.ccd -> setProperty,'Acquire',0
-          if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then $
-            t = caput(self.scan.camera_name+':netCDF1:Capture',0)
-
-          widget_control, self.widgets.status, set_value= 'Waiting for beam'
-
-          ; reset motor
-          t = caput(self.epics_pvs.rotation+'.SPMG',0)
-          wait, 1
-          if (self.scan.leave_motor) then begin
-            wait, 1
-            t = caput(self.epics_pvs.rotation+'.SPMG',3)
-            self.scan.rotation_motor->set_position, (*self.scan.otf_rotation_array)[self.scan.current_point-1]
-          endif else begin
-            wait, .001
-            self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed_old
-            t = caput(self.epics_pvs.rotation+'.SPMG',3)
-            self.scan.rotation_motor->move,(*self.scan.otf_rotation_array)[self.scan.current_point-1]
-            self.scan.rotation_motor->wait
-            self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
-          endelse
-
-          ; wait for camera to be ready again
-          ccd_busy1 = 1
-          ccd_busy2 = 1
-          while (ccd_busy1 OR ccd_busy2) do begin
-            wait, .01
-            ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
-            ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
-          endwhile
-          wait, .1
-          busy = 1
-          while (busy) do begin
-            wait, .01
-            t = caget(self.scan.camera_name+':cam1:WriteFile',busy)
-          endwhile
-
-          ; wait for capture stack
-          if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-            ; for a Roper camera, it is necessary to empty the camera before
-            ; going back to a Normal scan, else the program will hang up
-            nimages = self.scan.ccd->getProperty('NumImages', string = 0)
-            self.scan.ccd -> setProperty,'NumImages',1
-            self.scan.ccd -> setProperty,'TriggerMode',0
-            wait, .1
-            ; take one image to empty camera
-            self.scan.ccd -> setProperty,'Acquire',1
-            ; wait for winview
-            biny = self.scan.ccd->getProperty('BinY', string = 0)
-            binx = self.scan.ccd->getProperty('BinX', string = 0)
-            wait, 5.*nimages/100/biny/binx
-            ; wait for camera to be ready again
-            ccd_busy1 = 1
-            ccd_busy2 = 1
-            while (ccd_busy1 OR ccd_busy2) do begin
-              wait, .01
-              ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
-              ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
-            endwhile
-            ; wait for winview
-            wait, 10.*nimages/100/biny/binx
-            self.scan.ccd->setProperty, 'TriggerMode',1
-            self->set_state, self.scan.states.NORMAL
-          endif else begin
-            t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
-            if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
-            wait, .1
-            busy = 1
-            while (busy) do begin
-              t = caget(self.scan.camera_name+':netCDF1:Capture',busy)
-              wait, .1
-            endwhile
-            ; reset file increment count
-            t = caget(self.scan.camera_name+':netCDF1:FileNumber',file_increment_count)
-            t = caput(self.scan.camera_name+':netCDF1:FileNumber',file_increment_count-1)
-            self->set_state, self.scan.states.NORMAL
-          endelse
-          return
-        endif
-      endif
       return
     endif
     ; update widgets
@@ -914,9 +683,9 @@ pro tomo_collect_ad2::scanPoll
         strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
       comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
       comment3 = ''
-      t = caput(self.scan.camera_name+':cam1:Comment1',[byte(comment1),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment2',[byte(comment2),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment3',[byte(comment3),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment1',[byte(comment1),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment2',[byte(comment2),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment3',[byte(comment3),0B])
 
       ; If Roper camera is still acquiring and the data file is still open, close it
       exposure = self.scan.ccd->getProperty('AcquireTime',string = 0)
@@ -942,39 +711,36 @@ pro tomo_collect_ad2::scanPoll
       print, 'begin saving images', self.scan.current_point
       ; save images
       widget_control, self.widgets.status, set_value='Saving data'
-      t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy); sets the monitor to 0
-      t = caput(self.scan.camera_name+':cam1:WriteFile',1)
+      t = caget(self.scan.file_control+'WriteFile_RBV',busy); sets the monitor to 0
+      t = caput(self.scan.file_control+'WriteFile', 1)
       wait, .1
       newmonitor = 0
       while (~newmonitor) do begin ; check that the camera has begun writing out
         wait, .01
-        newmonitor = caCheckmonitor(self.scan.camera_name+':cam1:WriteFile_RBV')
+        newmonitor = caCheckmonitor(self.scan.file_control+'WriteFile_RBV')
         event = widget_event(/nowait, self.widgets.abort_scan)
         if (event.id ne 0) then begin
           self->abort_scan
           return
         endif
       endwhile
-      print, 'WriteFile has started, wait until it ends'
-      t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy); sets the monitor to 0
+      t = caget(self.scan.file_control+'WriteFile_RBV',busy); sets the monitor to 0
       newmonitor = 0
       while (~newmonitor) do begin ; check that the camera has finished writing out
         wait, .1
-        newmonitor = caCheckmonitor(self.scan.camera_name+':cam1:WriteFile_RBV')
+        newmonitor = caCheckmonitor(self.scan.file_control+'WriteFile_RBV')
         event = widget_event(/nowait, self.widgets.abort_scan)
         if (event.id ne 0) then begin
           self->abort_scan
           return
         endif
       endwhile
-      t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy); sets the monitor to 0
-      print, newmonitor, t, busy
+      t = caget(self.scan.file_control+'WriteFile_RBV',busy); sets the monitor to 0
       ; close docfile and clear comments
       widget_control, self.widgets.status, set_value='Closing docFile'
-      t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
-      print, 'wait for winview to finish', self.scan.current_point
+      t = caput(self.scan.camera_name+'cam1:Comment1',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment2',[byte(''),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment3',[byte(''),0B])
       ; wait for  winview
       nimages = self.scan.ccd->getProperty('NumImages', string = 0)
       biny = self.scan.ccd->getProperty('BinY', string = 0)
@@ -982,16 +748,16 @@ pro tomo_collect_ad2::scanPoll
       wait, 5.*nimages/100/biny/binx
       ; wait, 30
     endif else begin
-      ; wait for the stream capture buffer to fill
-      t = caget(self.scan.camera_name+':netCDF1:DroppedArrays_RBV',dropped_arrays)
-      t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',captured_images)
-      t = caget(self.scan.camera_name+':netCDF1:NumCapture',total_images)
+      widget_control, self.widgets.status, set_value='Saving data'
+      ; wait for the stream capture buffer to be written
+      t = caget(self.scan.file_control+'NumCaptured_RBV',captured_images)
+      t = caget(self.scan.file_control+'NumCapture',total_images)
       CaptureState = 1
-      while (captured_images ne (total_images + dropped_arrays) $
-        AND CaptureState ne 0) do begin
+      while (captured_images ne total_images) $
+        AND (CaptureState ne 0) do begin
         wait, .1
-        t = caget(self.scan.camera_name+':netCDF1:NumCaptured_RBV',captured_images)
-        t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',CaptureState)
+        t = caget(self.scan.file_control+'NumCaptured_RBV', captured_images)
+        t = caget(self.scan.file_control+'Capture_RBV', CaptureState)
         ; allow for abort event
         event = widget_event(/nowait, self.widgets.abort_scan)
         if (event.id ne 0) then begin
@@ -1000,53 +766,41 @@ pro tomo_collect_ad2::scanPoll
         endif
       endwhile
 
-      ; If it is still acquiring and the data file is still open, close it
-      self.scan.ccd->setProperty,'Acquire',0
+      ; Force Acquire and Capture to 0
+      self.scan.ccd->setProperty,'Acquire', 0
       wait, .1
-      t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
-      if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
-      t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
-      widget_control, self.widgets.status, set_value='Saving data'
+      t = caput(self.scan.file_control+'Capture', 0)
       busy1 = 1
       busy2 = 1
       while (busy1 eq 1 OR busy2 eq 1) do begin
         wait, .01
         busy1 = self.scan.ccd->getProperty('Acquire_RBV', string = 0)
-        t = caget(self.scan.camera_name+':netCDF1:WriteFile_RBV',busy2)
+        t = caget(self.scan.file_control+'WriteFile_RBV',busy2)
       endwhile
 
-      ; close docfile and clear comments
+      ; Clear comments
       widget_control, self.widgets.status, set_value='File Saved'
-      t = caput(self.scan.camera_name+':TIFF1:FileTemplate',[byte(''),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(''),0B])
-      t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileTemplate',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FilePath',[byte(''),0B])
+      t = caput(self.scan.camera_name+'TIFF1:FileName',[byte(''),0B])
     endelse
 
 
     ; send OTF scan to STOP_SCAN if has finished
     if(self.scan.current_point eq n_elements((*self.scan.otf_rotation_array))-1) then begin
-      ; check for when flat field measurements are finished
-      ccd_busy1 = 1
-      ccd_busy2 = 1
-      while (ccd_busy1 OR ccd_busy2) do begin
-        wait, .01
-        ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
-        ccd_busy2 = self.scan.ccd->getProperty('Acquire_RBV',string = 0)
-      endwhile
       self->stop_scan
       return
     endif
 
     self.scan.current_point++
     ; stop MCS
-    t = caput(self.epics_pvs.otf_trigger+':StopAll',1)
+    t = caput(self.epics_pvs.otf_trigger+'StopAll',1)
 
-    ; send state to Flat Field
-    print, 'send to flat field', self.scan.current_point
-    self->set_state, self.scan.states.FLAT_FIELD
     if (self.scan.num_flatfields eq 0) then begin
       self->set_state, self.scan.states.NORMAL
     endif else begin
+      ; send state to Flat Field
+      self->set_state, self.scan.states.FLAT_FIELD
       ; move sample out
       self->move_sample_out
     endelse
@@ -1071,7 +825,7 @@ pro tomo_collect_ad2::stop_scan
 
   ; In case of OTF
   ; first stop the external triggers
-  t = caput(self.epics_pvs.otf_trigger+':StopAll',1)
+  t = caput(self.epics_pvs.otf_trigger+'StopAll',1)
   ; stop the motor
   t = caput(self.epics_pvs.rotation+'.SPMG',0)
 
@@ -1096,18 +850,18 @@ pro tomo_collect_ad2::stop_scan
         strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
       comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
       comment3 = ''
-      t = caput(self.scan.camera_name+':cam1:Comment1',[byte(comment1),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment2',[byte(comment2),0B])
-      t = caput(self.scan.camera_name+':cam1:Comment3',[byte(comment3),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment1',[byte(comment1),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment2',[byte(comment2),0B])
+      t = caput(self.scan.camera_name+'cam1:Comment3',[byte(comment3),0B])
 
       ; save images
       widget_control, self.widgets.status, set_value='Saving data'
-      t = caput(self.scan.camera_name+':cam1:WriteFile',1)
+      t = caput(self.scan.file_control+'WriteFile',1)
       wait, .1
       busy = 1
       while (busy) do begin
         wait, .01
-        t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy)
+        t = caget(self.scan.file_control+'WriteFile_RBV',busy)
       endwhile
       wait, .1
       widget_control, self.widgets.status, set_value='Closing docFile'
@@ -1127,8 +881,7 @@ pro tomo_collect_ad2::stop_scan
     ; stop camera and image capture
     self.scan.ccd->setProperty, 'Acquire', 0
     ; end capturing if it hasn't already ended
-    t = caput(self.scan.camera_name+':netCDF1:Capture',0)
-    t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
+    t = caput(self.scan.file_control+'Capture',0)
     wait, .1
   endelse
 
@@ -1165,13 +918,11 @@ pro tomo_collect_ad2::stop_scan
     while (busy1 eq 1 OR busy2 eq 1) do begin
       wait, .01
       busy1 = self.scan.ccd->getProperty('Acquire_RBV', string = 0)
-      t = caget(self.scan.camera_name+':netCDF1:WriteFile_RBV',busy2)
+      t = caget(self.scan.file_control+'WriteFile_RBV',busy2)
     endwhile
-    ; clear stream buffer
-    t = caput(self.scan.camera_name+':netCDF1:FileWriteMode',1)
-    t = caput(self.scan.camera_name+':netCDF1:Capture',1)
+    ; Turn off file saving
     wait, .1
-    t = caput(self.scan.camera_name+':netCDF1:Capture',0)
+    t = caput(self.scan.file_control+'Capture',0)
   endelse
 
   ; reset to idle mode
@@ -1179,7 +930,7 @@ pro tomo_collect_ad2::stop_scan
   self.scan.ccd->setproperty,'TriggerMode',0
   self.scan.ccd->setProperty,'NumImages',1
   if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then $
-    t = caput(self.scan.camera_name+':netCDF1:NumCapture',1)
+    t = caput(self.scan.file_control+'NumCapture',1)
 
   if (self.scan.leave_motor) then begin
     wait, 1
@@ -1189,22 +940,22 @@ pro tomo_collect_ad2::stop_scan
 
   ; empty comments
   if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
-    t = caput(self.scan.camera_name+':cam1:Comment1',[byte(''),0B])
-    t = caput(self.scan.camera_name+':cam1:Comment2',[byte(''),0B])
-    t = caput(self.scan.camera_name+':cam1:Comment3',[byte(''),0B])
-    t = caput(self.scan.camera_name+':cam1:Comment4',[byte(''),0B])
-    t = caput(self.scan.camera_name+':cam1:Comment5',[byte(''),0B])
+    t = caput(self.scan.camera_name+'cam1:Comment1',[byte(''),0B])
+    t = caput(self.scan.camera_name+'cam1:Comment2',[byte(''),0B])
+    t = caput(self.scan.camera_name+'cam1:Comment3',[byte(''),0B])
+    t = caput(self.scan.camera_name+'cam1:Comment4',[byte(''),0B])
+    t = caput(self.scan.camera_name+'cam1:Comment5',[byte(''),0B])
     ; Wait for winview to return to idle state
     widget_control, self.widgets.status, set_value='Waiting for WinView'
     busy = 1
     while (busy) do begin
       wait, .1
-      t = caget(self.scan.camera_name+':cam1:WriteFile_RBV',busy)
+      t = caget(self.scan.file_control+'WriteFile_RBV',busy)
     endwhile
   endif else begin
-    t = caput(self.scan.camera_name+':TIFF1:FileTemplate',[byte(''),0B])
-    t = caput(self.scan.camera_name+':TIFF1:FilePath',[byte(''),0B])
-    t = caput(self.scan.camera_name+':TIFF1:FileName',[byte(''),0B])
+    t = caput(self.scan.camera_name+'TIFF1:FileTemplate',[byte(''),0B])
+    t = caput(self.scan.camera_name+'TIFF1:FilePath',[byte(''),0B])
+    t = caput(self.scan.camera_name+'TIFF1:FileName',[byte(''),0B])
   endelse
 
   widget_control, self.widgets.status, set_value='Zeroing motors'
@@ -1254,20 +1005,25 @@ function tomo_collect_ad2::validate_epics_pvs
   if (strlen(self.epics_pvs.(0)) gt 0) then begin
     camera_name = self.epics_pvs.(0)
     self.scan.camera_name = camera_name
-    widget_control, self.pv_widgets.camera_name,      set_value=self.epics_pvs.camera_name
+    widget_control, self.pv_widgets.camera_name, set_value=self.epics_pvs.camera_name
     self.scan.camera_name = self.epics_pvs.camera_name
-    obj_destroy, self.scan.ccd
-    self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+':cam1:')
+    if (obj_valid(self.scan.ccd)) then obj_destroy, self.scan.ccd
+    self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+'cam1:')
     self.ccd_valid = 1
     widget_control, self.widgets.status, set_value='Connected to '+self.scan.camera_name
 
-    t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
+    t = caget(self.scan.camera_name + 'cam1:Manufacturer_RBV',name)
     if(t ne 0) then begin
       widget_control, self.widgets.status, set_value='Could not connect to camera'
       t = dialog_message('Could not connect to camera, invalid camera name')
       pvs_ok = 0
       name = ''
     endif
+
+    self.scan.ccd->setProperty,'Acquire',0
+    self.scan.ccd->setProperty,'ImageMode',0
+    self.scan.ccd->setProperty,'NumImages',1
+    self.scan.ccd->setProperty,'TriggerMode',0
 
     if(name eq 'Roper Scientific') then begin
       self.scan.camera_manufacturer = self.camera_types.ROPER
@@ -1284,6 +1040,17 @@ function tomo_collect_ad2::validate_epics_pvs
     t = dialog_message('Could not connect to camera, invalid camera name')
     pvs_ok = 0
   endelse
+
+  if(self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
+    self.scan.file_control = self.scan.camera_name + 'cam1:'
+  endif else begin
+    self.scan.file_control = self.scan.camera_name + 'netCDF1:'
+    t = caput(self.scan.file_control+'EnableCallbacks', 1)
+    t = caput(self.scan.file_control+'Capture', 0)
+    t = caput(self.scan.file_control+'NumCapture', 1)
+    t = caput(self.scan.file_control+'FileWriteMode', 'Stream')
+  endelse
+  t = caput(self.scan.file_control+'AutoSave', 0)
 
   for i=1, n_pvs-2 do begin
     pv = self.epics_pvs.(i)
@@ -1307,7 +1074,7 @@ function tomo_collect_ad2::validate_epics_pvs
     pvs_ok = 0
   endif
   if(pvs_ok ne 0) then begin
-    t = caget(pv+':EraseStart', value)
+    t = caget(pv+'EraseStart', value)
     if (t ne 0) then begin
       t = dialog_message('Error: ' + pv + ' is not a valid EPICS PV name, not found.')
       pvs_ok = 0
@@ -1344,8 +1111,8 @@ function tomo_collect_ad2::validate_epics_pvs
     t = caSetMonitor(self.epics_pvs.autoscan_suffix)
     t = caSetMonitor(self.epics_pvs.rotation + '.VELO')
     t = caSetmonitor(self.epics_pvs.beam_ready)
-    t = caSetmonitor(self.epics_pvs.camera_name+':cam1:WriteFile')
-    t = caSetmonitor(self.epics_pvs.camera_name+':cam1:WriteFile_RBV')
+    t = caSetmonitor(self.scan.file_control+'WriteFile')
+    t = caSetmonitor(self.scan.file_control+'WriteFile_RBV')
 
     ; set up Attributes_filename
     widget_control, self.widgets.attributes_filename, sensitive = ~self.scan.camera_manufacturer
@@ -1354,7 +1121,7 @@ function tomo_collect_ad2::validate_epics_pvs
       widget_control, self.widgets.attributes_filename, set_value = ''
 
     endif else begin
-      t = caget(self.scan.camera_name+':cam1:NDAttributesFile', file)
+      t = caget(self.scan.camera_name+'cam1:NDAttributesFile', file)
       widget_control, self.widgets.attributes_filename, set_value = strtrim(file,2)
       self.scan.attributes_filename = strtrim(file,2)
     endelse
@@ -1797,7 +1564,7 @@ pro tomo_collect_ad2::event, event
       if (file eq '') then return
       widget_control, self.widgets.attributes_filename, set_value = file
       self.scan.attributes_filename = file
-      t = caput(self.scan.camera_name+':cam1:NDAttributesFile', [byte(file),0B])
+      t = caput(self.scan.camera_name+'cam1:NDAttributesFile', [byte(file),0B])
     end
 
     self.widgets.experiment_information: begin
@@ -1857,7 +1624,6 @@ pro tomo_collect_ad2::event, event
           ; The autoscan_sync PV has made a 0 to 1 transition so start a scan
           status = caget(self.epics_pvs.autoscan_suffix, suffix)
           self.scan.filename = self.scan.base_filename + '_' + suffix + '_'
-          print, 'begin new file, ' , self.scan.filename
           widget_control, self.widgets.base_file, set_value=self.scan.filename
           self->start_scan
         endif else if (start) then begin
@@ -2315,7 +2081,7 @@ function tomo_collect_ad2::init
     xsize=50, value=self.scan.attributes_filename, /noedit)
   widget_control, self.widgets.attributes_filename, sensitive = ~self.scan.camera_manufacturer
   if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then begin
-    t = caget(self.scan.camera_name+':cam1:NDAttributesFile', file)
+    t = caget(self.scan.camera_name+'cam1:NDAttributesFile', file)
     widget_control, self.widgets.attributes_filename, set_value = strtrim(file,2)
     self.scan.attributes_filename = strtrim(file,2)
   endif else begin
@@ -2481,31 +2247,8 @@ function tomo_collect_ad2::init
   if (self.scan.num_flatfields eq 0) then widget_control, self.widgets.num_groups, set_value = $
     strtrim(CEIL(1.0*self.scan.num_angles/self.scan.flatfield_increment),2)
   widget_control, self.widgets.num_groups, sensitive=1
+
   t = self->validate_epics_pvs()
-
-
-  ; try to connect to camera
-  catch, error
-  if (error ne 0) then begin
-    self.ccd_valid = 0
-  endif else begin
-    self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+':cam1:')
-    self.ccd_valid=1
-
-    self.scan.ccd->setProperty,'Acquire',0
-    self.scan.ccd->setProperty,'ImageMode',0
-    self.scan.ccd->setProperty,'NumImages',1
-    self.scan.ccd->setProperty,'TriggerMode',0
-
-    t = caget(self.scan.camera_name + ':cam1:Manufacturer_RBV',name)
-    if(name ne 'Roper') then begin
-      t = caput(self.scan.camera_name+':netCDF1:EnableCallbacks',0)
-      t = caget(self.scan.camera_name+':netCDF1:Capture_RBV',capturing)
-      if (capturing ne 0) then t = caput(self.scan.camera_name+':netCDF1:Capture',0)
-      t = caput(self.scan.camera_name+':netCDF1:NumCapture',1)
-    endif
-  endelse
-  catch, /cancel
 
   return, 1
 end
@@ -2699,6 +2442,7 @@ pro tomo_collect_ad2__define
     num_flatfields: 0L ,$
     camera_name: '' ,$
     camera_manufacturer: 0L, $
+    file_control: '', $
     dark_current: 0L, $
     dc_state: 0L, $
     start_clock: 0L, $
