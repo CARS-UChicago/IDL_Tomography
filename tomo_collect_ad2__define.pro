@@ -480,6 +480,7 @@ pro tomo_collect_ad2::scanPoll
       ; Start the MCS
       t = caput(self.epics_pvs.otf_trigger+'EraseStart', 1)
       ; check for when flat field measurements are finished
+      t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
       while (images_captured ne self.scan.num_flatfields) do begin
         wait, .01
         t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
@@ -1009,21 +1010,22 @@ function tomo_collect_ad2::validate_epics_pvs
     self.scan.camera_name = self.epics_pvs.camera_name
     if (obj_valid(self.scan.ccd)) then obj_destroy, self.scan.ccd
     self.scan.ccd=obj_new('epics_ad_base',self.scan.camera_name+'cam1:')
-    self.ccd_valid = 1
-    widget_control, self.widgets.status, set_value='Connected to '+self.scan.camera_name
-
-    t = caget(self.scan.camera_name + 'cam1:Manufacturer_RBV',name)
-    if(t ne 0) then begin
+    if (not obj_valid(self.scan.ccd)) then begin
       widget_control, self.widgets.status, set_value='Could not connect to camera'
       t = dialog_message('Could not connect to camera, invalid camera name')
       pvs_ok = 0
       name = ''
+      goto, finish
     endif
+    widget_control, self.widgets.status, set_value='Connected to '+self.scan.camera_name
+    
 
     self.scan.ccd->setProperty,'Acquire',0
     self.scan.ccd->setProperty,'ImageMode',0
     self.scan.ccd->setProperty,'NumImages',1
     self.scan.ccd->setProperty,'TriggerMode',0
+    
+    name = self.scan.ccd.getProperty('Manufacturer_RBV')
 
     if(name eq 'Roper Scientific') then begin
       self.scan.camera_manufacturer = self.camera_types.ROPER
@@ -1138,8 +1140,6 @@ function tomo_collect_ad2::validate_epics_pvs
   widget_control, self.widgets.rotation_drive, sensitive=sensitive
   widget_control, self.widgets.sample_x_drive, sensitive=sensitive
   widget_control, self.widgets.sample_y_drive, sensitive=sensitive
-
-  if (not self.ccd_valid) then sensitive=0
   widget_control, self.widgets.start_scan, sensitive=sensitive
   widget_control, self.widgets.abort_scan, sensitive=0
 
@@ -2466,7 +2466,6 @@ pro tomo_collect_ad2__define
     expinfo: expinfo, $
     settings_file: "", $
     epics_pvs_valid: 0L, $
-    ccd_valid: 0L, $
     scan_timer_interval: 0.0, $
     display_timer_interval: 0.0, $
     autoscan_timer_interval: 0.0, $
