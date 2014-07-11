@@ -19,7 +19,7 @@ pro tomo_collect_ad2::startScan
   ; need to acquire a single image to get image dimensions
   ; This is used in prepareScan to get ArraySize_RBV
   self.scan.ccd->setProperty, 'ImageMode', 0
-  self->setTriggerMode, 'FreeRun'
+  self->setTriggerMode, 'Single'
   self.scan.ccd->setProperty, 'NumImages', 1
   self.scan.ccd->setProperty, 'Acquire', 1
   wait, .1
@@ -40,9 +40,6 @@ pro tomo_collect_ad2::startScan
 
   ; reset current scan
   self.scan.current_point = 0
-
-  ; Set the file name
-  self->SetFileName
 
   widget_control, self.widgets.scan_point, set_value=''
 
@@ -149,6 +146,9 @@ pro tomo_collect_ad2::startScan
     wait, 2.
   endif
 
+  ; Set the file name
+  self->SetFileName
+  
   ; send state to FLAT_FIELD
   self->setState, self.scan.states.FLAT_FIELD
 
@@ -554,6 +554,8 @@ pro tomo_collect_ad2::stopScan
   t = caput(self.epics_pvs.otf_trigger+'StopAll',1)
   ; stop the motor
   t = caput(self.epics_pvs.rotation+'.SPMG',0)
+  wait, .1
+  t = caput(self.epics_pvs.rotation+'.SPMG',3)
 
   if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
     ; check if camera is still acquiring
@@ -615,7 +617,6 @@ pro tomo_collect_ad2::stopScan
   self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
   if(~self.scan.leave_motor) then begin
     ; reset motor to original position
-    t = caput(self.epics_pvs.rotation+'.SPMG',3)
     self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]+self.scan.rotation_step
     widget_control, self.widgets.status, set_value='Zeroing motors'
     zeroing = 1
@@ -654,12 +655,6 @@ pro tomo_collect_ad2::stopScan
   self.scan.ccd->setProperty,'NumImages',1
   if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then $
     t = caput(self.scan.file_control+'NumCapture',1)
-
-  if (self.scan.leave_motor) then begin
-    wait, 1
-    t = caput(self.epics_pvs.rotation+'.SPMG',3)
-    self.scan.rotation_motor->set_position,self.scan.rotation_start
-  endif
 
   if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
     ; Wait for winview to return to idle state
@@ -764,7 +759,6 @@ end
 
 pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
   if (triggerMode eq 'FreeRun') then begin
-    ; set camera to external triggering
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
       self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
       self.scan.ccd->setProperty, 'ImageMode', 'Continuous'
@@ -780,8 +774,24 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       wait, .1
       t = caput(self.epics_pvs.pulse_generator+'Run', 'Run')
     endif
-  endif else begin
-    ; set camera to external triggering
+  endif else if (triggerMode eq 'Single') then begin
+    if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
+      self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
+      self.scan.ccd->setProperty, 'ImageMode', 'Single'
+    endif else if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
+      self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
+      self.scan.ccd->setProperty, 'ImageMode', 'Normal'
+    endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
+      self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
+      self.scan.ccd->setProperty, 'ImageMode', 'Single'
+      t = caput(self.epics_pvs.pulse_generator+'Run', 'Stop')
+      t = caput(self.epics_pvs.pulse_generator+'Mode', 'Normal')
+      t = caput(self.epics_pvs.pulse_generator+'ExtMode', 'Disabled')
+      wait, .1
+      t = caput(self.epics_pvs.pulse_generator+'Run', 'Run')
+    endif
+    self.scan.ccd->setProperty, 'NumImages', 1
+  endif else begin    ; set camera to external triggering
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
       self.scan.ccd->setProperty, 'TriggerMode', 'Sync In 2'
       self.scan.ccd->setProperty, 'ImageMode', 'Multiple'
@@ -804,23 +814,22 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       t = caput(self.scan.file_control+'NumCapture', numImages)
     endif
   endelse
-
+  
   if (triggerMode eq 'MCSExternal') then begin
     ; Put MCS in external trigger mode
     t = caput(self.epics_pvs.otf_trigger+'ChannelAdvance', 'External')
   endif
-
+  
   if (triggerMode eq 'MCSInternal') then begin
     ; Put MCS in internal trigger mode
     t = caput(self.epics_pvs.otf_trigger+'ChannelAdvance', 'Internal')
     ; Set MCS dwell time to time per angle
     t = caput(self.epics_pvs.otf_trigger+'Dwell', self.scan.time_per_angle)
   endif
-
-
+  
 end
 
-function tomo_collect_validateEpicsPvsvalidateEpicsPvs
+function tomo_collect_ad2::validateEpicsPvs
   ; Check that all EPICS PVs are valid.
   ; Display error dialog and return error on first non-valid PV
   n_pvs = n_tags(self.epics_pvs)
