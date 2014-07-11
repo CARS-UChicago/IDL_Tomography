@@ -216,435 +216,446 @@
 ;   20-NOV-2001 MLR  Added ABORT_WIDGET and STATUS_WIDGET keywords
 ;   25-APR-2002 MLR  Added support for reading 3-D .SPE files, created when doing
 ;                    fast scanning
-;   18-DEC-2005 MLR  Added white_average and white_smooth keywords. 
-;                    Renamed WHITE keyword to WHITE_FIELD 
+;   18-DEC-2005 MLR  Added white_average and white_smooth keywords.
+;                    Renamed WHITE keyword to WHITE_FIELD
 ;                    Setting white_average greatly reduces ring artifacts in many cases.
 ;-
 ;   24-JUN-2010 DTC Changed read_data_file to be able to process .nc files in addition to .SPE files
-;                   Changed preprocess to be able to concatenate multiple 3-D fast and OTF scan files into a single data set 
+;                   Changed preprocess to be able to concatenate multiple 3-D fast and OTF scan files into a single data set
 ;                   After dark field subtraction, added check against dividing by zero (replace all zeroes with ones?)
 ;   16-JUL-2011 DTC Added widget to transpose image data in the case that the camera is rotated 90 degrees
-
+
 pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, debug, $
-                    status_widget, flip_data
-   cd, current = current
-   file = base_file + strtrim(file_number, 2) + file_type
-   str = 'Reading ' + file
-   if (widget_info(status_widget, /valid_id)) then $
-        widget_control, status_widget, set_value=str
-   if (file_type eq '.SPE') then read_princeton, file, data, header=header, comment=comment
-   if (file_type eq '.nc') then data = read_nd_netcdf(file, attributes=attributes)
-   if (file_type ne '.SPE' AND file_type ne '.nc') then message, 'No files found'
-
-   ndims = size(data, /n_dimensions)
-   if (ndims eq 2) then begin; slow scan data
-        if flip_data then data = transpose(data)
-        if (file_type eq '.SPE') then begin      
-            angle=float(strmid(comment[0], 6))
-            type=strmid(comment[1], 5)
-        endif else if (file_type eq '.nc') then begin
-            angle= float(strmid( (*(attributes.pvalue)[7])[0], 6))
-            type= strmid( (*(attributes.pvalue)[8])[0], 5)
-        endif
-        str = str + ' angle=' + string(angle, format='(f6.2)') + ' type=' + type
-        if (widget_info(status_widget, /valid_id)) then $
-              widget_control, status_widget, set_value=str
-        if (debug ne 0) then print, str
-   endif else if (ndims eq 3) then begin ; fast or otf scan data
-        if flip_data then data = transpose(data, [1,0,2])
-        dims = size(data, /dimensions)
-        n_views = dims[2]
-        type = strarr(n_views)
-        angle = fltarr(n_views)
-        if (file_type eq '.SPE') then begin     
-            start_angle = float(strmid(comment[0], 12))
-            angle_step = float(strmid(comment[1], 11))
-            flat_fields = strmid(comment[2], 12)
-            flat_fields_2 = string(comment[3])
-            flat_fields_3 = string(comment[4])
-            flat_fields = flat_fields + flat_fields_2+flat_fields_3
-            if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
-            ang = start_angle
-            for i=0, n_views-1 do begin
-                angle[i] = ang
-                if (max(i eq flat_fields)) then begin
-                    type[i] = 'FLAT_FIELD'
-                endif else begin
-                    type[i] = 'NORMAL'
-                    ang = ang + angle_step
-                endelse
-            endfor
-            wait, 1
-        endif else if (file_type eq '.nc') then begin
-            start_angle = float(strmid( (*(attributes.pvalue)[7])[0], 12))
-            angle_step = float(strmid( (*(attributes.pvalue)[8])[0], 11))
-            flat_fields = strmid( (*(attributes.pvalue)[9])[0], 12)
-            UIDS = fix(*(attributes.pvalue)[0])
-            if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
-            ang = start_angle
-            index = UIDS[0]
-            FFS = 0
-            for i = 0, n_views-1 do begin
-                if (max(i eq flat_fields)) then begin
-                    type[i] = 'FLAT_FIELD'
-                    angle[i] = ang
-                    FFS = FFS+1
-                endif else begin
-                    type[i] = 'NORMAL'
-                    ang = ang + angle_step*(UIDS[i]-index-FFS)
-                    angle[i] = ang
-                    index = UIDS[i]
-                    FFS = 0
-                endelse 
-            endfor
-            wait, 1
-        endif
-
-   endif
+  status_widget, flip_data
+  cd, current = current
+  file = base_file + strtrim(file_number, 2) + file_type
+  str = 'Reading ' + file
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value=str
+  if (file_type eq '.SPE') then read_princeton, file, data, header=header, comment=comment
+  if (file_type eq '.nc') then data = read_nd_netcdf(file, attributes=attributes)
+  if (file_type ne '.SPE' AND file_type ne '.nc') then message, 'No files found'
+  
+  ndims = size(data, /n_dimensions)
+  if (ndims eq 2) then begin; slow scan data
+    if flip_data then data = transpose(data)
+    if (file_type eq '.SPE') then begin
+      angle=float(strmid(comment[0], 6))
+      type=strmid(comment[1], 5)
+    endif else if (file_type eq '.nc') then begin
+      i = self->find_attribute(attributes, 'Attr_Comment1')
+      angle= float(strmid( (*(attributes.pvalue)[i])[0], 6))
+      i = self->find_attribute(attributes, 'Attr_Comment2')
+      type= strmid( (*(attributes.pvalue)[i])[0], 5)
+    endif
+    str = str + ' angle=' + string(angle, format='(f6.2)') + ' type=' + type
+    if (widget_info(status_widget, /valid_id)) then $
+      widget_control, status_widget, set_value=str
+    if (debug ne 0) then print, str
+  endif else if (ndims eq 3) then begin ; fast or otf scan data
+    if flip_data then data = transpose(data, [1,0,2])
+    dims = size(data, /dimensions)
+    n_views = dims[2]
+    type = strarr(n_views)
+    angle = fltarr(n_views)
+    if (file_type eq '.SPE') then begin
+      start_angle = float(strmid(comment[0], 12))
+      angle_step = float(strmid(comment[1], 11))
+      flat_fields = strmid(comment[2], 12)
+      flat_fields_2 = string(comment[3])
+      flat_fields_3 = string(comment[4])
+      flat_fields = flat_fields + flat_fields_2+flat_fields_3
+      if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
+      ang = double(start_angle)
+      for i=0, n_views-1 do begin
+        angle[i] = ang
+        if (max(i eq flat_fields)) then begin
+          type[i] = 'FLAT_FIELD'
+        endif else begin
+          type[i] = 'NORMAL'
+          ang = ang + angle_step
+        endelse
+      endfor
+    endif else if (file_type eq '.nc') then begin
+      i = self->find_attribute(attributes, 'Attr_Comment1')
+      start_angle = float(strmid( (*(attributes.pvalue)[i])[0], 12))
+      i = self->find_attribute(attributes, 'Attr_Comment2')
+      angle_step = float(strmid( (*(attributes.pvalue)[i])[0], 11))
+      i = self->find_attribute(attributes, 'Attr_Comment3')
+      flat_fields = strmid( (*(attributes.pvalue)[i])[0], 12)
+      i = self->find_attribute(attributes, 'uniqueId')
+      UIDS = fix(*(attributes.pvalue)[i])
+      if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
+      ang = double(start_angle)
+      index = UIDS[0]
+      FFS = 0
+      for i = 0, n_views-1 do begin
+        if (max(i eq flat_fields)) then begin
+          type[i] = 'FLAT_FIELD'
+          angle[i] = ang
+          FFS = FFS+1
+        endif else begin
+          type[i] = 'NORMAL'
+          ang = ang + angle_step*(UIDS[i]-index-FFS)
+          angle[i] = ang
+          index = UIDS[i]
+          FFS = 0
+        endelse
+      endfor
+    endif
+    
+  endif
 end
 
-
+
+function tomo::find_attribute, attributes, name
+  for i=0, n_elements(attributes) do begin
+    if (attributes[i].name eq name) then return, i
+  endfor
+  message, 'Could not find attribute ' + name
+end
+
 pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
-                    white_field=input_white, threshold=threshold, $
-                    double_threshold=double_threshold, debug=debug, $
-                    first_row=first_row, last_row=last_row, output=output, $
-                    setup=setup, buff_angles=buff_angles, $
-                    white_smooth=white_smooth, white_average=white_average, $
-                    status_widget=status_widget, abort_widget=abort_widget, $
-                    flip_data = flip_data
-
-    nfiles = stop - start + 1
-    if (n_elements(debug) eq 0) then debug=1
-    if (n_elements(threshold) eq 0) then threshold=1.25
-    if (n_elements(double_threshold) eq 0) then double_threshold=1.05
-    if (n_elements(output) eq 0) then output=base_file + '.volume'
-    if (n_elements(setup) eq 0) then setup=base_file + '.setup'
-    if (n_elements(white_smooth) eq 0) then white_smooth=0
-    if (n_elements(white_average) eq 0) then white_average=0
-    if (n_elements(status_widget) eq 0) then status_widget = -1L
-    if (n_elements(abort_widget) eq 0) then abort_widget = -1L
-
-    status = self->read_setup(setup)
-
-    ; Read one file to get the dimensions
-    self->read_data_file, base_file, file_type, 1, data, type, angle, debug, status_widget, flip_data
-    ndims = size(data, /n_dimensions)
-    dims = size(data, /dimensions)
-    ncols = dims[0]
-    nrows = dims[1]
-    if (ndims eq 2) then begin ; slow scan data
-        nframes = nfiles
-        ystart = 0
-        ystop = nrows-1
-        if (n_elements(first_row) ne 0) then ystart = first_row
-        if (n_elements(last_row) ne 0) then ystop = last_row
-        ; The subset flag is for efficiency below
-        if ((ystart eq 0) and (ystop eq nrows-1)) then subset=0 else subset=1
-        nrows = ystop - ystart + 1
-        if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
-
-        data_buff = intarr(ncols, nrows, nframes, /nozero)
-        angles = fltarr(nframes)
-        image_type = strarr(nframes)
-        for i=0, nframes-1 do begin
-            self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-                                status_widget, flip_data
-            if (subset) then begin
-                data_buff[0,0,i]=data[*,ystart:ystop]
-            endif  else begin
-                data_buff[0,0,i]=data
-            endelse
-            angles[i]=angle
-            image_type[i]=type
-            if (widget_info(abort_widget, /valid_id)) then begin
-                event = widget_event(/nowait, abort_widget)
-                widget_control, abort_widget, get_uvalue=abort
-                if (abort) then begin
-                if (widget_info(status_widget, /valid_id)) then $
-                    widget_control, status_widget, $
-                                    set_value='Preprocessing aborted'
-                return
-                endif
-            endif
-        endfor
-    endif else if (ndims eq 3) then begin ; fast and otf scan data
-        if (nfiles eq 1) then begin
-            nframes = dims[2]
-            data_buff = temporary(data)
-            data_buff = fix(data_buff)
-            image_type = type
-            angles = angle
-        endif else begin
-            ; We have to read the data twice; once to figure out how many frames there are, and a second time
-            ; to put into the array
-            nframes = 0
-            for i=0, nfiles-1 do begin
-                self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-                                status_widget, flip_data
-                dims = size(data, /dimensions)
-                nframes = nframes + dims[2]
-            endfor
-            data_buff = intarr(ncols, nrows, nframes, /nozero)
-            image_type = strarr(nframes)
-            angles = fltarr(nframes,/nozero)
-            current_frame = 0
-            for i=0, nfiles-1 do begin
-                self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-                                status_widget, flip_data
-                dims = size(data, /dimensions)
-                data_buff[0, 0, current_frame] = data
-                data = 0
-                angles[current_frame] = angle
-                image_type[current_frame] = type
-                current_frame = current_frame + dims[2]
-                
-                if (widget_info(abort_widget, /valid_id)) then begin ; check for abort from user
-                    event = widget_event(/nowait, abort_widget)
-                    widget_control, abort_widget, get_uvalue=abort
-                    if (abort) then begin
-                    if (widget_info(status_widget, /valid_id)) then $
-                        widget_control, status_widget, set_value='Preprocessing aborted'
-                        return
-                    endif
-                endif
-            endfor
-        endelse
-    endif
-
-    ; Do dark current correction
-    str = 'Doing dark current correction ...'
-    if (widget_info(status_widget, /valid_id)) then $
-                widget_control, status_widget, set_value=str
-    if (debug ne 0) then print, str
-    darks = where(image_type eq 'DARK_FIELD', ndarks)
-    if (debug ge 2) then print, 'ndarks= ', ndarks, 'darks=', darks
-    if (n_elements(input_dark) ne 0) then begin
-        dark = input_dark
-        s = size(dark)  ; Input dark current
-        if (debug ge 2) then print, 'input_dark= ', input_dark, $
-                              'size(input_dark)=', s
-        case s[0] of
-            0: begin ; Constant dark current
-                for i=0, nframes-1 do begin
-                    data_temp =data_buff[*,*,i] - dark
-                    zeros = where(data_temp le 0, count)
-                    if (count gt 0) then data_temp[zeros] = 1
-                    data_buff[*,*,i] = data_temp  
-                endfor
-                self.dark_current = dark
-            end
-            2: begin  ; Dark current array
-                if (s[1] ne ncols) or (s[2] ne nrows) then $
-                            message, 'Wrong dims on dark'
-                if (max(dark) ge 16.* max(data_buff[*,*,0])) then $
-                            message, 'Wrong data type on dark'
-                for i=0, nframes-1 do begin
-                    data_temp =data_buff[*,*,i] - dark
-                    zeros = where(data_temp le 0, count)
-                    if (count gt 0) then data_temp[zeros] = 1
-                    data_buff[*,*,i] = data_temp  
-                endfor
-            end
-            else: message, 'Wrong dims on dark'
-        endcase
-    endif else if (ndarks gt 0) then begin
-        ; File contains one or more dark current images
-        ; Files up to the first dark current use the first dark current
-        dark = data_buff[*, *, darks[0]]
-        for i=0, darks[0]-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
-            ; Files after the last dark current use the last dark current
-            for i=darks[ndarks-1]+1, nframes-1 do $
-                            data_buff[0,0,i]=data_buff[*,*,i] - dark
-            ; Files in between the first dark and the last dark use the average of
-            ; the dark current before and after
-            nseries = ndarks-1
-            for j=0, nseries-1 do begin
-                dark = (data_buff[*,*,darks[j]] + data_buff[*,*,darks[j+1]]) / 2
-                for i=darks[j]+1, darks[j+1]-1 do $
-                            data_buff[0,0,i]=data_buff[*,*,i] - dark
-            endfor
-    endif else begin
-        message, 'Must specify dark keyword since no dark frames in data files'
-    endelse
-
-    ; Do flat field current correction and zinger removal on flat field frames
-    str = 'Doing white field correction ...'
-    if (widget_info(status_widget, /valid_id)) then $
-                widget_control, status_widget, set_value=str
-    if (debug ne 0) then print, str
-    whites = where(image_type eq 'FLAT_FIELD', nwhites)
-    if (debug ge 2) then print, 'nwhites= ', nwhites, 'whites=', whites
-    if (n_elements(input_white) ne 0) then begin
-        white = input_white
-        s = size(white)  ; Input white field
-        case s[0] of
-            0: data_buff[0,0,0] = 10000 * (data_buff/float(white))  ; Constant
-            2: begin  ; White field array
-                if (s[1] ne ncols) or (s[2] ne nrows) then $
-                                message, 'Wrong dims on white'
-                for i=0, nframes-1 do $
-                    data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
-            end
-            else: message, 'Wrong dims on white'
-        endcase
-    endif else if (nwhites gt 0) then begin
-        ; File contains one or more white field images
-        ; Extract the white fields into their own array
-        white_data = fltarr(ncols, nrows, nwhites)
-        for i=0, nwhites-1 do white_data[0,0,i] = data_buff[*,*,whites[i]]
-        ; Remove zingers from white fields.  If there is more than 1 white field
-        ; do it with double correlation, else do it with spatial filter
-        if (nwhites eq 1) then begin
-            if (debug ge 1) then print, 'Single white field, correcting zingers with spatial'
-            white_data[0,0,0] = remove_tomo_artifacts(white_data[*,*,0], /zingers, threshold=threshold, $
-                               debug=debug)
-        endif else begin
-            if (debug ge 1) then print, 'Multiple white fields, correcting zingers with double correlation'
-            for i=0, nwhites-2 do begin
-                white_data[0,0,i] = remove_tomo_artifacts(white_data[*,*,i],   $
-                                                   image2=white_data[*,*,i+1], $
-                              /double_correlation, threshold=double_threshold, $
-                              debug=debug)
-            endfor
-        endelse
-        ; If we are smoothing white fields ...
-        if (white_smooth gt 1) then begin
-            if (debug ge 1) then print, 'Smoothing white fields, smooth width=', white_smooth
-            for i=0, nwhites-1 do begin
-                white_data[0,0,i] = smooth(white_data[*,*,i], white_smooth)
-            endfor
+  white_field=input_white, threshold=threshold, $
+  double_threshold=double_threshold, debug=debug, $
+  first_row=first_row, last_row=last_row, output=output, $
+  setup=setup, buff_angles=buff_angles, $
+  white_smooth=white_smooth, white_average=white_average, $
+  status_widget=status_widget, abort_widget=abort_widget, $
+  flip_data = flip_data
+  
+  nfiles = stop - start + 1
+  if (n_elements(debug) eq 0) then debug=1
+  if (n_elements(threshold) eq 0) then threshold=1.25
+  if (n_elements(double_threshold) eq 0) then double_threshold=1.05
+  if (n_elements(output) eq 0) then output=base_file + '.volume'
+  if (n_elements(setup) eq 0) then setup=base_file + '.setup'
+  if (n_elements(white_smooth) eq 0) then white_smooth=0
+  if (n_elements(white_average) eq 0) then white_average=0
+  if (n_elements(status_widget) eq 0) then status_widget = -1L
+  if (n_elements(abort_widget) eq 0) then abort_widget = -1L
+  
+  status = self->read_setup(setup)
+  
+  ; Read one file to get the dimensions
+  self->read_data_file, base_file, file_type, 1, data, type, angle, debug, status_widget, flip_data
+  ndims = size(data, /n_dimensions)
+  dims = size(data, /dimensions)
+  ncols = dims[0]
+  nrows = dims[1]
+  if (ndims eq 2) then begin ; slow scan data
+    nframes = nfiles
+    ystart = 0
+    ystop = nrows-1
+    if (n_elements(first_row) ne 0) then ystart = first_row
+    if (n_elements(last_row) ne 0) then ystop = last_row
+    ; The subset flag is for efficiency below
+    if ((ystart eq 0) and (ystop eq nrows-1)) then subset=0 else subset=1
+    nrows = ystop - ystart + 1
+    if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
+    
+    data_buff = intarr(ncols, nrows, nframes, /nozero)
+    angles = fltarr(nframes)
+    image_type = strarr(nframes)
+    for i=0, nframes-1 do begin
+      self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
+        status_widget, flip_data
+      if (subset) then begin
+        data_buff[0,0,i]=data[*,ystart:ystop]
+      endif  else begin
+        data_buff[0,0,i]=data
+      endelse
+      angles[i]=angle
+      image_type[i]=type
+      if (widget_info(abort_widget, /valid_id)) then begin
+        event = widget_event(/nowait, abort_widget)
+        widget_control, abort_widget, get_uvalue=abort
+        if (abort) then begin
+          if (widget_info(status_widget, /valid_id)) then $
+            widget_control, status_widget, $
+            set_value='Preprocessing aborted'
+          return
         endif
-        ; If we are averaging white fields ...
-        if keyword_set(white_average) then begin
-            if (debug ge 1) then print, 'Averaging white fields'
-            white = total(white_data, 3)/nwhites
-            for i=0, nframes-1 do begin ; we don't subtract the white fields, we divide them...
-                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-                if (widget_info(abort_widget, /valid_id)) then begin
-                    event = widget_event(/nowait, abort_widget)
-                    widget_control, abort_widget, get_uvalue=abort
-                    if (abort) then begin
-                        if (widget_info(status_widget, /valid_id)) then $
-                            widget_control, status_widget, $
-                            set_value='Preprocessing aborted'
-                        return
-                    endif
-                endif
-            endfor
-        endif else begin
-            if (debug ge 1) then print, 'Interpolating white fields'
-            ; We are interpolating white fields
-            ; Files up to the first white field use the first white field
-            white = white_data[*,*,0]
-            for i=0, whites[0]-1 do $
-                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-            ; Files after the last white field use the last white field
-            white = white_data[*,*,[nwhites-1]]
-            for i=whites[nwhites-1]+1, nframes-1 do $
-                data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-            ; Files in between the first white field and the last white field use the
-            ; weighted average of the white field before and after
-            nseries = nwhites-1
-            for j=0, nseries-1 do begin
-                white1 = white_data[*,*,j]
-                white2 = white_data[*,*,j+1]
-                nf = whites[j+1] - whites[j] - 1
-                for i=0, nf-1 do begin
-                    k = i + whites[j]+1
-                    ratio = float(i)/float(nf-1)
-                    white = white1*(1.0-ratio) + white2*ratio
-                    data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
-                endfor
-                if (widget_info(abort_widget, /valid_id)) then begin
-                    event = widget_event(/nowait, abort_widget)
-                    widget_control, abort_widget, get_uvalue=abort
-                    if (abort) then begin
-                        if (widget_info(status_widget, /valid_id)) then $
-                            widget_control, status_widget, $
-                            set_value='Preprocessing aborted'
-                        return
-                    endif
-                endif
-            endfor
-        endelse  ; Interpolate
+      endif
+    endfor
+  endif else if (ndims eq 3) then begin ; fast and otf scan data
+    if (nfiles eq 1) then begin
+      nframes = dims[2]
+      data_buff = temporary(data)
+      data_buff = fix(data_buff)
+      image_type = type
+      angles = angle
     endif else begin
-        message, 'Must specify white keyword since no white frames in data files'
+      ; We have to read the data twice; once to figure out how many frames there are, and a second time
+      ; to put into the array
+      nframes = 0
+      for i=0, nfiles-1 do begin
+        self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
+          status_widget, flip_data
+        dims = size(data, /dimensions)
+        nframes = nframes + dims[2]
+      endfor
+      data_buff = intarr(ncols, nrows, nframes, /nozero)
+      image_type = strarr(nframes)
+      angles = fltarr(nframes,/nozero)
+      current_frame = 0
+      for i=0, nfiles-1 do begin
+        self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
+          status_widget, flip_data
+        dims = size(data, /dimensions)
+        data_buff[0, 0, current_frame] = data
+        data = 0
+        angles[current_frame] = angle
+        image_type[current_frame] = type
+        current_frame = current_frame + dims[2]
+        
+        if (widget_info(abort_widget, /valid_id)) then begin ; check for abort from user
+          event = widget_event(/nowait, abort_widget)
+          widget_control, abort_widget, get_uvalue=abort
+          if (abort) then begin
+            if (widget_info(status_widget, /valid_id)) then $
+              widget_control, status_widget, set_value='Preprocessing aborted'
+            return
+          endif
+        endif
+      endfor
     endelse
-
-    ; Now we have normalized data.
-    ; Correct for zingers now that flat field normalization is done
-    ; Write out to disk file, sorted by angle, arranged by slice
+  endif
+  
+  ; Do dark current correction
+  str = 'Doing dark current correction ...'
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value=str
+  if (debug ne 0) then print, str
+  darks = where(image_type eq 'DARK_FIELD', ndarks)
+  if (debug ge 2) then print, 'ndarks= ', ndarks, 'darks=', darks
+  if (n_elements(input_dark) ne 0) then begin
+    dark = input_dark
+    s = size(dark)  ; Input dark current
+    if (debug ge 2) then print, 'input_dark= ', input_dark, $
+      'size(input_dark)=', s
+    case s[0] of
+      0: begin ; Constant dark current
+        for i=0, nframes-1 do begin
+          data_temp =data_buff[*,*,i] - dark
+          zeros = where(data_temp le 0, count)
+          if (count gt 0) then data_temp[zeros] = 1
+          data_buff[*,*,i] = data_temp
+        endfor
+        self.dark_current = dark
+      end
+      2: begin  ; Dark current array
+        if (s[1] ne ncols) or (s[2] ne nrows) then $
+          message, 'Wrong dims on dark'
+        if (max(dark) ge 16.* max(data_buff[*,*,0])) then $
+          message, 'Wrong data type on dark'
+        for i=0, nframes-1 do begin
+          data_temp =data_buff[*,*,i] - dark
+          zeros = where(data_temp le 0, count)
+          if (count gt 0) then data_temp[zeros] = 1
+          data_buff[*,*,i] = data_temp
+        endfor
+      end
+      else: message, 'Wrong dims on dark'
+    endcase
+  endif else if (ndarks gt 0) then begin
+    ; File contains one or more dark current images
+    ; Files up to the first dark current use the first dark current
+    dark = data_buff[*, *, darks[0]]
+    for i=0, darks[0]-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
+    ; Files after the last dark current use the last dark current
+    for i=darks[ndarks-1]+1, nframes-1 do $
+      data_buff[0,0,i]=data_buff[*,*,i] - dark
+    ; Files in between the first dark and the last dark use the average of
+    ; the dark current before and after
+    nseries = ndarks-1
+    for j=0, nseries-1 do begin
+      dark = (data_buff[*,*,darks[j]] + data_buff[*,*,darks[j+1]]) / 2
+      for i=darks[j]+1, darks[j+1]-1 do $
+        data_buff[0,0,i]=data_buff[*,*,i] - dark
+    endfor
+  endif else begin
+    message, 'Must specify dark keyword since no dark frames in data files'
+  endelse
+  
+  ; Do flat field current correction and zinger removal on flat field frames
+  str = 'Doing white field correction ...'
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value=str
+  if (debug ne 0) then print, str
+  whites = where(image_type eq 'FLAT_FIELD', nwhites)
+  if (debug ge 2) then print, 'nwhites= ', nwhites, 'whites=', whites
+  if (n_elements(input_white) ne 0) then begin
+    white = input_white
+    s = size(white)  ; Input white field
+    case s[0] of
+      0: data_buff[0,0,0] = 10000 * (data_buff/float(white))  ; Constant
+      2: begin  ; White field array
+        if (s[1] ne ncols) or (s[2] ne nrows) then $
+          message, 'Wrong dims on white'
+        for i=0, nframes-1 do $
+          data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
+      end
+      else: message, 'Wrong dims on white'
+    endcase
+  endif else if (nwhites gt 0) then begin
+    ; File contains one or more white field images
+    ; Extract the white fields into their own array
+    white_data = fltarr(ncols, nrows, nwhites)
+    for i=0, nwhites-1 do white_data[0,0,i] = data_buff[*,*,whites[i]]
+    ; Remove zingers from white fields.  If there is more than 1 white field
+    ; do it with double correlation, else do it with spatial filter
+    if (nwhites eq 1) then begin
+      if (debug ge 1) then print, 'Single white field, correcting zingers with spatial'
+      white_data[0,0,0] = remove_tomo_artifacts(white_data[*,*,0], /zingers, threshold=threshold, $
+        debug=debug)
+    endif else begin
+      if (debug ge 1) then print, 'Multiple white fields, correcting zingers with double correlation'
+      for i=0, nwhites-2 do begin
+        white_data[0,0,i] = remove_tomo_artifacts(white_data[*,*,i],   $
+          image2=white_data[*,*,i+1], $
+          /double_correlation, threshold=double_threshold, $
+          debug=debug)
+      endfor
+    endelse
+    ; If we are smoothing white fields ...
+    if (white_smooth gt 1) then begin
+      if (debug ge 1) then print, 'Smoothing white fields, smooth width=', white_smooth
+      for i=0, nwhites-1 do begin
+        white_data[0,0,i] = smooth(white_data[*,*,i], white_smooth)
+      endfor
+    endif
+    ; If we are averaging white fields ...
+    if keyword_set(white_average) then begin
+      if (debug ge 1) then print, 'Averaging white fields'
+      white = total(white_data, 3)/nwhites
+      for i=0, nframes-1 do begin ; we don't subtract the white fields, we divide them...
+        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
+        if (widget_info(abort_widget, /valid_id)) then begin
+          event = widget_event(/nowait, abort_widget)
+          widget_control, abort_widget, get_uvalue=abort
+          if (abort) then begin
+            if (widget_info(status_widget, /valid_id)) then $
+              widget_control, status_widget, $
+              set_value='Preprocessing aborted'
+            return
+          endif
+        endif
+      endfor
+    endif else begin
+      if (debug ge 1) then print, 'Interpolating white fields'
+      ; We are interpolating white fields
+      ; Files up to the first white field use the first white field
+      white = white_data[*,*,0]
+      for i=0, whites[0]-1 do $
+        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
+      ; Files after the last white field use the last white field
+      white = white_data[*,*,[nwhites-1]]
+      for i=whites[nwhites-1]+1, nframes-1 do $
+        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
+      ; Files in between the first white field and the last white field use the
+      ; weighted average of the white field before and after
+      nseries = nwhites-1
+      for j=0, nseries-1 do begin
+        white1 = white_data[*,*,j]
+        white2 = white_data[*,*,j+1]
+        nf = whites[j+1] - whites[j] - 1
+        for i=0, nf-1 do begin
+          k = i + whites[j]+1
+          ratio = float(i)/float(nf-1)
+          white = white1*(1.0-ratio) + white2*ratio
+          data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
+        endfor
+        if (widget_info(abort_widget, /valid_id)) then begin
+          event = widget_event(/nowait, abort_widget)
+          widget_control, abort_widget, get_uvalue=abort
+          if (abort) then begin
+            if (widget_info(status_widget, /valid_id)) then $
+              widget_control, status_widget, $
+              set_value='Preprocessing aborted'
+            return
+          endif
+        endif
+      endfor
+    endelse  ; Interpolate
+  endif else begin
+    message, 'Must specify white keyword since no white frames in data files'
+  endelse
+  
+  ; Now we have normalized data.
+  ; Correct for zingers now that flat field normalization is done
+  ; Write out to disk file, sorted by angle, arranged by slice
+  str = 'Writing volume file ...'
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value=str
+  if (debug ne 0) then print, str
+  data_images = where(image_type eq 'NORMAL', nangles)
+  angles = angles[data_images]
+  sorted_indices = sort(angles)
+  angles = angles[sorted_indices]
+  ptr_free, self.angles
+  self.angles = ptr_new(angles)
+  data_images = data_images[sorted_indices]
+  ncols = long(ncols)
+  nrows = long(nrows)
+  nangles = long(nangles)
+  if (n_elements(buff_angles) eq 0) then buff_angles = nangles
+  dummy = intarr(2,2,2)
+  self->write_volume, output, dummy, /corrected, xmax=ncols, ymax=nrows, $
+    zmax=nangles
+  vol = intarr(ncols, nrows, buff_angles)
+  angle_index = 0
+  zoffset=0
+  for i=0, nangles-1 do begin
+    proj = reform(data_buff[*,*,data_images[i]])
+    negatives = where(proj lt 0, count)
+    if (count gt 0) then proj(negatives) = 2^15-1
+    proj = remove_tomo_artifacts(proj, /zingers, threshold=threshold, $
+      debug=debug)
+    str = 'Copying projection ' + strtrim(i+1,2) + '/' + $
+      strtrim(nangles,2)
+    if (widget_info(status_widget, /valid_id)) then $
+      widget_control, status_widget, set_value=str
+    if (debug ne 0) then print, str
+    vol[0,0,angle_index] = proj
+    if (angle_index eq (buff_angles-1)) then begin
+      str = 'Writing volume file ...'
+      if (widget_info(status_widget, /valid_id)) then $
+        widget_control, status_widget, set_value=str
+      if (debug ne 0) then print, str
+      write_tomo_volume, output, vol, /corrected, /append, zoffset=zoffset
+      angle_index=0
+      zoffset = zoffset + buff_angles
+    endif else begin
+      angle_index = angle_index+1
+    endelse
+    if (widget_info(abort_widget, /valid_id)) then begin
+      event = widget_event(/nowait, abort_widget)
+      widget_control, abort_widget, get_uvalue=abort
+      if (abort) then begin
+        if (widget_info(status_widget, /valid_id)) then $
+          widget_control, status_widget, $
+          set_value='Preprocessing aborted'
+        return
+      endif
+    endif
+  endfor
+  if (angle_index ne 0) then begin
+    ; We have a partially filled buffer that needs to be written
     str = 'Writing volume file ...'
     if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, set_value=str
+      widget_control, status_widget, set_value=str
     if (debug ne 0) then print, str
-    data_images = where(image_type eq 'NORMAL', nangles)
-    angles = angles[data_images]
-    sorted_indices = sort(angles)
-    angles = angles[sorted_indices]
-    ptr_free, self.angles
-    self.angles = ptr_new(angles)
-    data_images = data_images[sorted_indices]
-    ncols = long(ncols)
-    nrows = long(nrows)
-    nangles = long(nangles)
-    if (n_elements(buff_angles) eq 0) then buff_angles = nangles
-    dummy = intarr(2,2,2)
-    self->write_volume, output, dummy, /corrected, xmax=ncols, ymax=nrows, $
-                        zmax=nangles
-    vol = intarr(ncols, nrows, buff_angles)
-    angle_index = 0
-    zoffset=0
-    for i=0, nangles-1 do begin
-        proj = reform(data_buff[*,*,data_images[i]])
-        negatives = where(proj lt 0, count)
-        if (count gt 0) then proj(negatives) = 2^15-1
-        proj = remove_tomo_artifacts(proj, /zingers, threshold=threshold, $
-                                debug=debug)
-        str = 'Copying projection ' + strtrim(i+1,2) + '/' + $
-                                      strtrim(nangles,2)
-        if (widget_info(status_widget, /valid_id)) then $
-                    widget_control, status_widget, set_value=str
-        if (debug ne 0) then print, str
-        vol[0,0,angle_index] = proj
-        if (angle_index eq (buff_angles-1)) then begin
-            str = 'Writing volume file ...'
-            if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, set_value=str
-            if (debug ne 0) then print, str
-            write_tomo_volume, output, vol, /corrected, /append, zoffset=zoffset
-            angle_index=0
-            zoffset = zoffset + buff_angles
-        endif else begin
-            angle_index = angle_index+1
-        endelse
-        if (widget_info(abort_widget, /valid_id)) then begin
-            event = widget_event(/nowait, abort_widget)
-            widget_control, abort_widget, get_uvalue=abort
-            if (abort) then begin
-               if (widget_info(status_widget, /valid_id)) then $
-                   widget_control, status_widget, $
-                                   set_value='Preprocessing aborted'
-               return
-            endif
-        endif
-    endfor
-    if (angle_index ne 0) then begin
-        ; We have a partially filled buffer that needs to be written
-        str = 'Writing volume file ...'
-        if (widget_info(status_widget, /valid_id)) then $
-                    widget_control, status_widget, set_value=str
-        if (debug ne 0) then print, str
-        write_tomo_volume, output, vol[*,*,0:angle_index-1], /corrected, /append, $
-                           zoffset=zoffset
-    endif
-    status = self->write_setup(setup)
-    if (widget_info(status_widget, /valid_id)) then $
-        widget_control, status_widget, set_value='Preprocessing complete.'
-
+    write_tomo_volume, output, vol[*,*,0:angle_index-1], /corrected, /append, $
+      zoffset=zoffset
+  endif
+  status = self->write_setup(setup)
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value='Preprocessing complete.'
+    
 end
 
-
+
 ;+
 ; NAME:
 ;   TOMO::RECONSTRUCT_VOLUME
@@ -746,458 +757,458 @@ end
 ;-
 
 pro tomo::reconstruct_volume, tomoParams, base_file, center=center, $
-                              angles=angles, abort_widget=abort_widget, $
-                              status_widget=status_widget
+  angles=angles, abort_widget=abort_widget, $
+  status_widget=status_widget
+  
+  if (n_elements(status_widget) eq 0) then status_widget = -1L
+  if (n_elements(abort_widget) eq 0) then abort_widget = -1L
+  status = self->read_setup(base_file+'.setup')
+  if (n_elements(angles) ne 0) then self.angles = ptr_new(angles)
+  if (n_elements(scale) eq 0) then scale=1.e6
+  self.scale_factor = 1./tomoParams.reconScale
+  input_file = base_file + '.volume'
+  output_file = base_file + 'recon.volume'
+  center_offset = tomoParams.numPixels/2.
+  center_slope = 0.
+  if (n_elements(center) ge 1) then center_offset=center[0]
+  if (n_elements(center) eq 2) then center_slope = (center[1]-center[0])/float(tomoParams.numSlices)
+  cent = center_offset + findgen(tomoParams.numSlices)*center_slope
+  ; Use the center in the middle slice as the value written to the .setup file
+  self.center = cent[tomoParams.numSlices/2]
+  
+  if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
+    tomo_recon_netcdf, tomoParams, input_file, output_file, $
+      angles=angles, center=cent, status_widget=status_widget, abort_widget=abort_widget
+  endif else begin
+    t0 = systime(1)
+    str = 'Reading volume file ...'
+    if (widget_info(status_widget, /valid_id)) then $
+      widget_control, status_widget, set_value=str
+    print, str
+    vol = self->read_volume(input_file)
+    t1 = systime(1)
+    
+    ; This procedure reconstructs all of the slices for a tomography data set
+    nrows = n_elements(vol[0,*,0])
+    ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
+    for i=0, nrows-1, 2 do begin
+      str = 'Reconstructing slice ' + strtrim(i,2) + '/' + $
+        strtrim(nrows-1,2)
+      if (widget_info(status_widget, /valid_id)) then $
+        widget_control, status_widget, set_value=str
+      print, str
+      r = reconstruct_slice(tomoParams, i, vol, r2, center=cent[i], angles=angles)
+      if (i eq 0) then begin
+        ncols = n_elements(r[*,0])
+        recon = intarr(ncols, ncols, nrows, /nozero)
+      endif
+      recon[0,0,i] = r
+      if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
+        recon[0,0,i+1] = r2
+      endif
+      if (widget_info(abort_widget, /valid_id)) then begin
+        event = widget_event(/nowait, abort_widget)
+        widget_control, abort_widget, get_uvalue=abort
+        if (abort) then begin
+          if (widget_info(status_widget, /valid_id)) then $
+            widget_control, status_widget, $
+            set_value='Reconstruction aborted.'
+          return
+        endif
+      endif
+    endfor
+    ; If there was no input angle array copy the one that reconstruct_slice
+    ; generated back into self
+    if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
+    ; We are all done with the vol array, free it
+    vol = 0
+    if (widget_info(status_widget, /valid_id)) then $
+      widget_control, status_widget, set_value='Writing volume file ...'
+    t2 = systime(1)
+    self->write_volume, output_file, recon, /reconstructed
+    t3 = systime(1)
+    print, 'read_tomo_netcdf execution times:'
+    print, '              Reading input file:', t1-t0
+    print, '                  Reconstructing:', t2-t1
+    print, '             Writing output file:', t3-t2
+    print, '                           Total:', t3-t0
+  endelse
+  
+  status = self->write_setup(base_file + '.setup')
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value='Reconstruction complete.'
+    
+end
 
-    if (n_elements(status_widget) eq 0) then status_widget = -1L
-    if (n_elements(abort_widget) eq 0) then abort_widget = -1L
-    status = self->read_setup(base_file+'.setup')
-    if (n_elements(angles) ne 0) then self.angles = ptr_new(angles)
-    if (n_elements(scale) eq 0) then scale=1.e6
-    self.scale_factor = 1./tomoParams.reconScale
-    input_file = base_file + '.volume'
-    output_file = base_file + 'recon.volume'
-    center_offset = tomoParams.numPixels/2.
-    center_slope = 0.
-    if (n_elements(center) ge 1) then center_offset=center[0]
-    if (n_elements(center) eq 2) then center_slope = (center[1]-center[0])/float(tomoParams.numSlices)
-    cent = center_offset + findgen(tomoParams.numSlices)*center_slope
-    ; Use the center in the middle slice as the value written to the .setup file
-    self.center = cent[tomoParams.numSlices/2]
 
-    if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
-        tomo_recon_netcdf, tomoParams, input_file, output_file, $
-                angles=angles, center=cent, status_widget=status_widget, abort_widget=abort_widget
+pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
+  raw=raw, corrected=corrected, reconstructed=reconstructed, $
+  xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
+  xmax=xmax, ymax=ymax, zmax=zmax
+  
+  ;+
+  ; NAME:
+  ;   TOMO::WRITE_VOLUME
+  ;
+  ; PURPOSE:
+  ;   Writes 3-D volume files to be read later by READ_TOMO_VOLUME.
+  ;   There are currently 2 file formats supported:
+  ;   1) The old APS-specific architecture-dependent binary format.
+  ;      In general this format should no longer be used, since it does not
+  ;      contain information on the dark current, centering, etc.  It is also
+  ;      not nearly as portable as netCDF, since if the IDL routine
+  ;      READ_TOMO_VOLUME is not used to read the files then user-code must
+  ;      handle byte-swapping, etc.
+  ;   2) netCDF format files.  This is the format which should generally be used,
+  ;      since it supports additional information like the dark current and it is
+  ;      very portable.  Many data-handling packages support netCDF and there are
+  ;      netCDF libraries available on virtually all platforms.
+  ;
+  ; CATEGORY:
+  ;   Tomography data processing
+  ;
+  ; CALLING SEQUENCE:
+  ;   TOMO->WRITE_VOLUME, File, Volume
+  ;
+  ; INPUTS:
+  ;   File:
+  ;       The name of the volume file to be written.
+  ;   Volume:
+  ;       The 3-D volume data to be written.  This must be a 3-D 16-bit integer
+  ;       array.  The dimensions are NX, NY, NANGLES or NX, NY, NZ
+  ;
+  ; KEYWORD PARAMETERS:
+  ;   XOFFSET:
+  ;   YOFFSET:
+  ;   ZOFFSET:  The [X,Y,Z] offsets in the disk array to begin writing to.  Default
+  ;             is [0,0,0]
+  ;   XMAX:
+  ;   YMAX:
+  ;   ZMAX:     The maximum [X,Y,Z] size of the array on disk.  Valid only when the
+  ;             file is first created, i.e. if APPEND is not specified.  Default
+  ;             is the size of the Volume array in each dimension.
+  ;   APPEND:   Open an existing file for appending or overwriting data.  Default is to
+  ;             APPEND=0 which creates a new file.
+  ;   NETCDF:
+  ;       Set this keyword  to write files in netCDF file format.  This is the
+  ;       default.  If NETCDF=0 then files are written in the old APS format.
+  ;   RAW:      The data are raw projections (X,Y,THETA), not normalized for flat field
+  ;   CORRECTED: The data are flat-field normalized projections (X,Y,THETA)
+  ;   RECONSTRUCTED:  The data are reconstructed sections (X,Y,Z)
+  ;
+  ; RESTRICTIONS:
+  ;   The old APS format files are written using little-endian byte order.
+  ;   When this routine writes such files it swaps the byte order if it is
+  ;   running on a big-endian machine.  Thus that file format
+  ;   is most efficient on little-endian machines (Intel, DEC).
+  ;
+  ; EXAMPLE:
+  ;   tomo = obj_new('tomo', 'test.setup')
+  ;   tomo->WRITE_VOLUME, 'diamond2.volume', volume
+  ;
+  ; MODIFICATION HISTORY:
+  ;   Written by:     Mark Rivers, May 13, 1998
+  ;   26-JAN-2000  MLR  Added /swap_if_big_endian keyword to openw to allow
+  ;                     files to be read on big-endian machines.
+  ;   11-APR-2001  MLR  Added support for netCDF file format.  Added NETCDF keyword.
+  ;   5-NOV-2001   MLR  Added XOFFSET, YOFFSET, ZOFFSET, XMAX, YMAX, ZMAX, and
+  ;                     APPEND keywords
+  ;   24-JUN-2002  MLR  Fixed bug if input volume was 2-D rather than 3-D.
+  ;-
+  ;-
+  
+  if (n_elements(netcdf) eq 0) then netcdf=1
+  
+  size = size(volume)
+  ; If this is a 2-D array fake it out by setting third dimension to 1
+  if (size[0] eq 2) then size[3]=1
+  if (keyword_set(raw)) then self.image_type = "RAW"
+  if (keyword_set(corrected)) then self.image_type = "CORRECTED"
+  if (keyword_set(reconstructed)) then self.image_type = "RECONSTRUCTED"
+  
+  
+  if (netcdf eq 0) then begin
+    openw, lun, file, /get, /swap_if_big_endian
+    ncols = size[1]
+    nrows = size[2]
+    nangles = size[3]
+    writeu, lun, ncols, nrows, nangles, volume
+    free_lun, lun
+    return
+  endif else begin
+  
+    ; netCDF file format
+    if (keyword_set(append)) then begin
+      ; If APPEND keyword is specifified then open an existing netCDF file
+      file_id = ncdf_open(file, /write)
+      ; Get the variable id
+      vol_id   = ncdf_varid (file_id, 'VOLUME')
+      if (vol_id eq -1) then begin
+        ncdf_close, file_id
+        message, 'No VOLUME variable in netCDF file'
+      endif
     endif else begin
-        t0 = systime(1)
-        str = 'Reading volume file ...'
-        if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, set_value=str
-        print, str
-        vol = self->read_volume(input_file)
-        t1 = systime(1)
-
-        ; This procedure reconstructs all of the slices for a tomography data set
-        nrows = n_elements(vol[0,*,0])
-        ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
-        for i=0, nrows-1, 2 do begin
-            str = 'Reconstructing slice ' + strtrim(i,2) + '/' + $
-                                            strtrim(nrows-1,2)
-            if (widget_info(status_widget, /valid_id)) then $
-                widget_control, status_widget, set_value=str
-            print, str
-            r = reconstruct_slice(tomoParams, i, vol, r2, center=cent[i], angles=angles)
-            if (i eq 0) then begin
-                ncols = n_elements(r[*,0])
-                recon = intarr(ncols, ncols, nrows, /nozero)
-            endif
-            recon[0,0,i] = r
-            if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
-                recon[0,0,i+1] = r2
-            endif
-            if (widget_info(abort_widget, /valid_id)) then begin
-                event = widget_event(/nowait, abort_widget)
-                widget_control, abort_widget, get_uvalue=abort
-                if (abort) then begin
-                    if (widget_info(status_widget, /valid_id)) then $
-                        widget_control, status_widget, $
-                                        set_value='Reconstruction aborted.'
-                    return
-                endif
-            endif
-        endfor
-        ; If there was no input angle array copy the one that reconstruct_slice
-        ; generated back into self
-        if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
-        ; We are all done with the vol array, free it
-        vol = 0
-        if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, set_value='Writing volume file ...'
-        t2 = systime(1)
-        self->write_volume, output_file, recon, /reconstructed
-        t3 = systime(1)
-        print, 'read_tomo_netcdf execution times:'
-        print, '              Reading input file:', t1-t0
-        print, '                  Reconstructing:', t2-t1
-        print, '             Writing output file:', t3-t2
-        print, '                           Total:', t3-t0
+      ; else create a new netCDF file
+      ; Create netCDF file
+      file_id = ncdf_create(file, /clobber)
+      ncdf_control, file_id, fill=0
+      
+      ; Create dimensions
+      if (n_elements(xmax) eq 0) then xmax=size[1]
+      if (n_elements(ymax) eq 0) then ymax=size[2]
+      if (n_elements(zmax) eq 0) then zmax=size[3]
+      nx_id = ncdf_dimdef(file_id, 'NX', xmax)
+      ny_id = ncdf_dimdef(file_id, 'NY', ymax)
+      nz_id = ncdf_dimdef(file_id, 'NZ', zmax)
+      
+      ; Create variables
+      vol_id = ncdf_vardef(file_id, 'VOLUME', [nx_id, ny_id, nz_id], /SHORT)
+      
+      ; Create attributes.  Replace null strings with a blank.
+      if (self.title ne '') then str=self.title else str=' '
+      ncdf_attput, file_id, /GLOBAL, 'title', str
+      if (self.operator ne '') then str=self.operator else str=' '
+      ncdf_attput, file_id, /GLOBAL, 'operator', str
+      if (self.camera ne '') then str=self.camera else str=' '
+      ncdf_attput, file_id, /GLOBAL, 'camera', str
+      if (self.sample ne '') then str=self.sample else str=' '
+      ncdf_attput, file_id, /GLOBAL, 'sample', str
+      if (self.image_type ne '') then str=self.image_type else str=' '
+      ncdf_attput, file_id, /GLOBAL, 'image_type', str
+      ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
+      ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
+      ncdf_attput, file_id, /GLOBAL, 'center', self.center
+      ncdf_attput, file_id, /GLOBAL, 'x_pixel_size', self.x_pixel_size
+      ncdf_attput, file_id, /GLOBAL, 'y_pixel_size', self.y_pixel_size
+      ncdf_attput, file_id, /GLOBAL, 'z_pixel_size', self.z_pixel_size
+      if (ptr_valid(self.angles)) then $
+        ncdf_attput, file_id, /GLOBAL, 'angles', *(self.angles)
+      if (self.scale_factor ne 0) then scale=self.scale_factor else scale=1.0
+      ncdf_attput, file_id, vol_id,  'scale_factor',  scale
+      ; Put the file into data mode.
+      ncdf_control, file_id, /endef
     endelse
     
-    status = self->write_setup(base_file + '.setup')
-    if (widget_info(status_widget, /valid_id)) then $
-        widget_control, status_widget, set_value='Reconstruction complete.'
-
+    ; Write volume data to the file
+    offset = [0,0,0]
+    if (n_elements(xoffset) ne 0) then offset[0]=xoffset
+    if (n_elements(yoffset) ne 0) then offset[1]=yoffset
+    if (n_elements(zoffset) ne 0) then offset[2]=zoffset
+    count = [size[1], size[2], size[3]]
+    stride=[1,1,1]
+    error = 0
+    catch, error
+    if (error ne 0) then begin
+      catch, /cancel
+      ncdf_close, file_id
+      print, 'Error calling ncdf_varput: ' + !error_state.msg
+      help, file_id, vol_id, volume, offset, count, stride
+      print, 'offset=', offset, ' count=', count, ' stride=', stride
+      message, !error_state.msg
+      return
+    endif
+    ncdf_varput, file_id, vol_id, volume, $
+      offset=offset, count=count, stride=stride
+      
+    ; Close the file
+    ncdf_close, file_id
+  endelse
 end
 
-
-pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
-                        raw=raw, corrected=corrected, reconstructed=reconstructed, $
-                        xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
-                        xmax=xmax, ymax=ymax, zmax=zmax
 
-;+
-; NAME:
-;   TOMO::WRITE_VOLUME
-;
-; PURPOSE:
-;   Writes 3-D volume files to be read later by READ_TOMO_VOLUME.
-;   There are currently 2 file formats supported:
-;   1) The old APS-specific architecture-dependent binary format.
-;      In general this format should no longer be used, since it does not
-;      contain information on the dark current, centering, etc.  It is also
-;      not nearly as portable as netCDF, since if the IDL routine
-;      READ_TOMO_VOLUME is not used to read the files then user-code must
-;      handle byte-swapping, etc.
-;   2) netCDF format files.  This is the format which should generally be used,
-;      since it supports additional information like the dark current and it is
-;      very portable.  Many data-handling packages support netCDF and there are
-;      netCDF libraries available on virtually all platforms.
-;
-; CATEGORY:
-;   Tomography data processing
-;
-; CALLING SEQUENCE:
-;   TOMO->WRITE_VOLUME, File, Volume
-;
-; INPUTS:
-;   File:
-;       The name of the volume file to be written.
-;   Volume:
-;       The 3-D volume data to be written.  This must be a 3-D 16-bit integer
-;       array.  The dimensions are NX, NY, NANGLES or NX, NY, NZ
-;
-; KEYWORD PARAMETERS:
-;   XOFFSET:
-;   YOFFSET:
-;   ZOFFSET:  The [X,Y,Z] offsets in the disk array to begin writing to.  Default
-;             is [0,0,0]
-;   XMAX:
-;   YMAX:
-;   ZMAX:     The maximum [X,Y,Z] size of the array on disk.  Valid only when the
-;             file is first created, i.e. if APPEND is not specified.  Default
-;             is the size of the Volume array in each dimension.
-;   APPEND:   Open an existing file for appending or overwriting data.  Default is to
-;             APPEND=0 which creates a new file.
-;   NETCDF:
-;       Set this keyword  to write files in netCDF file format.  This is the
-;       default.  If NETCDF=0 then files are written in the old APS format.
-;   RAW:      The data are raw projections (X,Y,THETA), not normalized for flat field
-;   CORRECTED: The data are flat-field normalized projections (X,Y,THETA)
-;   RECONSTRUCTED:  The data are reconstructed sections (X,Y,Z)
-;
-; RESTRICTIONS:
-;   The old APS format files are written using little-endian byte order.
-;   When this routine writes such files it swaps the byte order if it is
-;   running on a big-endian machine.  Thus that file format
-;   is most efficient on little-endian machines (Intel, DEC).
-;
-; EXAMPLE:
-;   tomo = obj_new('tomo', 'test.setup')
-;   tomo->WRITE_VOLUME, 'diamond2.volume', volume
-;
-; MODIFICATION HISTORY:
-;   Written by:     Mark Rivers, May 13, 1998
-;   26-JAN-2000  MLR  Added /swap_if_big_endian keyword to openw to allow
-;                     files to be read on big-endian machines.
-;   11-APR-2001  MLR  Added support for netCDF file format.  Added NETCDF keyword.
-;   5-NOV-2001   MLR  Added XOFFSET, YOFFSET, ZOFFSET, XMAX, YMAX, ZMAX, and
-;                     APPEND keywords
-;   24-JUN-2002  MLR  Fixed bug if input volume was 2-D rather than 3-D.
-;-
-;-
-
-    if (n_elements(netcdf) eq 0) then netcdf=1
-
-    size = size(volume)
-    ; If this is a 2-D array fake it out by setting third dimension to 1
-    if (size[0] eq 2) then size[3]=1
-    if (keyword_set(raw)) then self.image_type = "RAW"
-    if (keyword_set(corrected)) then self.image_type = "CORRECTED"
-    if (keyword_set(reconstructed)) then self.image_type = "RECONSTRUCTED"
-
-
-    if (netcdf eq 0) then begin
-        openw, lun, file, /get, /swap_if_big_endian
-        ncols = size[1]
-        nrows = size[2]
-        nangles = size[3]
-        writeu, lun, ncols, nrows, nangles, volume
-        free_lun, lun
-        return
-    endif else begin
-
-        ; netCDF file format
-        if (keyword_set(append)) then begin
-            ; If APPEND keyword is specifified then open an existing netCDF file
-            file_id = ncdf_open(file, /write)
-            ; Get the variable id
-            vol_id   = ncdf_varid (file_id, 'VOLUME')
-            if (vol_id eq -1) then begin
-                ncdf_close, file_id
-                message, 'No VOLUME variable in netCDF file'
-            endif
-        endif else begin
-            ; else create a new netCDF file
-            ; Create netCDF file
-            file_id = ncdf_create(file, /clobber)
-            ncdf_control, file_id, fill=0
-
-            ; Create dimensions
-            if (n_elements(xmax) eq 0) then xmax=size[1]
-            if (n_elements(ymax) eq 0) then ymax=size[2]
-            if (n_elements(zmax) eq 0) then zmax=size[3]
-            nx_id = ncdf_dimdef(file_id, 'NX', xmax)
-            ny_id = ncdf_dimdef(file_id, 'NY', ymax)
-            nz_id = ncdf_dimdef(file_id, 'NZ', zmax)
-
-            ; Create variables
-            vol_id = ncdf_vardef(file_id, 'VOLUME', [nx_id, ny_id, nz_id], /SHORT)
-
-            ; Create attributes.  Replace null strings with a blank.
-            if (self.title ne '') then str=self.title else str=' '
-            ncdf_attput, file_id, /GLOBAL, 'title', str
-            if (self.operator ne '') then str=self.operator else str=' '
-            ncdf_attput, file_id, /GLOBAL, 'operator', str
-            if (self.camera ne '') then str=self.camera else str=' '
-            ncdf_attput, file_id, /GLOBAL, 'camera', str
-            if (self.sample ne '') then str=self.sample else str=' '
-            ncdf_attput, file_id, /GLOBAL, 'sample', str
-            if (self.image_type ne '') then str=self.image_type else str=' '
-            ncdf_attput, file_id, /GLOBAL, 'image_type', str
-            ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
-            ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
-            ncdf_attput, file_id, /GLOBAL, 'center', self.center
-            ncdf_attput, file_id, /GLOBAL, 'x_pixel_size', self.x_pixel_size
-            ncdf_attput, file_id, /GLOBAL, 'y_pixel_size', self.y_pixel_size
-            ncdf_attput, file_id, /GLOBAL, 'z_pixel_size', self.z_pixel_size
-            if (ptr_valid(self.angles)) then $
-                ncdf_attput, file_id, /GLOBAL, 'angles', *(self.angles)
-            if (self.scale_factor ne 0) then scale=self.scale_factor else scale=1.0
-            ncdf_attput, file_id, vol_id,  'scale_factor',  scale
-            ; Put the file into data mode.
-            ncdf_control, file_id, /endef
-        endelse
-
-        ; Write volume data to the file
-        offset = [0,0,0]
-        if (n_elements(xoffset) ne 0) then offset[0]=xoffset
-        if (n_elements(yoffset) ne 0) then offset[1]=yoffset
-        if (n_elements(zoffset) ne 0) then offset[2]=zoffset
-        count = [size[1], size[2], size[3]]
-        stride=[1,1,1]
-        error = 0
-        catch, error
-        if (error ne 0) then begin
-            catch, /cancel
-            ncdf_close, file_id
-            print, 'Error calling ncdf_varput: ' + !error_state.msg
-            help, file_id, vol_id, volume, offset, count, stride
-            print, 'offset=', offset, ' count=', count, ' stride=', stride
-            message, !error_state.msg
-            return
-        endif
-        ncdf_varput, file_id, vol_id, volume, $
-                     offset=offset, count=count, stride=stride
-
-        ; Close the file
-        ncdf_close, file_id
-    endelse
-end
-
-
 function tomo::read_volume, file, $
-         xrange=xrange, yrange=yrange, zrange=zrange
-
-;+
-; NAME:
-;   TOMO::READ_VOLUME
-;
-; PURPOSE:
-;   Reads in 3-D volume files written by WRITE_TOMO_VOLUME.  These are binary
-;   files written in little endian.  This file format is "temporary" until we
-;   decide on a portable self-describing binary format, such as HDF or netCDF.
-;   Both intermediate volume files (after preprocessing) and final
-;   reconstructions are currently stored in this format.
-;
-; CATEGORY:
-;   Tomography data processing
-;
-; CALLING SEQUENCE:
-;   Result = READ_TOMO_VOLUME(File)
-;
-; INPUTS:
-;   File:
-;       The name of the volume file to be read.  If this is not specified then
-;       the function will use DIALOG_PICKFILE to allow the user to select a
-;       file.
-; KEYWORD PARAMETERS:
-;   XRANGE=[xstart, xstop]
-;       The range of X values to read in.  The default is to read the entire
-;       X range of the data
-;   YRANGE=[ystart, ystop]
-;       The range of Y values to read in.  The default is to read the entire
-;       Y range of the data
-;   ZRANGE=[zstart, zstop]
-;       The range of Z values to read in.  The default is to read the entire
-;       Z range of the data
-;
-; OUTPUTS:
-;   This function returns a 3-D 16-bit integer array.  The dimensions are
-;   NX, NY, NZ
-;
-; RESTRICTIONS:
-;   These files are written using the little-endian byte order and
-;   floating point format.  When this routine reads the files it swaps the
-;   byte order if it is running on a big-endian machine.  Thus the file format
-;   is most efficient on little-endian machines (Intel, DEC).
-;
-; EXAMPLE:
-;   volume = READ_TOMO_VOLUME('diamond2.volume')
-;
-; MODIFICATION HISTORY:
-;   Written by: Mark Rivers, May 13, 1998
-;   06-APR-1999  MLR  Made file input optional, puts up dialog if it is not
-;                     specified
-;   25-JAN-2000  MLR  Added /swap_if_big_endian keyword to openr to allow
-;                     files to be read on big-endian machines.
-;   23-FEB-2000  MLR  Added xrange, yrange, zrange keywords
-;   11-APR-2001  MLR  Added support for netCDF file format.
-;-
-
-    if (n_elements(file) eq 0) then file = dialog_pickfile(/read, /must_exist)
-    if file eq "" then return, 0
-
-    on_ioerror, ignore_error
-    ncdf_control, 0, /noverbose
-    file_id = ncdf_open(file, /nowrite)
-ignore_error:
-    if (n_elements(file_id) eq 0) then begin
-        on_ioerror, null
-        ; This is not a netCDF file, it is an old APS format file
-        openr, lun, file, error=error, /get, /swap_if_big_endian
-        if (error ne 0) then message, 'Error opening file: ' + file
-        nx = 0L
-        ny = 0L
-        nz = 0L
-        header = 12  ; Size of header in bytes
-        readu, lun, nx, ny, nz
-        ; Simplest case is if no ranges are specified, no need to loop
-        if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
-            (n_elements(xrange) eq 0) then begin
-            volume = intarr(nx, ny, nz, /nozero)
-            readu, lun, volume
-        endif else begin
-            if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
-            if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
-            if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
-            ; Compute nx, ny, nz clip if user specified too large a range
-            ix = (xrange[1] - xrange[0] + 1) < nx
-            iy = (yrange[1] - yrange[0] + 1) < ny
-            iz = (zrange[1] - zrange[0] + 1) < nz
-            volume = intarr(ix, iy, iz, /nozero)
-            slice = intarr(nx, ny, /nozero)
-            point_lun, lun, header + zrange[0]*nx*ny*2L
-            for i = 0, iz-1 do begin
-                readu, lun, slice
-                volume[0, 0, i] = $
-                    slice[xrange[0]:xrange[1], yrange[0]:yrange[1]]
-            endfor
-            volume = reform(volume, /overwrite)
-            free_lun, lun
-        endelse
+  xrange=xrange, yrange=yrange, zrange=zrange
+  
+  ;+
+  ; NAME:
+  ;   TOMO::READ_VOLUME
+  ;
+  ; PURPOSE:
+  ;   Reads in 3-D volume files written by WRITE_TOMO_VOLUME.  These are binary
+  ;   files written in little endian.  This file format is "temporary" until we
+  ;   decide on a portable self-describing binary format, such as HDF or netCDF.
+  ;   Both intermediate volume files (after preprocessing) and final
+  ;   reconstructions are currently stored in this format.
+  ;
+  ; CATEGORY:
+  ;   Tomography data processing
+  ;
+  ; CALLING SEQUENCE:
+  ;   Result = READ_TOMO_VOLUME(File)
+  ;
+  ; INPUTS:
+  ;   File:
+  ;       The name of the volume file to be read.  If this is not specified then
+  ;       the function will use DIALOG_PICKFILE to allow the user to select a
+  ;       file.
+  ; KEYWORD PARAMETERS:
+  ;   XRANGE=[xstart, xstop]
+  ;       The range of X values to read in.  The default is to read the entire
+  ;       X range of the data
+  ;   YRANGE=[ystart, ystop]
+  ;       The range of Y values to read in.  The default is to read the entire
+  ;       Y range of the data
+  ;   ZRANGE=[zstart, zstop]
+  ;       The range of Z values to read in.  The default is to read the entire
+  ;       Z range of the data
+  ;
+  ; OUTPUTS:
+  ;   This function returns a 3-D 16-bit integer array.  The dimensions are
+  ;   NX, NY, NZ
+  ;
+  ; RESTRICTIONS:
+  ;   These files are written using the little-endian byte order and
+  ;   floating point format.  When this routine reads the files it swaps the
+  ;   byte order if it is running on a big-endian machine.  Thus the file format
+  ;   is most efficient on little-endian machines (Intel, DEC).
+  ;
+  ; EXAMPLE:
+  ;   volume = READ_TOMO_VOLUME('diamond2.volume')
+  ;
+  ; MODIFICATION HISTORY:
+  ;   Written by: Mark Rivers, May 13, 1998
+  ;   06-APR-1999  MLR  Made file input optional, puts up dialog if it is not
+  ;                     specified
+  ;   25-JAN-2000  MLR  Added /swap_if_big_endian keyword to openr to allow
+  ;                     files to be read on big-endian machines.
+  ;   23-FEB-2000  MLR  Added xrange, yrange, zrange keywords
+  ;   11-APR-2001  MLR  Added support for netCDF file format.
+  ;-
+  
+  if (n_elements(file) eq 0) then file = dialog_pickfile(/read, /must_exist)
+  if file eq "" then return, 0
+  
+  on_ioerror, ignore_error
+  ncdf_control, 0, /noverbose
+  file_id = ncdf_open(file, /nowrite)
+  ignore_error:
+  if (n_elements(file_id) eq 0) then begin
+    on_ioerror, null
+    ; This is not a netCDF file, it is an old APS format file
+    openr, lun, file, error=error, /get, /swap_if_big_endian
+    if (error ne 0) then message, 'Error opening file: ' + file
+    nx = 0L
+    ny = 0L
+    nz = 0L
+    header = 12  ; Size of header in bytes
+    readu, lun, nx, ny, nz
+    ; Simplest case is if no ranges are specified, no need to loop
+    if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
+      (n_elements(xrange) eq 0) then begin
+      volume = intarr(nx, ny, nz, /nozero)
+      readu, lun, volume
     endif else begin
-        ; This is a netCDF file
-        ; Process the global attributes
-        status = ncdf_inquire(file_id)
-        for i=0, status.ngatts-1 do begin
-            name = ncdf_attname(file_id, /global, i)
-            ncdf_attget, file_id, /global, name, value
-            case name of
-; We rely on the .setup file for all information that is available there.
-;                'title':        self.title =        strtrim(value,2)
-;                'operator':     self.operator =     strtrim(value,2)
-;                'camera':       self.camera =       strtrim(value,2)
-;                'sample':       self.sample =       strtrim(value,2)
-                'image_type':   self.image_type =   strtrim(value,2)
-;                'energy':       self.energy =       value
-;                'dark_current': self.dark_current = value
-;                'center':       self.center =       value
-;                'x_pixel_size': self.x_pixel_size = value
-;                'y_pixel_size': self.y_pixel_size = value
-;                'z_pixel_size': self.z_pixel_size = value
-                'angles':       begin
-                                    ptr_free, self.angles
-                                    self.angles = ptr_new(value)
-                                end
-                else:
-            endcase
-        endfor
-        ; Get the variable id
-        vol_id   = ncdf_varid (file_id, 'VOLUME')
-
-        if (vol_id eq -1) then begin
-            ncdf_close, file_id
-            message, 'No VOLUME variable in netCDF file'
-        endif
-
-        ; Get information about the volume variable
-        vol_info = ncdf_varinq(file_id, vol_id)
-
-        ; If we are to read the entire array things are simpler
-        if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
-           (n_elements(xrange) eq 0) then begin
-            ncdf_varget, file_id, vol_id, volume
-        endif else begin
-            if (vol_info.ndims ne 3) then begin
-                ncdf_close, file_id
-                message, 'VOLUME variable does not have 3 dimensions in netCDF file'
-            endif
-            ncdf_diminq, file_id, vol_info.dim[0], name, nx
-            ncdf_diminq, file_id, vol_info.dim[1], name, ny
-            ncdf_diminq, file_id, vol_info.dim[2], name, nz
-            if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
-            if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
-            if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
-
-            ; Make sure ranges are valid
-            xrange = (xrange > 0) < (nx-1)
-            yrange = (yrange > 0) < (ny-1)
-            zrange = (zrange > 0) < (nz-1)
-            ncdf_varget, file_id, vol_id, volume, $
-                offset=[xrange[0], yrange[0], zrange[0]], $
-                count=[xrange[1]-xrange[0]+1, $
-                       yrange[1]-yrange[0]+1, $
-                       zrange[1]-zrange[0]+1]
-        endelse
-        for i=0, vol_info.natts-1 do begin
-            name = ncdf_attname(file_id, vol_id, i)
-            ncdf_attget, file_id, vol_id, name, value
-            case name of
-                'scale_factor': self.scale_factor = value
-            endcase
-        endfor
-
-        ; Close the netCDF file
+      if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
+      if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
+      if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
+      ; Compute nx, ny, nz clip if user specified too large a range
+      ix = (xrange[1] - xrange[0] + 1) < nx
+      iy = (yrange[1] - yrange[0] + 1) < ny
+      iz = (zrange[1] - zrange[0] + 1) < nz
+      volume = intarr(ix, iy, iz, /nozero)
+      slice = intarr(nx, ny, /nozero)
+      point_lun, lun, header + zrange[0]*nx*ny*2L
+      for i = 0, iz-1 do begin
+        readu, lun, slice
+        volume[0, 0, i] = $
+          slice[xrange[0]:xrange[1], yrange[0]:yrange[1]]
+      endfor
+      volume = reform(volume, /overwrite)
+      free_lun, lun
+    endelse
+  endif else begin
+    ; This is a netCDF file
+    ; Process the global attributes
+    status = ncdf_inquire(file_id)
+    for i=0, status.ngatts-1 do begin
+      name = ncdf_attname(file_id, /global, i)
+      ncdf_attget, file_id, /global, name, value
+      case name of
+        ; We rely on the .setup file for all information that is available there.
+        ;                'title':        self.title =        strtrim(value,2)
+        ;                'operator':     self.operator =     strtrim(value,2)
+        ;                'camera':       self.camera =       strtrim(value,2)
+        ;                'sample':       self.sample =       strtrim(value,2)
+        'image_type':   self.image_type =   strtrim(value,2)
+        ;                'energy':       self.energy =       value
+        ;                'dark_current': self.dark_current = value
+        ;                'center':       self.center =       value
+        ;                'x_pixel_size': self.x_pixel_size = value
+        ;                'y_pixel_size': self.y_pixel_size = value
+        ;                'z_pixel_size': self.z_pixel_size = value
+        'angles':       begin
+          ptr_free, self.angles
+          self.angles = ptr_new(value)
+        end
+        else:
+      endcase
+    endfor
+    ; Get the variable id
+    vol_id   = ncdf_varid (file_id, 'VOLUME')
+    
+    if (vol_id eq -1) then begin
+      ncdf_close, file_id
+      message, 'No VOLUME variable in netCDF file'
+    endif
+    
+    ; Get information about the volume variable
+    vol_info = ncdf_varinq(file_id, vol_id)
+    
+    ; If we are to read the entire array things are simpler
+    if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
+      (n_elements(xrange) eq 0) then begin
+      ncdf_varget, file_id, vol_id, volume
+    endif else begin
+      if (vol_info.ndims ne 3) then begin
         ncdf_close, file_id
-    endelse  ; netCDF
-
-    return, volume
+        message, 'VOLUME variable does not have 3 dimensions in netCDF file'
+      endif
+      ncdf_diminq, file_id, vol_info.dim[0], name, nx
+      ncdf_diminq, file_id, vol_info.dim[1], name, ny
+      ncdf_diminq, file_id, vol_info.dim[2], name, nz
+      if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
+      if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
+      if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
+      
+      ; Make sure ranges are valid
+      xrange = (xrange > 0) < (nx-1)
+      yrange = (yrange > 0) < (ny-1)
+      zrange = (zrange > 0) < (nz-1)
+      ncdf_varget, file_id, vol_id, volume, $
+        offset=[xrange[0], yrange[0], zrange[0]], $
+        count=[xrange[1]-xrange[0]+1, $
+        yrange[1]-yrange[0]+1, $
+        zrange[1]-zrange[0]+1]
+    endelse
+    for i=0, vol_info.natts-1 do begin
+      name = ncdf_attname(file_id, vol_id, i)
+      ncdf_attget, file_id, vol_id, name, value
+      case name of
+        'scale_factor': self.scale_factor = value
+      endcase
+    endfor
+    
+    ; Close the netCDF file
+    ncdf_close, file_id
+  endelse  ; netCDF
+  
+  return, volume
 end
 
 function tomo::get_angles
-    if (ptr_valid(self.angles)) then begin
-        return, *self.angles
-    endif else begin
-        return, 0
-    endelse
+  if (ptr_valid(self.angles)) then begin
+    return, *self.angles
+  endif else begin
+    return, 0
+  endelse
 end
 
 pro tomo::set_angles, angles
-    ptr_free, self.angles
-    self.angles = ptr_new(angles)
+  ptr_free, self.angles
+  self.angles = ptr_new(angles)
 end
 
-
+
 ;+
 ; NAME:
 ;   TOMO::WRITE_SETUP
@@ -1228,27 +1239,27 @@ end
 ;-
 
 function tomo::write_setup, file
-    openw, lun, file, error=error, /get_lun, width=1024
-    if (error ne 0) then return, 0
-    printf, lun, 'TITLE: ', self.title
-    printf, lun, 'OPERATOR: ', self.operator
-    printf, lun, 'CAMERA: ', self.camera
-    printf, lun, 'SAMPLE: ', self.sample
-    if (ptr_valid(self.comments)) then comments = *self.comments
-    for i=0, n_elements(comments)-1 do begin
-        printf, lun, 'COMMENT: ', comments[i]
-    endfor
-    printf, lun, 'DARK_CURRENT: ', self.dark_current
-    printf, lun, 'CENTER: ', self.center
-    printf, lun, 'ENERGY: ',  self.energy
-    printf, lun, 'X_PIXEL_SIZE: ', self.x_pixel_size
-    printf, lun, 'Y_PIXEL_SIZE: ', self.y_pixel_size
-    printf, lun, 'Z_PIXEL_SIZE: ', self.z_pixel_size
-    free_lun, lun
-    return, 1
+  openw, lun, file, error=error, /get_lun, width=1024
+  if (error ne 0) then return, 0
+  printf, lun, 'TITLE: ', self.title
+  printf, lun, 'OPERATOR: ', self.operator
+  printf, lun, 'CAMERA: ', self.camera
+  printf, lun, 'SAMPLE: ', self.sample
+  if (ptr_valid(self.comments)) then comments = *self.comments
+  for i=0, n_elements(comments)-1 do begin
+    printf, lun, 'COMMENT: ', comments[i]
+  endfor
+  printf, lun, 'DARK_CURRENT: ', self.dark_current
+  printf, lun, 'CENTER: ', self.center
+  printf, lun, 'ENERGY: ',  self.energy
+  printf, lun, 'X_PIXEL_SIZE: ', self.x_pixel_size
+  printf, lun, 'Y_PIXEL_SIZE: ', self.y_pixel_size
+  printf, lun, 'Z_PIXEL_SIZE: ', self.z_pixel_size
+  free_lun, lun
+  return, 1
 end
 
-
+
 ;+
 ; NAME:
 ;   TOMO::READ_SETUP
@@ -1279,44 +1290,44 @@ end
 ;-
 
 function tomo::read_setup, file
-    ; Clear any existing information
-    self->clear_setup
-    ncomments = 0
-    comment = strarr(100)
-    line = ''
-    openr, lun, file, error=error, /get_lun, width = 1024
-    if (error ne 0) then return, 0
-    while (not eof(lun)) do begin
-        readf, lun, line
-        pos = strpos(line, ' ')
-        tag = strupcase(strmid(line, 0, pos))
-        value = strtrim(strmid(line, pos, 1000), 2)
-        case tag of
-            'TITLE:'  :  self.title = value
-            'OPERATOR:'  :  self.operator = value
-            'CAMERA:'  :  self.camera = value
-            'SAMPLE:'  :  self.sample = value
-            'COMMENT:'  :  begin
-                comment[ncomments] = value
-                ncomments = ncomments + 1
-            end
-            'DARK_CURRENT:'  :  self.dark_current = value
-            'CENTER:'  :  self.center = value
-            'ENERGY:'  :  self.energy = value
-            'X_PIXEL_SIZE:'  :  self.x_pixel_size = value
-            'Y_PIXEL_SIZE:'  :  self.y_pixel_size = value
-            'Z_PIXEL_SIZE:'  :  self.z_pixel_size = value
-        endcase
-    endwhile
-    if (ncomments gt 0) then begin
-        comment = comment[0:ncomments-1]
-        ptr_free, self.comments
-        self.comments =  ptr_new(comment)
-    endif
-    free_lun, lun
-    return, 1
+  ; Clear any existing information
+  self->clear_setup
+  ncomments = 0
+  comment = strarr(100)
+  line = ''
+  openr, lun, file, error=error, /get_lun, width = 1024
+  if (error ne 0) then return, 0
+  while (not eof(lun)) do begin
+    readf, lun, line
+    pos = strpos(line, ' ')
+    tag = strupcase(strmid(line, 0, pos))
+    value = strtrim(strmid(line, pos, 1000), 2)
+    case tag of
+      'TITLE:'  :  self.title = value
+      'OPERATOR:'  :  self.operator = value
+      'CAMERA:'  :  self.camera = value
+      'SAMPLE:'  :  self.sample = value
+      'COMMENT:'  :  begin
+        comment[ncomments] = value
+        ncomments = ncomments + 1
+      end
+      'DARK_CURRENT:'  :  self.dark_current = value
+      'CENTER:'  :  self.center = value
+      'ENERGY:'  :  self.energy = value
+      'X_PIXEL_SIZE:'  :  self.x_pixel_size = value
+      'Y_PIXEL_SIZE:'  :  self.y_pixel_size = value
+      'Z_PIXEL_SIZE:'  :  self.z_pixel_size = value
+    endcase
+  endwhile
+  if (ncomments gt 0) then begin
+    comment = comment[0:ncomments-1]
+    ptr_free, self.comments
+    self.comments =  ptr_new(comment)
+  endif
+  free_lun, lun
+  return, 1
 end
-
+
 ;+
 ; NAME:
 ;   TOMO::GET_SETUP
@@ -1366,66 +1377,66 @@ end
 ;-
 
 function tomo::get_setup
-    t = {tomo}
-    for i=0, n_tags(t)-1 do begin
-        t.(i)=self.(i)
-    endfor
-    return, t
+  t = {tomo}
+  for i=0, n_tags(t)-1 do begin
+    t.(i)=self.(i)
+  endfor
+  return, t
 end
 
-
+
 function tomo::init, file
-    if (n_elements(file) ne 0) then status = self->read_setup(file)
-    return, 1
+  if (n_elements(file) ne 0) then status = self->read_setup(file)
+  return, 1
 end
 
 pro tomo::cleanup
-    ptr_free, self.comments
-    ptr_free, self.angles
+  ptr_free, self.comments
+  ptr_free, self.angles
 end
 
 pro tomo::clear_setup
-    self.title=""
-    self.operator=""
-    self.camera=""
-    self.sample=""
-    ptr_free, self.comments
-    self.comments=ptr_new()
-    self.image_type=""
-    self.dark_current=0.
-    self.center=0.
-    self.energy=0.
-    self.x_pixel_size=0.
-    self.y_pixel_size=0.
-    self.z_pixel_size=0.
-    self.scale_factor=0.
-    self.nx=0L
-    self.ny=0L
-    self.nz=0L
-    ptr_free, self.angles
-    self.angles=ptr_new()
+  self.title=""
+  self.operator=""
+  self.camera=""
+  self.sample=""
+  ptr_free, self.comments
+  self.comments=ptr_new()
+  self.image_type=""
+  self.dark_current=0.
+  self.center=0.
+  self.energy=0.
+  self.x_pixel_size=0.
+  self.y_pixel_size=0.
+  self.z_pixel_size=0.
+  self.scale_factor=0.
+  self.nx=0L
+  self.ny=0L
+  self.nz=0L
+  ptr_free, self.angles
+  self.angles=ptr_new()
 end
 
-
+
 pro tomo__define
-    tomo = $
-       {tomo, $
-        title: " ", $
-        operator: " ", $
-        camera: " ", $
-        sample: " ", $
-        comments: ptr_new(), $
-        image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
-        dark_current: 0., $
-        center: 0., $
-        energy: 0., $
-        x_pixel_size: 0., $
-        y_pixel_size: 0., $
-        z_pixel_size: 0., $
-        scale_factor: 0., $
-        nx:     0L, $
-        ny:     0L, $
-        nz:     0L, $
-        angles: ptr_new() $
-    }
+  tomo = $
+    {tomo, $
+    title: " ", $
+    operator: " ", $
+    camera: " ", $
+    sample: " ", $
+    comments: ptr_new(), $
+    image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
+    dark_current: 0., $
+    center: 0., $
+    energy: 0., $
+    x_pixel_size: 0., $
+    y_pixel_size: 0., $
+    z_pixel_size: 0., $
+    scale_factor: 0., $
+    nx:     0L, $
+    ny:     0L, $
+    nz:     0L, $
+    angles: ptr_new() $
+  }
 end
