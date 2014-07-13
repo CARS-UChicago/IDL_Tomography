@@ -549,12 +549,16 @@ pro tomo_display::event, event
         end
 
         self.widgets.read_camera_file: begin
-            file = dialog_pickfile(filter='*.SPE', get_path=path)
+            file = dialog_pickfile(filter=['*.SPE','*.nc'], get_path=path)
             if (file eq '') then break
             widget_control, /hourglass
             widget_control, self.widgets.status, $
                             set_value='Reading camera file ...'
-            read_princeton, file, vol
+            if (strpos(file, '.SPE') ne -1) then begin
+              read_princeton, file, vol
+            endif else if (strpos(file, '.nc') ne -1) then begin
+              vol = read_nd_netcdf(file)
+            endif
             widget_control, self.widgets.status, $
                             set_value='Done reading camera file ' + file
             if (size(vol, /n_dimensions) eq 3) then begin
