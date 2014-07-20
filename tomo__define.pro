@@ -354,7 +354,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     nrows = ystop - ystart + 1
     if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
     
-    data_buff = intarr(ncols, nrows, nframes, /nozero)
+    data_buff = uintarr(ncols, nrows, nframes, /nozero)
     angles = fltarr(nframes)
     image_type = strarr(nframes)
     for i=0, nframes-1 do begin
@@ -382,7 +382,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     if (nfiles eq 1) then begin
       nframes = dims[2]
       data_buff = temporary(data)
-      data_buff = fix(data_buff)
+      data_buff = uint(data_buff)
       image_type = type
       angles = angle
     endif else begin
@@ -395,7 +395,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
         dims = size(data, /dimensions)
         nframes = nframes + dims[2]
       endfor
-      data_buff = intarr(ncols, nrows, nframes, /nozero)
+      data_buff = uintarr(ncols, nrows, nframes, /nozero)
       image_type = strarr(nframes)
       angles = fltarr(nframes,/nozero)
       current_frame = 0
