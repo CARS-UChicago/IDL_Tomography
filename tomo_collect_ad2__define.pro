@@ -112,7 +112,7 @@ pro tomo_collect_ad2::startScan
     endfor
   endif
   ; move the motor into the initial position
-  (*self.scan.otf_rotation_array) = (*self.scan.otf_rotation_array) - self.scan.rotation_step
+  (*self.scan.otf_rotation_array) = (*self.scan.otf_rotation_array) - self.scan.rotation_step/2.
   self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]
   self.scan.rotation_motor->wait
 
@@ -296,8 +296,8 @@ pro tomo_collect_ad2::scanPoll
 
     ; Create OTF comments
     comment1 = 'Start angle= ' + $
-      strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step,2)
-    comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
+      strtrim((*self.scan.otf_rotation_array)[self.scan.current_point] + self.scan.rotation_step/2., 2)
+    comment2 = 'Angle step= '+strtrim(self.scan.rotation_step, 2)
     comment3 = 'Flat Fields= '
     for i = 0, self.scan.num_flatfields-1 do begin
       comment3 = comment3 + strtrim(i,2) + ' '
@@ -332,7 +332,10 @@ pro tomo_collect_ad2::scanPoll
 
     ; rotate motors back by one motor step
     motor_resolution = self.scan.rotation_motor->get_scale()
-    self.scan.rotation_motor->move, 1./motor_resolution, relative = 1
+    res_sign = (abs(motor_resolution) eq motor_resolution)
+    step_sign = (abs(self.scan.rotation_step) eq self.scan.rotation_step)
+    if (res_sign eq step_sign) then sign=1 else sign=-1
+    self.scan.rotation_motor->move, abs(1./motor_resolution)*sign, relative = 1
     self.scan.rotation_motor->wait
 
     ; calculate number of images/struck triggers and set up camera to acquire that number
@@ -343,8 +346,8 @@ pro tomo_collect_ad2::scanPoll
 
     ; write OTF comments
     comment1 = 'Start angle= ' + $
-      strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
-    comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
+      strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step/2., 2)
+    comment2 = 'Angle step= '+strtrim(self.scan.rotation_step, 2)
     comment3 = ''
     self->setFileComments, [comment1, comment2, comment3]
 
@@ -400,20 +403,16 @@ pro tomo_collect_ad2::scanPoll
     ; acquire last motor position, check that the current motor position is not equal to it
     current_motor_position = self.scan.rotation_motor->get_position(readback = 'RBV')
 
+    widget_control, self.widgets.scan_point, $
+      set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start) /  $
+      self.scan.rotation_step+1, 0])), 2) + $
+      '/' + strtrim(self.scan.num_angles, 2)
     if (NOT self.scan.rotation_motor->done()) then begin
       ; update scan point widget
       widget_control, self.widgets.status, set_value='Normal Scan Image Acquisition'
-      widget_control, self.widgets.scan_point, $
-        set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start) /  $
-        self.scan.rotation_step+1,0])),2) + $
-        '/' + strtrim(self.scan.num_angles,2)
       return
     endif
     ; update widgets
-    widget_control, self.widgets.scan_point, $
-      set_value = strtrim(floor(max([(current_motor_position-self.scan.rotation_start) / $
-      self.scan.rotation_step+1,0])),2) + $
-      '/' + strtrim(self.scan.num_angles,2)
     widget_control, self.widgets.status, set_value='Normal Scan Complete'
     ; stop motor
     ; send state to Normal_readout
@@ -575,8 +574,8 @@ pro tomo_collect_ad2::stopScan
 
       ; write OTF comments
       comment1 = 'Start angle= ' + $
-        strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step,2)
-      comment2 = 'Angle step= '+strtrim(self.scan.rotation_step,2)
+        strtrim((*self.scan.otf_rotation_array)[self.scan.current_point-1] + self.scan.rotation_step/2., 2)
+      comment2 = 'Angle step= ' + strtrim(self.scan.rotation_step, 2)
       comment3 = ''
       self->setFileComments, [comment1, comment2, comment3]
 
@@ -617,7 +616,7 @@ pro tomo_collect_ad2::stopScan
   self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
   if(~self.scan.leave_motor) then begin
     ; reset motor to original position
-    self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]+self.scan.rotation_step
+    self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0] + self.scan.rotation_step/2.
     widget_control, self.widgets.status, set_value='Zeroing motors'
     zeroing = 1
     while (zeroing ne 0) do begin
@@ -732,7 +731,8 @@ function tomo_collect_ad2::computeFrameTime
   if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
     ; This sets the time per angle to the largest of: exposure time*1.006; 20 ms; 40ms divided by biny
     ; This speed calculation works for exposure times shorter than 10 seconds
-    time = Max([(exposure*1.006), Max([.04/biny, .02])])
+    readout = Max([.04/biny, .02])
+    time = (exposure + readout) * 1.01
   endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
     ; Point Grey has 7 ms max readout time in Raw 8-bit mode and 15 ms? in 16-bit mode
     ; We slow it down 1% from theoretical
@@ -760,7 +760,7 @@ end
 pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
   if (triggerMode eq 'FreeRun') then begin
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
-      self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
+      self.scan.ccd->setProperty, 'TriggerMode', 'Free Run'
       self.scan.ccd->setProperty, 'ImageMode', 'Continuous'
     endif else if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
       self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
@@ -776,7 +776,7 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
     endif
   endif else if (triggerMode eq 'Single') then begin
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
-      self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
+      self.scan.ccd->setProperty, 'TriggerMode', 'Free Run'
       self.scan.ccd->setProperty, 'ImageMode', 'Single'
     endif else if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
       self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
