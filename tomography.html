@@ -1,91 +1,115 @@
-<!-- Created by Mark Rivers    on 25-APR-1999 -->
-
-<HTML>
-<HEAD>
-<TITLE>GSECARS Tomography Processing Software</TITLE>
-</HEAD>
-<BODY>
-<H1>GSECARS Tomography Processing Software</H1>
-
-This document describes the IDL software used for reconstructing and viewing
-tomography data at CARS.  All of these IDL routines are available in a 
-<A HREF="pub/idl_tomography.tar">tar file</A>.&nbsp; The reconstruction is
-normally done using the GridRec reconstruction code, which is written in
-C.&nbsp; The GridRec code is also available in another <a HREF="pub/idl_Gridrec.tar">tar file</a>.
-<p>The normal user interface for this software is through the IDL GUI routine
-tomo_display.&nbsp; The following screen shot shows the tomo_display interface.</p>
-<p><img border="0" src="tomo_display.png"></p>
-<P>
-We have broken the tomography data processing down into 3 steps
-<UL>
-<LI><A HREF="#Preprocessing">Preprocessing</A>
-<LI><A HREF="#Reconstruction">Reconstruction</A>
-<LI><A HREF="#Visualization">Visualization</A>
-</UL>
-
-<A NAME="Preprocessing"><H2>Preprocessing</H2></A>
-The preprocessing routine 
-<A HREF="tomography_routines.html#READ_TOMO_DATA">read_tomo_data.pro</A>
-performs the following steps:
-<UL>
-<LI> Reads CCD data files into memory
-(<A HREF="detector_routines.html#READ_PRINCETON">read_princeton.pro</A>)
-<LI> Removes zingers
-(<A HREF="tomography_routines.html#REMOVE_TOMO_ARTIFACTS">remove_tomo_artifacts.pro</A>)
-<LI> Corrects for dark current
-<LI> Corrects for white field
-<LI> Writes the corrected data back to disk as a single 3-D file (X, Y, Theta)
-(<A HREF="tomography_routines.html#WRITE_TOMO_VOLUME">write_tomo_volume.pro</A>)
-</UL>
-
-<A NAME="Reconstruction"><H2>Reconstruction</H2></A>
-The reconstruction routine 
-<A HREF="tomography_routines.html#RECONSTRUCT_VOLUME">reconstruct_volume.pro</A>
-performs the following steps:
-<UL>
-<LI> Reads the 3-D (X, Y, Theta) file from the preprocessing step into memory
-(<A HREF="tomography_routines.html#READ_TOMO_VOLUME">read_tomo_volume.pro</A>)
-<LI> For each row (also called Y or slice) in the data calls 
-<A HREF="tomography_routines.html#RECONSTRUCT_SLICE">reconstuct_slice.pro</A>
-which performs the following steps:
-<UL>
-
-<LI> Builds a corrected sinogram 
-(<A HREF="tomography_routines.html#SINOGRAM">sinogram.pro</A>).
-<CODE>sinogram</CODE> peforms logarithmization, corrects the rotation axis to
-be in the center of the image, normalizes to air on each side of the object,
-etc.
-
-<LI> Removes ring artifacts
-(<A HREF="tomography_routines.html#REMOVE_TOMO_ARTIFACTS">remove_tomo_artifacts.pro</A>)
-
-<LI> Filters the sinogram with a high-pass filter
-(<A HREF="tomography_routines.html#TOMO_FILTER">tomo_filter.pro</A>).
-
-<LI> Reconstructs the slice with an FFT-based algorithm (<a HREF="tomography_routines.html#GRIDREC">gridrec.pro</a>)
-  or filtered backprojection
-(<A HREF="tomography_routines.html#BACKPROJECT">backproject.pro</A>)
-</UL>
-
-<LI> Writes the reconstructed data back to disk as a single 3-D file (X, Y, Z)
-(<A HREF="tomography_routines.html#WRITE_TOMO_VOLUME">write_tomo_volume.pro</A>)
-</UL>
-
-<A NAME="Visualization"><H2>Visualization</H2></A>
-The standard IDL procedures TV and TVSCL are very useful for 
-displaying 2-D data.  IDL's SLICER3 procedure is good for displaying 3-D data.
-In addition there is set of 
-<A HREF="imaging.html">GSECARS-developed routines for visualizing</A> 
-2-D and 3-D tomography (or other) data.
-
-<HR>
-<ADDRESS>
-Suggestions and Comments to: 
-<BR>
-<A HREF="mailto:rivers@cars.uchicago.edu">
-Mark Rivers </A> : (rivers@cars.uchicago.edu)
-<BR>
-Last modified: Dec. 3, 2010
-</ADDRESS>
-</BODY>
-</HTML>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>GSECARS Tomography Processing Software</title>
+  <meta content="text/html; charset=ISO-8859-1" http-equiv="Content-Type" />
+</head>
+<body>
+  <div style="text-align: center">
+    <h1>
+      GSECARS Tomography Processing Software</h1>
+    <h2>
+      Mark Rivers
+    </h2>
+    <h2>
+      University of Chicago
+    </h2>
+    <h2>
+      July 24, 2014
+    </h2>
+  </div>
+  <p>
+    This document describes the IDL software used for reconstructing and viewing tomography
+    data at CARS. All of these IDL routines are available in a <a href="http://cars.uchicago.edu/software/pub/idl_tomography.tar">
+      idl_tomography.tar file</a>. The reconstruction is normally done using the tomoRecon
+    reconstruction code, which is written in C++. The idl_tomography.tar file contains
+    the required tomoRecon DLLs (Windows) and shareable libraries (Linux, Mac) to run
+    the IDL software without compiling any code. The tomoRecon source code is also available
+    through the <a href="http://cars.uchicago.edu/software/epics/tomoRecon.html">tomoRecon
+      home page</a>. tomoRecon is based on the Gridrec reconstruction algorithm, but
+    with multi-threading to utilize multiple cores on modern workstations.</p>
+  <p>
+    The normal user interface for this software is through the IDL GUI routine tomo_display.
+    The following screen shot shows the tomo_display interface.</p>
+  <div style="text-align: center">
+    <hr />
+    <h3>
+      IDL tomo_display GUI</h3>
+    <img alt="tomo_display.png" src="tomo_display.png" />
+  </div>
+  <p>
+    The following screen shot shows the screen that provides control for the preproccessing
+    and reconstruction options.</p>
+  <div style="text-align: center">
+    <hr />
+    <h3>
+      IDL tomo_display Options screen</h3>
+    <img alt="tomo_display_options.png" src="tomo_display_options.png" />
+  </div>
+  <p>
+    We have broken the tomography data processing down into 3 steps:</p>
+  <ul>
+    <li><a href="#Preprocessing">Preprocessing</a></li>
+    <li><a href="#Reconstruction">Reconstruction</a></li>
+    <li><a href="#Visualization">Visualization</a></li>
+  </ul>
+  <h2 id="Preprocessing">
+    Preprocessing</h2>
+  <p>
+    The preprocessing routine <a href="tomography_routines.html#READ_TOMO_DATA">read_tomo_data.pro</a>
+    performs the following steps:</p>
+  <ul>
+    <li>Reads CCD data files into memory. This is done with <a href="detector_routines.html#READ_PRINCETON">
+      read_princeton.pro</a> for data collected with the Princeton Instruments cameras,
+      and with <a href="detector_routines.html#READ_ND_NETCDF">read_nd_netcdf.pro</a>
+      for the netCDF files data collected with the Point Grey and Prosilica cameras.
+    </li>
+    <li>Removes zingers (<a href="tomography_routines.html#REMOVE_TOMO_ARTIFACTS">remove_tomo_artifacts.pro</a>)</li>
+    <li>Corrects for dark current</li>
+    <li>Corrects for white (flat) field</li>
+    <li>Writes the corrected data back to disk as a single 3-D file (X, Y, Theta) (<a
+      href="tomography_routines.html#WRITE_TOMO_VOLUME">write_tomo_volume.pro</a>)</li>
+  </ul>
+  <h2 id="Reconstruction">
+    Reconstruction</h2>
+  <p>
+    The reconstruction routine <a href="tomography_routines.html#RECONSTRUCT_VOLUME">reconstruct_volume.pro</a>
+    performs the following steps when using tomoRecon. (When using filtered backprojection
+    similar steps are used, but all of the code is in IDL itself.)</p>
+  <ul>
+    <li>Reads the 3-D (X, Y, Theta) file from the preprocessing step into memory in chunks,
+      typically 128 slices.</li>
+    <li>Reconstruct each chunk using multiple cores. For each slice it does the following:
+      <ul>
+        <li>Builds a corrected sinogram: peforms logarithmization, pads the sinogram, normalizes
+          to air on each side of the object, etc.</li>
+        <li>Removes ring artifacts</li>
+        <li>Reconstructs the slice with the Gridrec FFT-based algorithm </li>
+      </ul>
+    </li>
+    <li>Writes the reconstructed data back to disk as a single 3-D file (X, Y, Z) (<a
+      href="tomography_routines.html#WRITE_TOMO_VOLUME">write_tomo_volume.pro</a>)</li>
+  </ul>
+  <h2 id="Visualization">
+    Visualization</h2>
+  <p>
+    The standard IDL procedures TV and TVSCL are very useful for displaying 2-D data.
+    IDL's SLICER3 procedure is good for displaying 3-D data. In addition there is set
+    of <a href="imaging.html">GSECARS-developed routines for visualizing</a> 2-D and
+    3-D tomography (or other) data.</p>
+  <p>
+    The reconstructed data are written as 16-bit integer netCDF files. These can be
+    read into ImageJ using the (<a href="http://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/netcdf.html">
+      ImageJ netCDF plugin jar file</a>) and a small ImageJ script called GSETomo_.txt
+    that is also in the idl_tomography.tar file. Put both the netCDF_.jar and GSETomo_.txt
+    files in the ImageJ/Plugins folder. Plugins/GSETomo can then be used to read the
+    reconstructed files.</p>
+  <hr />
+  <address>
+    Suggestions and Comments to:
+    <br />
+    <a href="mailto:rivers@cars.uchicago.edu">Mark Rivers </a>: (rivers@cars.uchicago.edu)
+  </address>
+</body>
+</html>
