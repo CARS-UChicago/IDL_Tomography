@@ -710,6 +710,10 @@ pro tomo_display::event, event
             ; Nothing to do
         end
 
+        self.widgets.tiff_scale: begin
+          ; Nothing to do
+        end
+
         self.widgets.zoom: begin
             ; Nothing to do
         end
@@ -733,22 +737,23 @@ pro tomo_display::event, event
                 widget_control, self.widgets.last_slice, get_value=stop
                 widget_control, self.widgets.slice_step, get_value=step
                 widget_control, self.widgets.movie_wait, get_value=wait
+                widget_control, self.widgets.movie_fps, get_value=fps
+                widget_control, self.widgets.movie_bps, get_value=bps
+                widget_control, self.widgets.tiff_scale, get_value=unscaled_tiff
                 scale = all_zooms[zoom]
                 label=0
                 case output of
                     0: label=1
-                    1: widget_control, self.widgets.movie_file, $
-                                       get_value=jpeg_file
-                    2: widget_control, self.widgets.movie_file, $
-                                       get_value=mpeg_file
-                    3: widget_control, self.widgets.movie_file, $
-                                       get_value=tiff_file
+                    1: widget_control, self.widgets.movie_file, get_value=jpeg_file
+                    2: widget_control, self.widgets.movie_file, get_value=tiff_file
+                    3: widget_control, self.widgets.movie_file, get_value=mp4_file
                 endcase
                 widget_control, self.widgets.abort, set_uvalue=0
                 widget_control, self.widgets.status, set_value=""
                 make_movie, index=direction+1, scale=scale, *self.pvolume, $
-                            jpeg_file=jpeg_file, tiff_file=tiff_file, mpeg_file=mpeg_file, $
+                            jpeg_file=jpeg_file, tiff_file=tiff_file, mp4_file=mp4_file, $
                             min=min, max=max, start=start, stop=stop, step=step, wait=wait, $
+                            unscaled_tiff=unscaled_tiff, fps=fps, bps=bps, $
                             label=label, abort_widget=self.widgets.abort, /color, $
                             status_widget=self.widgets.status
             endif else begin
@@ -818,9 +823,9 @@ function tomo_display::init
     self.widgets.processing_options = widget_button(options, $
                                             value = 'Processing options ...')
 
-    row0 = widget_base(self.widgets.base, /row, /frame)
-    col0 = widget_base(row0, /column, /frame)
-    col = widget_base(col0, /column, /frame)
+    whole_display = widget_base(self.widgets.base, /row)
+    left_column = widget_base(whole_display, /column)
+    col = widget_base(left_column, /column, /frame)
     self.widgets.main_base = col
     t = widget_label(col, value='File/Status', font=self.fonts.heading1)
     self.widgets.base_file = cw_field(col, title="Base file name:", $
@@ -841,7 +846,7 @@ function tomo_display::init
 
 
     ; Preprocessing
-    col = widget_base(col0, /column, /frame)
+    col = widget_base(left_column, /column, /frame)
     self.widgets.preprocess_base = col
     t = widget_label(col, value='Preprocess', font=self.fonts.heading1)
     row = widget_base(col, /row, /base_align_bottom)
@@ -862,7 +867,7 @@ function tomo_display::init
 
 
     ; Reconstruction
-    col = widget_base(col0, /column, /frame)
+    col = widget_base(left_column, /column, /frame)
     self.widgets.reconstruct_base = col
     t = widget_label(col, value='Reconstruct', font=self.fonts.heading1)
     for i=0, 1 do begin
@@ -891,9 +896,10 @@ function tomo_display::init
                                                    value='Reconstruct all')
 
     ; Visualization
-    col = widget_base(row0, /column, /frame)
-    self.widgets.visualize_base = col
-    widget_control, col, sensitive=0
+    right_column = widget_base(whole_display, /column)
+    self.widgets.visualize_base = right_column
+    widget_control, right_column, sensitive=0
+    col = widget_base(right_column, /column, /frame)
     t = widget_label(col, value='Visualize', font=self.fonts.heading1)
 
     row = widget_base(col, /row)
@@ -952,14 +958,27 @@ function tomo_display::init
     t = widget_label(row, value='Volume render:')
     self.widgets.volume_render = widget_button(row, value='Volume render')
 
+    ; Movies
+    col = widget_base(right_column, /column, /frame)
     t = widget_label(col, value='Movies', font=self.fonts.heading1)
 
     row = widget_base(col, /row)
-    self.widgets.movie_output = cw_bgroup(row, ['Screen', 'JPEGs', 'MPEG', 'TIFF'], $
+    self.widgets.movie_output = cw_bgroup(row, ['Screen', 'JPEG', 'TIFF', 'MP4'], $
                                             label_left='Output:', row=1, $
                                             set_value=0, /exclusive)
     col1 = widget_base(row, /column, /align_center)
     self.widgets.make_movie = widget_button(col1, value='Make movie')
+
+    row = widget_base(col, /row)
+    self.widgets.tiff_scale = cw_bgroup(row, ['Scaled (8-bit)', 'Unscaled'], $
+      label_left='TIFF scaling:', row=1, $
+      set_value=0, /exclusive)
+
+    row = widget_base(col, /row)
+    self.widgets.movie_fps = cw_field(row, title='MP4 frames/s', /float, $
+      /column, xsize=10, value=30)
+    self.widgets.movie_bps = cw_field(row, title='MP4 bits/s', /float, $
+      /column, xsize=10, value=3e4)
 
     row = widget_base(col, /row)
     self.widgets.first_slice = cw_field(row, title='First slice', /integer, $
@@ -972,7 +991,7 @@ function tomo_display::init
                                         /column, xsize=10, value=0.)
 
     row = widget_base(col, /row)
-    self.widgets.movie_file = cw_field(row, title="JPEG/MPEG/TIFF file name:", $
+    self.widgets.movie_file = cw_field(row, title="JPEG/TIFF/MP4 file name:", $
                                         xsize=40)
 
     self.ptomo = obj_new('tomo')
@@ -1180,6 +1199,9 @@ pro tomo_display__define
         last_slice: 0L, $
         slice_step: 0L, $
         movie_wait: 0L, $
+        movie_fps: 0L, $
+        movie_bps: 0L, $
+        tiff_scale: 0L, $
         zoom: 0L, $
         movie_file: 0L, $
         make_movie: 0L, $
