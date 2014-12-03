@@ -183,9 +183,26 @@ pro tomo_display::optimize_rotation_center
     widget_control, self.widgets.rotation_optimize_range, get_value=range
     widget_control, self.widgets.rotation_optimize_step, get_value=step
     widget_control, self.widgets.rotation_optimize_center, get_value=center
+    widget_control, self.widgets.rotation_optimize_method, get_value=method
     npoints = long(range/step) + 1
     centers = findgen(npoints)*step + (center-range/2.)
-    optimize_rotation_center, self.tomoParams, [top_slice, bottom_slice], *self.pvolume, centers, entropy
+    
+    if (method eq 0) then begin
+      optimize_rotation_center, self.tomoParams, [top_slice, bottom_slice], *self.pvolume, centers, entropy
+      t = min(entropy[*,0], min_pos1)
+      t = min(entropy[*,1], min_pos2)
+      center1 = centers[min_pos1]
+      center2 = centers[min_pos2]
+    endif else begin
+      optimize_rotation_mirror, self.tomoParams, [top_slice, bottom_slice], *self.pvolume, *self.setup.angles, centers, error, bestCenter
+      ; This technique returns an extrapolated best center position which may not be the minimum of the errors if the last angle is not 180
+      min_pos1 = bestCenter[0]
+      min_pos2 = bestCenter[1]
+      ; It appears that the center is exactly 1 pixel larger than the center position used by gridrec
+      center1 = centers[min_pos1] - 1.0
+      center2 = centers[min_pos2] - 1.0
+      entropy = error  ; Give variable the same name for plotting
+    endelse
     widget_control, self.widgets.volume_file, get_value=file
     title = file + '   Slice=['+strtrim(string(top_slice),2)+','+strtrim(string(bottom_slice),2)+']'
     iplot, centers, entropy[*,0], xtitle='Rotation center', ytitle='Image entropy', sym_index=2, $
@@ -193,17 +210,43 @@ pro tomo_display::optimize_rotation_center
     entropy_diff = min(entropy[*,1]) - min(entropy[*,0])
     iplot, centers, entropy[*,1]-entropy_diff, sym_index=4, $
            view_title=title, overplot=id
-    t = min(entropy[*,0], min_pos1)
-    widget_control, self.widgets.rotation_center[0], set_value=centers[min_pos1]
-    t = min(entropy[*,1], min_pos2)
-    widget_control, self.widgets.rotation_center[1], set_value=centers[min_pos2]
-    widget_control, self.widgets.rotation_optimize_center, $
-            set_value=(centers[min_pos1]+ centers[min_pos2])/2.
+    widget_control, self.widgets.rotation_center[0], set_value=center1
+    widget_control, self.widgets.rotation_center[1], set_value=center2
+    widget_control, self.widgets.rotation_optimize_center, set_value=(center1+ center2)/2.
     self->reconstruct, 0
     self->reconstruct, 1
 end
 
 
+pro tomo_display::correct_rotation_tilt
+  if (not ptr_valid(self.pvolume)) then begin
+    t = dialog_message('Must read in volume file first.', /error)
+    return
+  endif
+  widget_control, /hourglass
+  widget_control, self.widgets.recon_slice[0], get_value=top_slice
+  top_slice = top_slice < (self.ny-1)
+  widget_control, self.widgets.recon_slice[1], get_value=bottom_slice
+  bottom_slice = bottom_slice < (self.ny-1)
+  widget_control, self.widgets.rotation_center[0], get_value=top_center
+  widget_control, self.widgets.rotation_center[1], get_value=bottom_center
+  angle = (top_center-bottom_center) / (bottom_slice - top_slice) / !dtor
+  for i=0, self.nz-1 do begin
+    proj = (*self.pvolume)[*,*,i]
+    r = rot(proj, angle, cubic=-0.5)
+    (*self.pvolume)[0,0,i] = r
+    widget_control, self.widgets.status, $
+      set_value='Correcting projection ' + strtrim(i+1, 2) + '/' + strtrim(self.nz, 2)
+  endfor
+  widget_control, self.widgets.status, set_value='Optimizing rotation center ...'
+  self.optimize_rotation_center
+  widget_control, self.widgets.volume_file, get_value=file
+  widget_control, self.widgets.status, set_value='Saving volume file ...'
+  write_tomo_volume, file, *self.pvolume
+  widget_control, self.widgets.status, set_value=''
+end
+
+
 pro tomo_display::set_base_file, base_file
     widget_control, self.widgets.base_file, set_value=base_file
     widget_control, self.widgets.first_file, set_value=1
@@ -667,12 +710,20 @@ pro tomo_display::event, event
             self->reconstruct, 1
         end
 
+        self.widgets.rotation_optimize_method: begin
+            ; Nothing to do
+        end
+
         self.widgets.rotation_optimize: begin
-            self->optimize_rotation_center
+          self->optimize_rotation_center
         end
 
         self.widgets.reconstruct_all: begin
             self->reconstruct
+        end
+
+        self.widgets.correct_rotation_tilt: begin
+          self->correct_rotation_tilt
         end
 
         self.widgets.direction: begin
@@ -872,7 +923,7 @@ function tomo_display::init
     t = widget_label(col, value='Reconstruct', font=self.fonts.heading1)
     for i=0, 1 do begin
         row = widget_base(col, /row, /base_align_bottom)
-        if (i eq 0) then label='Upper slice' else label='Lower slice'
+        if (i eq 0) then label='Upper slice:' else label='Lower slice:'
         t = widget_label(row, value=label)
         self.widgets.recon_slice[i] = cw_field(row, /column, title='Slice', $
                                           /integer, xsize=10, value=100)
@@ -882,7 +933,7 @@ function tomo_display::init
         self.widgets.reconstruct_slice[i] = widget_button(row, value='Reconstruct slice')
     endfor
     row = widget_base(col, /row, /base_align_bottom)
-    t = widget_label(row, value='Optimize rotation center')
+    t = widget_label(row, value='Optimize rotation center:')
     self.widgets.rotation_optimize_center = cw_field(row, /column, $
                                                 title='Rotation Center', /float, $
                                                 xsize=10, value=325.000)
@@ -892,6 +943,14 @@ function tomo_display::init
                                   /float, xsize=10, value=.25)
     self.widgets.rotation_optimize = widget_button(row, value='Optimize center')
     row = widget_base(col, /row, /base_align_bottom)
+    self.widgets.rotation_optimize_method = cw_bgroup(row, ['Entropy', '0-180'], $
+      label_left='Optimize center method:', $
+      row=1, set_value=0, /exclusive)
+    row = widget_base(col, /row, /base_align_bottom)
+    t = widget_label(row, value='Correct rotation tilt:')
+    self.widgets.correct_rotation_tilt = widget_button(row, value='Correct rotation tilt')
+    row = widget_base(col, /row, /base_align_bottom)
+    t = widget_label(row, value='Reconstruct all:')
     self.widgets.reconstruct_all = widget_button(row, $
                                                    value='Reconstruct all')
 
@@ -1176,6 +1235,8 @@ pro tomo_display__define
         rotation_optimize_center: 0L, $
         rotation_optimize_range: 0L, $
         rotation_optimize_step: 0L, $
+        correct_rotation_tilt: 0L, $
+        rotation_optimize_method: 0L, $
         rotation_optimize: 0L, $
         reconstruct_all: 0L, $
         visualize_base: 0L, $
