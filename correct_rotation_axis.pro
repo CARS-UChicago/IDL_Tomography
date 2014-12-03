@@ -15,8 +15,7 @@ pro correct_rotation_axis, infile, outfile, airPixels=airPixels, max_error=max_e
    print, 'Reading volume file ', infile
    vol = read_tomo_volume(infile)
    
-   tomoParams = {tomo_params}
-   tomoParams = tomo_params_init(tomoParams, vol)
+   tomoParams = tomo_params_init(vol)
    tomoParams.airPixels = airPixels
    
    s = size(vol, /dimensions)
@@ -51,6 +50,7 @@ pro correct_rotation_axis, infile, outfile, airPixels=airPixels, max_error=max_e
    image_display, errs, min=-10, max=10
    t = total(errs, 2)/ ngood
    sh = round(t)
+   plot, sh, xtitle='Angle', ytitle='Shift'
    v = vol
    for i=0, nangles-1 do begin
       print, 'shifting angle ', i, ' by ', sh[i]
