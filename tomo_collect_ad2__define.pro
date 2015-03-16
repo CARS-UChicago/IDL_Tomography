@@ -16,6 +16,14 @@ pro tomo_collect_ad2::startScan
   ; Get initial time and start clock widget
   self.scan.start_clock = systime(1,/seconds)
 
+  ; Stop CCD acquisition, since we could be in focus mode
+  self.scan.ccd->setProperty,'Acquire',0
+  busy = self.scan.ccd->getProperty('DetectorState_RBV',string=0)
+  while (busy ne 0) do begin
+    wait, .1
+    busy = self.scan.ccd->getProperty('DetectorState_RBV',string=0)
+  endwhile
+
   ; need to acquire a single image to get image dimensions
   ; This is used in prepareScan to get ArraySize_RBV
   self.scan.ccd->setProperty, 'ImageMode', 0
@@ -62,13 +70,6 @@ pro tomo_collect_ad2::startScan
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed_old
   widget_control, self.widgets.status, set_value='Zeroing motors'
 
-  ; Stop CCD acquisition, since we could be in focus mode
-  self.scan.ccd->setProperty,'Acquire',0
-  busy = self.scan.ccd->getProperty('DetectorState_RBV',string=0)
-  while (busy ne 0) do begin
-    wait, .1
-    busy = self.scan.ccd->getProperty('DetectorState_RBV',string=0)
-  endwhile
   if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
     ; set #angles between flat fields to maximum value so OTF normal stack is not too big
     arraysize = self.scan.ccd->getProperty('ArraySize_RBV', string = 0)
@@ -666,12 +667,15 @@ pro tomo_collect_ad2::stopScan
   endif
   self->setFileComments, ['', '', '']
 
-  widget_control, self.widgets.status, set_value='Zeroing motors'
+  widget_control, self.widgets.status, set_value='Scan complete'
   ; sensitize start widget
   widget_control, self.widgets.start_scan, sensitive=1
   widget_control, self.widgets.abort_scan, sensitive=0
 
   self->updateScreen, /force_update
+  
+  ; Start the camera acquiring in free-run so user sees live image again
+  self.scan.ccd->setProperty, 'Acquire', 1
 
   self->setState, self.scan.states.SCAN_COMPLETE
 end
@@ -734,19 +738,36 @@ function tomo_collect_ad2::computeFrameTime
     readout = Max([.04/biny, .02])
     time = (exposure + readout) * 1.01
   endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
-    ; Point Grey has 7 ms max readout time in Raw 8-bit mode and 15 ms? in 16-bit mode
+    ; The readout time of the camera depends both on the Format7Mode and the PixelFormat.
+    ; The measured times with 100 microsecond exposure time and 2000 frames without dropping any are:
+    ; PixelFormat = Raw8, Format7Mode=0(1920x1200)  6.3 ms
+    ; PixelFormat = Raw8, Format7Mode=1(960x600)    6.2 ms
+    ; PixelFormat = Raw8, Format7Mode=7(1920x1200)  7.9 ms
+    ; PixelFormat = Mono8, Format7Mode=any         11.6 ms
+    ; PixelFormat = Mono12, Format7Mode=any        11.6 ms
+    ; PixelFormat = Mono16, Format7Mode=any        15.4 ms
     ; We slow it down 1% from theoretical
     t = caget(self.epics_pvs.camera_name+'cam1:PixelFormat_RBV', pixel_format, /string)
+    t = caget(self.epics_pvs.camera_name+'cam1:Format7Mode_RBV', format7_mode, /string)
     if (pixel_format eq 'Raw8') then begin
-      readout = 0.007
+      if (format7_mode eq '0(1920x1200)') then begin
+        readout = 0.0063
+      endif else if (format7_mode eq '1(960x600)') then begin
+        readout = 0.0062
+      endif else if (format7_mode eq '7(1920x1200)') then begin
+        readout = 0.0079
+      endif else begin
+        readout = 0.0079
+        message, 'Unsupported format7 mode='+format7_mode
+      endelse
     endif else if (pixel_format eq 'Mono8') then begin
-      readout = 0.012
+      readout = 0.0116
     endif else if (pixel_format eq 'Mono12') then begin
-      readout = 0.012
+      readout = 0.0116
     endif else if (pixel_format eq 'Mono16') then begin
-      readout = 0.013
+      readout = 0.0154
     endif else begin
-      readout = 0.013
+      readout = 0.0154
       message, 'Unsupported pixel format='+pixel_format
     endelse
     time = (exposure + readout) * 1.01
