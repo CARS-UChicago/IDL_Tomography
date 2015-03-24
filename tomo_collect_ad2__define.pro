@@ -66,7 +66,7 @@ pro tomo_collect_ad2::startScan
   self->copy_settings_to_widgets
 
   ; remember old motor speed
-  self.scan.motor_speed_old = self.scan.rotation_motor->get_slew_speed()
+  self.scan.motor_speed_old = self.scan.rotation_motor->get_maximum_speed()
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed_old
   widget_control, self.widgets.status, set_value='Zeroing motors'
 
@@ -133,7 +133,7 @@ pro tomo_collect_ad2::startScan
     set_value=strtrim(0,2) + '/' + strtrim(self.scan.num_angles,2)
 
   ; set the external prescale according to the step size, use motor resolution steps per degree (user unit)
-  t = caput(self.epics_pvs.otf_trigger+'Prescale', FLOOR(ABS(self.scan.rotation_step  * motor_resolution)))
+  t = caput(self.epics_pvs.sis_mcs+'Prescale', FLOOR(ABS(self.scan.rotation_step  * motor_resolution)))
 
   ; Collect dark currents if non-zero
   if (self.scan.num_dark_currents gt 0) then begin
@@ -190,7 +190,7 @@ pro tomo_collect_ad2::collectNFrames, num_frames
     self.scan.ccd->setProperty, 'Acquire', 1
     wait,.1
     ; Start the MCS
-    t = caput(self.epics_pvs.otf_trigger+'EraseStart', 1)
+    t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
 
     ; check for when measurements are finished
     ccd_busy1 = self.scan.ccd->getProperty('DetectorState_RBV', string = 0)
@@ -207,7 +207,7 @@ pro tomo_collect_ad2::collectNFrames, num_frames
     self.scan.ccd->setProperty, 'Acquire', 1
     wait, .5
     ; Start the MCS
-    t = caput(self.epics_pvs.otf_trigger+'EraseStart', 1)
+    t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
     ; check for when flat field measurements are finished
     t = caget(self.scan.file_control+'NumCaptured_RBV',images_captured)
     while (images_captured ne num_frames) do begin
@@ -392,7 +392,7 @@ pro tomo_collect_ad2::scanPoll
       endwhile
     endif
     ; turn on MCS
-    t = caput(self.epics_pvs.otf_trigger+'EraseStart', 1)
+    t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
     wait, .1
     ; turn on motor, begin triggering camera through MCS
     self.scan.rotation_motor->move,(*self.scan.otf_rotation_array)[self.scan.current_point]
@@ -520,7 +520,7 @@ pro tomo_collect_ad2::scanPoll
 
     self.scan.current_point++
     ; stop MCS
-    t = caput(self.epics_pvs.otf_trigger+'StopAll',1)
+    t = caput(self.epics_pvs.sis_mcs+'StopAll',1)
 
     if (self.scan.num_flatfields eq 0) then begin
       self->setState, self.scan.states.NORMAL
@@ -551,7 +551,7 @@ pro tomo_collect_ad2::stopScan
 
   ; In case of OTF
   ; first stop the external triggers
-  t = caput(self.epics_pvs.otf_trigger+'StopAll',1)
+  t = caput(self.epics_pvs.sis_mcs+'StopAll',1)
   ; stop the motor
   t = caput(self.epics_pvs.rotation+'.SPMG',0)
   wait, .1
@@ -706,12 +706,11 @@ pro tomo_collect_ad2::setExposureTime
   if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
     ; Seems to be necessary to write Format7 mode to make mode changes work?
     t = caput(self.epics_pvs.camera_name+'cam1:VideoMode', 'Format7')
-    t = caput(self.epics_pvs.pulse_generator+'Run', 'Stop')
-    t = caput(self.epics_pvs.pulse_generator+'P1:Width', self.scan.exposure_time)
-    period = self->computeFrameTime()
-    t = caput(self.epics_pvs.pulse_generator+'Period', period)
-    wait, .1
-    t = caput(self.epics_pvs.pulse_generator+'Run', 'Run')
+    t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
+    t = caput(self.epics_pvs.sis_mcs+'LNEOutputWidth', self.scan.exposure_time)
+    time = self->computeFrameTime()
+    t = caput(self.epics_pvs.sis_mcs+'Dwell', time)
+    t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
   endif else begin
     self.scan.ccd->setProperty, 'AcquireTime', self.scan.exposure_time
   endelse
@@ -789,11 +788,12 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
       self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
       self.scan.ccd->setProperty, 'ImageMode', 'Continuous'
-      t = caput(self.epics_pvs.pulse_generator+'Run', 'Stop')
-      t = caput(self.epics_pvs.pulse_generator+'Mode', 'Normal')
-      t = caput(self.epics_pvs.pulse_generator+'ExtMode', 'Disabled')
+      t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
+      t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'Internal')
+      t = caget(self.epics_pvs.sis_mcs+'MaxChannels', maxChannels)
+      t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
       wait, .1
-      t = caput(self.epics_pvs.pulse_generator+'Run', 'Run')
+      t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
     endif
   endif else if (triggerMode eq 'Single') then begin
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -805,11 +805,6 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
       self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
       self.scan.ccd->setProperty, 'ImageMode', 'Single'
-      t = caput(self.epics_pvs.pulse_generator+'Run', 'Stop')
-      t = caput(self.epics_pvs.pulse_generator+'Mode', 'Normal')
-      t = caput(self.epics_pvs.pulse_generator+'ExtMode', 'Disabled')
-      wait, .1
-      t = caput(self.epics_pvs.pulse_generator+'Run', 'Run')
     endif
     self.scan.ccd->setProperty, 'NumImages', 1
   endif else begin    ; set camera to external triggering
@@ -822,14 +817,9 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
       self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
       self.scan.ccd->setProperty, 'ImageMode', 'Multiple'
-      t = caput(self.epics_pvs.pulse_generator+'Run', 'Stop')
-      t = caput(self.epics_pvs.pulse_generator+'Mode', 'Single')
-      t = caput(self.epics_pvs.pulse_generator+'ExtMode', 'Trigger')
-      wait, .1
-      t = caput(self.epics_pvs.pulse_generator+'Run', 'Run')
     endif
     ; set number of MCS channels, NumImages, and NumCapture
-    t = caput(self.epics_pvs.otf_trigger+'NuseAll', numImages)
+    t = caput(self.epics_pvs.sis_mcs+'NuseAll', numImages)
     self.scan.ccd->setProperty, 'NumImages', numImages
     if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then begin
       t = caput(self.scan.file_control+'NumCapture', numImages)
@@ -838,14 +828,14 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
   
   if (triggerMode eq 'MCSExternal') then begin
     ; Put MCS in external trigger mode
-    t = caput(self.epics_pvs.otf_trigger+'ChannelAdvance', 'External')
+    t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'External')
   endif
   
   if (triggerMode eq 'MCSInternal') then begin
     ; Put MCS in internal trigger mode
-    t = caput(self.epics_pvs.otf_trigger+'ChannelAdvance', 'Internal')
+    t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'Internal')
     ; Set MCS dwell time to time per angle
-    t = caput(self.epics_pvs.otf_trigger+'Dwell', self.scan.time_per_angle)
+    t = caput(self.epics_pvs.sis_mcs+'Dwell', self.scan.time_per_angle)
   endif
   
 end
@@ -884,19 +874,6 @@ function tomo_collect_ad2::validateEpicsPvs
       self.scan.camera_manufacturer = self.camera_types.PROSILICA
     endif else if(name eq 'Point Grey Research') then begin
       self.scan.camera_manufacturer = self.camera_types.POINT_GREY
-      ; We only check pulse generator for Point Grey
-      pv = self.epics_pvs.pulse_generator
-      if (strlen(pv) eq 0) then begin
-        t = dialog_message('Error: pulse_generator is blank, not a valid EPICS PV name.')
-        pvs_ok = 0
-        goto, finish
-      endif
-      t = caget(pv+'Period', value)
-      if (t ne 0) then begin
-        t = dialog_message('Error: ' + pv + ' is not a valid EPICS PV name, not found.')
-        pvs_ok = 0
-        goto, finish
-      endif
 
     endif else begin
       widget_control, self.widgets.status, set_value='Could not connect to camera'
@@ -922,10 +899,10 @@ function tomo_collect_ad2::validateEpicsPvs
   t = caput(self.scan.file_control+'AutoSave', 0)
   self->setExposureTime
 
-  ; for OTF, check Struck generator PVs, assume that if one PV is good the others are also good
-  pv = self.epics_pvs.otf_trigger
+  ; for OTF, check SIS generator PVs, assume that if one PV is good the others are also good
+  pv = self.epics_pvs.sis_mcs
   if (strlen(pv) eq 0) then begin
-    t = dialog_message('Error: otf_trigger is blank, not a valid EPICS PV name.')
+    t = dialog_message('Error: sis_mcs is blank, not a valid EPICS PV name.')
     pvs_ok = 0
     goto, finish
   endif
@@ -1047,14 +1024,13 @@ function tomo_collect_ad2::saveSettings, file, all=all
   ; Write all the other settings
   ; These are in self.epics_pvs
   printf, lun, 'CAMERA_NAME: ',         self.epics_pvs.camera_name
-  printf, lun, 'PULSE_GENERATOR: ',     self.epics_pvs.pulse_generator
   printf, lun, 'ROTATION_PV: ',         self.epics_pvs.rotation
   printf, lun, 'SAMPLE_X_PV: ',         self.epics_pvs.sample_x
   printf, lun, 'SAMPLE_Y_PV: ',         self.epics_pvs.sample_y
   printf, lun, 'BEAM_READY_PV: ',       self.epics_pvs.beam_ready
   printf, lun, 'AUTOSCAN_SYNC_PV: ',    self.epics_pvs.autoscan_sync
   printf, lun, 'AUTOSCAN_SUFFIX_PV: ',  self.epics_pvs.autoscan_suffix
-  printf, lun, 'OTF_TRIGGER_BASE_NAME_PV: ', self.epics_pvs.otf_trigger
+  printf, lun, 'SIS_MCS_BASE_NAME_PV: ',self.epics_pvs.sis_mcs
   printf, lun, 'CLOSE_SHUTTER_PV: ',    self.epics_pvs.close_shutter
   printf, lun, 'OPEN_SHUTTER_PV: ',     self.epics_pvs.open_shutter
   ; These are in self.scan
@@ -1109,14 +1085,13 @@ function tomo_collect_ad2::restoreSettings, file
       'Y_PIXEL_SIZE:':  self.expinfo.y_pixel_size = value
       ; These are in self.epics_pvs
       'CAMERA_NAME:':         self.epics_pvs.camera_name = value
-      'PULSE_GENERATOR:':     self.epics_pvs.pulse_generator = value
       'ROTATION_PV:':         self.epics_pvs.rotation = value
       'SAMPLE_X_PV:':         self.epics_pvs.sample_x = value
       'SAMPLE_Y_PV:':         self.epics_pvs.sample_y = value
       'BEAM_READY_PV:':       self.epics_pvs.beam_ready = value
       'AUTOSCAN_SYNC_PV:':    self.epics_pvs.autoscan_sync = value
       'AUTOSCAN_SUFFIX_PV:':  self.epics_pvs.autoscan_suffix = value
-      'OTF_TRIGGER_BASE_NAME_PV:':     self.epics_pvs.otf_trigger = value
+      'SIS_MCA_BASE_NAME_PV:': self.epics_pvs.sis_mcs = value
       'CLOSE_SHUTTER_PV:':    self.epics_pvs.close_shutter = value
       'OPEN_SHUTTER_PV:':     self.epics_pvs.open_shutter = value
       ; These are in self.scan
@@ -1284,8 +1259,7 @@ end
 pro tomo_collect_ad2::copy_settings_to_widgets
   ; These are in self.epics_pvs
   widget_control, self.pv_widgets.camera_name,      set_value=self.epics_pvs.camera_name
-  widget_control, self.pv_widgets.pulse_generator,  set_value=self.epics_pvs.pulse_generator
-  widget_control, self.pv_widgets.otf_trigger,      set_value=self.epics_pvs.otf_trigger
+  widget_control, self.pv_widgets.sis_mcs,          set_value=self.epics_pvs.sis_mcs
   widget_control, self.pv_widgets.close_shutter,    set_value=self.epics_pvs.close_shutter
   widget_control, self.pv_widgets.open_shutter,     set_value=self.epics_pvs.open_shutter
   widget_control, self.pv_widgets.rotation,         set_value=self.epics_pvs.rotation
@@ -1320,10 +1294,8 @@ pro tomo_collect_ad2::copy_settings_from_widgets
   ; These are in self.epics_pvs
   widget_control, self.pv_widgets.camera_name, get_value=value
   self.epics_pvs.camera_name = value
-  widget_control, self.pv_widgets.pulse_generator, get_value=value
-  self.epics_pvs.pulse_generator = value
-  widget_control, self.pv_widgets.otf_trigger, get_value=value
-  self.epics_pvs.otf_trigger = value
+  widget_control, self.pv_widgets.sis_mcs, get_value=value
+  self.epics_pvs.sis_mcs = value
   widget_control, self.pv_widgets.close_shutter, get_value=value
   self.epics_pvs.close_shutter = value
   widget_control, self.pv_widgets.open_shutter, get_value=value
@@ -1993,11 +1965,8 @@ function tomo_collect_ad2::init
   t = widget_label(row, value='Camera name:', xsize=x_label_size, /align_right)
   self.pv_widgets.camera_name = widget_text(row,  xsize=x_entry_size, /editable)
   row = widget_base(col0, /row)
-  t = widget_label(row, value='Pulse generator for Point Grey:', xsize=x_label_size, /align_right)
-  self.pv_widgets.pulse_generator = widget_text(row,  xsize=x_entry_size, /editable)
-  row = widget_base(col0, /row)
-  t = widget_label(row, value='OTF trigger base name PV:', xsize=x_label_size, /align_right)
-  self.pv_widgets.otf_trigger = widget_text(row,  xsize=x_entry_size, /editable)
+  t = widget_label(row, value='SIS MCS base name PV:', xsize=x_label_size, /align_right)
+  self.pv_widgets.sis_mcs = widget_text(row,  xsize=x_entry_size, /editable)
   row = widget_base(col0, /row)
   t = widget_label(row, value='Close shutter PV:', xsize=x_label_size, /align_right)
   self.pv_widgets.close_shutter = widget_text(row,  xsize=x_entry_size, /editable)
@@ -2178,8 +2147,7 @@ pro tomo_collect_ad2__define
   ; These widgets are in the "EPICS process variables" page
   pv_widgets = {tomo_collect_pv_widgets, $
     camera_name: 0L, $
-    pulse_generator: 0L, $
-    otf_trigger: 0L, $
+    sis_mcs: 0L, $
     close_shutter: 0L, $
     close_shutter_value: 0L, $
     open_shutter: 0L, $
@@ -2226,8 +2194,7 @@ pro tomo_collect_ad2__define
   epics_pvs = {tomo_epics_pvs, $
     ; These are all saved to the settings file
     camera_name: "", $
-    pulse_generator: "", $
-    otf_trigger: "", $
+    sis_mcs: "", $
     close_shutter: "", $
     open_shutter: "", $
     rotation: "", $
@@ -2297,7 +2264,6 @@ pro tomo_collect_ad2__define
     num_flatfields: 0L ,$
     camera_name: '' ,$
     camera_manufacturer: 0L, $
-    pulse_generator: '', $
     file_control: '', $
     num_dark_currents: 0L, $
     start_clock: 0L, $
