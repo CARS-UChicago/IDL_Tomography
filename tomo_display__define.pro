@@ -187,22 +187,23 @@ pro tomo_display::optimize_rotation_center
     npoints = long(range/step) + 1
     centers = findgen(npoints)*step + (center-range/2.)
     
+    proj0 = reform((*self.pvolume)[*,*,0])
+    proj180 = reform((*self.pvolume)[*,*,self.setup.nz-1])
     if (method eq 0) then begin
       optimize_rotation_center, self.tomoParams, [top_slice, bottom_slice], *self.pvolume, centers, entropy
-      t = min(entropy[*,0], min_pos1)
-      t = min(entropy[*,1], min_pos2)
-      center1 = centers[min_pos1]
-      center2 = centers[min_pos2]
     endif else begin
-      optimize_rotation_mirror, self.tomoParams, [top_slice, bottom_slice], *self.pvolume, *self.setup.angles, centers, error, bestCenter
-      ; This technique returns an extrapolated best center position which may not be the minimum of the errors if the last angle is not 180
-      min_pos1 = bestCenter[0]
-      min_pos2 = bestCenter[1]
-      ; It appears that the center is exactly 1 pixel larger than the center position used by gridrec
-      center1 = centers[min_pos1] - 1.0
-      center2 = centers[min_pos2] - 1.0
+      optimize_rotation_mirror, [top_slice, bottom_slice], proj0, proj180, centers, error
       entropy = error  ; Give variable the same name for plotting
     endelse
+    t = min(entropy[*,0], min_pos1)
+    t = min(entropy[*,1], min_pos2)
+    center1 = centers[min_pos1]
+    center2 = centers[min_pos2]
+    if (method eq 1) then begin
+      ; It appears that the center is 0.5 pixel larger than the center position used by gridrec
+      center1 = center1 - 0.5
+      center2 = center2 - 0.5
+    endif
     widget_control, self.widgets.volume_file, get_value=file
     title = file + '   Slice=['+strtrim(string(top_slice),2)+','+strtrim(string(bottom_slice),2)+']'
     iplot, centers, entropy[*,0], xtitle='Rotation center', ytitle='Image entropy', sym_index=2, $
@@ -212,7 +213,9 @@ pro tomo_display::optimize_rotation_center
            view_title=title, overplot=id
     widget_control, self.widgets.rotation_center[0], set_value=center1
     widget_control, self.widgets.rotation_center[1], set_value=center2
-    widget_control, self.widgets.rotation_optimize_center, set_value=(center1+ center2)/2.
+    center = (center1 + center2)/2.
+    widget_control, self.widgets.rotation_optimize_center, set_value=center
+    ;measure_rotation_tilt, proj0, proj180, center, vertError
     self->reconstruct, 0
     self->reconstruct, 1
 end
