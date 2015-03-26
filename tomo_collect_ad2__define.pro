@@ -1,3 +1,53 @@
+pro tomo_collect_ad2::alignmentScan
+  ; Set the file name
+  self->SetFileName
+  self.scan.time_per_angle = self->computeFrameTime()
+  ; Move to 0 degrees
+  widget_control, self.widgets.status, set_value='Moving to 0 degrees'
+  self.scan.rotation_motor->move, 0.
+  self.scan.rotation_motor->wait
+  widget_control, self.widgets.status, set_value='Moving sample out'
+  ; Move sample out
+  self->moveSampleOut
+
+  ; Collect flat fields
+  comment1 = 'Start angle= 0.'
+  comment2 = 'Angle step= 1.'
+  comment3 = 'Flat Fields= '
+  for i = 0, self.scan.num_flatfields-1 do begin
+    comment3 = comment3 + strtrim(i,2) + ' '
+  endfor
+  self->setFileComments, [comment1, comment2, comment3]
+  widget_control, self.widgets.status, set_value='Collecting flat fields'
+  self->collectNFrames, self.scan.num_flatfields
+
+   ; Move sample in
+   widget_control, self.widgets.status, set_value='Moving sample in'
+  self->moveSampleIn
+  ; Collect 0 degree image into file
+  ; write OTF comments
+  self->setFileComments, [comment1, comment2, '']
+  widget_control, self.widgets.status, set_value='Collecting 0 degree image'
+  self->collectNFrames, 1
+
+  ; Move to 180
+  widget_control, self.widgets.status, set_value='Rotating to 180 degrees'
+  self.scan.rotation_motor->move, 180.
+  self.scan.rotation_motor->wait
+  ; Collect 180 degree image into file
+  comment1 = 'Start angle= 180.'
+  self->setFileComments, [comment1, comment2, '']
+  widget_control, self.widgets.status, set_value='Collecting 180 degree image'
+  self->collectNFrames, 1
+
+  ; Move back to 0 degrees
+  widget_control, self.widgets.status, set_value='Moving to 0 degrees'
+  self.scan.rotation_motor->move, 0.
+  self.scan.rotation_motor->wait
+  widget_control, self.widgets.status, set_value='Aligment scan complete' 
+end
+
+
 pro tomo_collect_ad2::startScan
 
   if (not self.epics_pvs_valid) then return
@@ -175,6 +225,7 @@ pro tomo_collect_ad2::startScan
   ; reset widgets to the start
   widget_control, self.widgets.start_scan, sensitive=0
   widget_control, self.widgets.abort_scan, sensitive=1
+  widget_control, self.widgets.alignment_scan, sensitive=0
 
   wait, .01 ; Wait for motors to definitely start moving
   widget_control, self.widgets.scan_timer, timer=self.scan_timer_interval
@@ -671,6 +722,7 @@ pro tomo_collect_ad2::stopScan
   ; sensitize start widget
   widget_control, self.widgets.start_scan, sensitive=1
   widget_control, self.widgets.abort_scan, sensitive=0
+  widget_control, self.widgets.alignment_scan, sensitive=1
 
   self->updateScreen, /force_update
   
@@ -987,6 +1039,7 @@ function tomo_collect_ad2::validateEpicsPvs
   widget_control, self.widgets.sample_y_drive, sensitive=sensitive
   widget_control, self.widgets.exposure_time, sensitive=sensitive
   widget_control, self.widgets.start_scan, sensitive=sensitive
+  widget_control, self.widgets.alignment_scan, sensitive=sensitive
   widget_control, self.widgets.abort_scan, sensitive=0
 
   self->updateScreen, /force_update
@@ -1091,7 +1144,7 @@ function tomo_collect_ad2::restoreSettings, file
       'BEAM_READY_PV:':       self.epics_pvs.beam_ready = value
       'AUTOSCAN_SYNC_PV:':    self.epics_pvs.autoscan_sync = value
       'AUTOSCAN_SUFFIX_PV:':  self.epics_pvs.autoscan_suffix = value
-      'SIS_MCA_BASE_NAME_PV:': self.epics_pvs.sis_mcs = value
+      'SIS_MCS_BASE_NAME_PV:': self.epics_pvs.sis_mcs = value
       'CLOSE_SHUTTER_PV:':    self.epics_pvs.close_shutter = value
       'OPEN_SHUTTER_PV:':     self.epics_pvs.open_shutter = value
       ; These are in self.scan
@@ -1664,6 +1717,11 @@ pro tomo_collect_ad2::event, event
       self->abortScan
     end
 
+    self.widgets.alignment_scan: begin
+      ; Do an alignment scan
+      self->alignmentScan
+    end
+    
     else:  t = dialog_message('Unknown event')
   endcase
 
@@ -1886,6 +1944,7 @@ function tomo_collect_ad2::init
     set_value = [self.scan.autoscan])
   self.widgets.start_scan = widget_button(row, value='Start scan')
   self.widgets.abort_scan = widget_button(row, value='Abort scan')
+  self.widgets.alignment_scan = widget_button(row, value='Alignment scan')
 
   ; Status
   col0 = widget_base(self.widgets.base, /column, /frame, tab_mode=0)
@@ -2124,6 +2183,7 @@ pro tomo_collect_ad2__define
     autoscan: 0L, $
     start_scan: 0L, $
     abort_scan: 0L, $
+    alignment_scan: 0L, $
     status_base: 0L, $
     base_file: 0L, $
     attributes_filename: 0L, $
