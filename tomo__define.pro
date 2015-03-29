@@ -242,11 +242,21 @@ pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, 
     if (file_type eq '.SPE') then begin
       angle=float(strmid(comment[0], 6))
       type=strmid(comment[1], 5)
-    endif else if (file_type eq '.nc') then begin
+    endif else if (file_type eq '.nc') then begin  ; .nc is actually always fast-scan
       i = self->find_attribute(attributes, 'Attr_Comment1')
-      angle= float(strmid( (*(attributes.pvalue)[i])[0], 6))
+      start_angle = float(strmid( (*(attributes.pvalue)[i])[0], 12))
       i = self->find_attribute(attributes, 'Attr_Comment2')
-      type= strmid( (*(attributes.pvalue)[i])[0], 5)
+      angle_step = float(strmid( (*(attributes.pvalue)[i])[0], 11))
+      i = self->find_attribute(attributes, 'Attr_Comment3')
+      flat_fields = strmid( (*(attributes.pvalue)[i])[0], 12)
+      ang = double(start_angle)
+      if (flat_fields ne '') then begin
+        type = 'FLAT_FIELD'
+        angle = ang
+      endif else begin
+        type = 'NORMAL'
+        angle = ang
+      endelse
     endif
     str = str + ' angle=' + string(angle, format='(f6.2)') + ' type=' + type
     if (widget_info(status_widget, /valid_id)) then $
@@ -393,7 +403,9 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
         self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
           status_widget, flip_data
         dims = size(data, /dimensions)
-        nframes = nframes + dims[2]
+        n_dims = size(data, /n_dimensions)
+        if (n_dims eq 2) then nf=1 else nf=dims[2]
+        nframes = nframes + nf
       endfor
       data_buff = uintarr(ncols, nrows, nframes, /nozero)
       image_type = strarr(nframes)
@@ -403,11 +415,13 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
         self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
           status_widget, flip_data
         dims = size(data, /dimensions)
+        n_dims = size(data, /n_dimensions)
         data_buff[0, 0, current_frame] = data
         data = 0
         angles[current_frame] = angle
         image_type[current_frame] = type
-        current_frame = current_frame + dims[2]
+        if (n_dims eq 2) then nf=1 else nf=dims[2]
+        current_frame = current_frame + nf
         
         if (widget_info(abort_widget, /valid_id)) then begin ; check for abort from user
           event = widget_event(/nowait, abort_widget)
