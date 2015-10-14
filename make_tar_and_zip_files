@@ -1,0 +1,22 @@
+DESTINATION=/home/epics/public_html/pub/idl_tomography
+
+tar cvhf $DESTINATION.tar \
+README \
+*.pro \
+*.sav \
+GSETomo_.ijm \
+*.dll \
+win32dll \
+win64dll \
+*.so \
+
+rm -f $DESTINATION.zip
+zip $DESTINATION.zip   \
+README \
+*.pro \
+*.sav \
+GSETomo_.ijm \
+*.dll \
+win32dll \
+win64dll \
+*.so \

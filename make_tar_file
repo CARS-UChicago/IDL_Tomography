@@ -1,9 +1,0 @@
-tar cvhf /home/epics/public_html/pub/idl_tomography.tar \
-README \
-*.pro \
-*.sav \
-GSETomo_.txt \
-*.dll \
-win32dll \
-win64dll \
-*.so \
