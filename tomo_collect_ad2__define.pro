@@ -76,6 +76,7 @@ pro tomo_collect_ad2::startScan
 
   ; need to acquire a single image to get image dimensions
   ; This is used in prepareScan to get ArraySize_RBV
+  t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
   self.scan.ccd->setProperty, 'ImageMode', 0
   self->setTriggerMode, 'Single'
   self.scan.ccd->setProperty, 'NumImages', 1
@@ -87,6 +88,7 @@ pro tomo_collect_ad2::startScan
     wait, .01
     busy = self.scan.ccd->getProperty('Acquire_RBV',string=0)
   endwhile
+  t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
 
   ; begin clock
   if(self.scan.num_flatfields eq 0) then begin
@@ -183,6 +185,7 @@ pro tomo_collect_ad2::startScan
     set_value=strtrim(0,2) + '/' + strtrim(self.scan.num_angles,2)
 
   ; set the external prescale according to the step size, use motor resolution steps per degree (user unit)
+  t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
   t = caput(self.epics_pvs.sis_mcs+'Prescale', FLOOR(ABS(self.scan.rotation_step  * motor_resolution)))
 
   ; Collect dark currents if non-zero
@@ -227,7 +230,7 @@ pro tomo_collect_ad2::startScan
   widget_control, self.widgets.abort_scan, sensitive=1
   widget_control, self.widgets.alignment_scan, sensitive=0
 
-  wait, .01 ; Wait for motors to definitely start moving
+  wait, .1 ; Wait for motors to definitely start moving
   widget_control, self.widgets.scan_timer, timer=self.scan_timer_interval
 end
 
@@ -665,7 +668,14 @@ pro tomo_collect_ad2::stopScan
   ; set motor speed high to expedite the motor reset
   self.scan.motor_speed = self.scan.motor_speed_old
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed
+  ; Sometimes the speed is getting set to 0. We need to track down the problem.
+  ; For now, read back the value, if it is 0 then print an error message and try again
   self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
+  pos = self.scan.rotation_motor->get_slew_speed()
+  if (pos eq 0) then begin
+    print, 'Error, tried to set rotation slew speed to self.scan.motor_speed but read back zero, trying again'
+    self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
+  endif
   if(~self.scan.leave_motor) then begin
     ; reset motor to original position
     self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0] + self.scan.rotation_step/2.
@@ -795,7 +805,7 @@ function tomo_collect_ad2::computeFrameTime
     ; PixelFormat = Raw8, Format7Mode=1(960x600)    6.2 ms
     ; PixelFormat = Raw8, Format7Mode=7(1920x1200)  7.9 ms
     ; PixelFormat = Mono8, Format7Mode=any         11.6 ms
-    ; PixelFormat = Mono12, Format7Mode=any        11.6 ms
+    ; PixelFormat = Mono12, Format7Mode=any        11.6 ms  Now 12.1!
     ; PixelFormat = Mono16, Format7Mode=any        15.4 ms
     ; We slow it down 1% from theoretical
     t = caget(self.epics_pvs.camera_name+'cam1:PixelFormat_RBV', pixel_format, /string)
@@ -814,7 +824,7 @@ function tomo_collect_ad2::computeFrameTime
     endif else if (pixel_format eq 'Mono8') then begin
       readout = 0.0116
     endif else if (pixel_format eq 'Mono12') then begin
-      readout = 0.0116
+      readout = 0.0121
     endif else if (pixel_format eq 'Mono16') then begin
       readout = 0.0154
     endif else begin
@@ -843,7 +853,18 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
       t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'Internal')
       t = caget(self.epics_pvs.sis_mcs+'MaxChannels', maxChannels)
+      if ((t ne 0) or (maxChannels eq 0)) then begin
+        print, 'Error reading maxChannels, status= ', t, ' value= ', maxChannels, ' Trying again.'
+        t = caget(self.epics_pvs.sis_mcs+'MaxChannels', maxChannels)
+        print, 'Second try, status= ', t, ' value = ', maxChannels
+      endif
       t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
+      ; Sometimes zero gets written rather than maxChannels.  Read back to check
+      t = caget(self.epics_pvs.sis_mcs+'NuseAll', val)
+      if (val eq 0) then begin
+        print, 'Tried to set MCS NuseAll to ', maxChannels, ' but read back zero.  Trying again.'
+        t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
+      endif
       wait, .1
       t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
     endif
@@ -871,6 +892,7 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       self.scan.ccd->setProperty, 'ImageMode', 'Multiple'
     endif
     ; set number of MCS channels, NumImages, and NumCapture
+    t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
     t = caput(self.epics_pvs.sis_mcs+'NuseAll', numImages)
     self.scan.ccd->setProperty, 'NumImages', numImages
     if (self.scan.camera_manufacturer ne self.camera_types.ROPER) then begin
@@ -880,10 +902,12 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
   
   if (triggerMode eq 'MCSExternal') then begin
     ; Put MCS in external trigger mode
+    t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
     t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'External')
   endif
   
   if (triggerMode eq 'MCSInternal') then begin
+    t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
     ; Put MCS in internal trigger mode
     t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'Internal')
     ; Set MCS dwell time to time per angle
