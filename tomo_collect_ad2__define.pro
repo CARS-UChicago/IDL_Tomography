@@ -89,6 +89,9 @@ pro tomo_collect_ad2::startScan
     busy = self.scan.ccd->getProperty('Acquire_RBV',string=0)
   endwhile
   t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
+  ; The MCS LNE output stays low after stopping MCS for up to the exposure time = LNE output width
+  ; Need to wait for the exposure time
+  wait, self.scan.exposure_time
 
   ; begin clock
   if(self.scan.num_flatfields eq 0) then begin
@@ -119,6 +122,12 @@ pro tomo_collect_ad2::startScan
 
   ; remember old motor speed
   self.scan.motor_speed_old = self.scan.rotation_motor->get_maximum_speed()
+  if (self.scan.motor_speed_old eq 0) then begin
+    print, 'Error, read maximum rotation speed, got 0, trying again'
+    self.scan.motor_speed_old = self.scan.rotation_motor->get_maximum_speed()
+    print, 'Second try, got', self.scan.motor_speed_old
+  endif
+
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed_old
   widget_control, self.widgets.status, set_value='Zeroing motors'
 
@@ -167,6 +176,10 @@ pro tomo_collect_ad2::startScan
   ; move the motor into the initial position
   (*self.scan.otf_rotation_array) = (*self.scan.otf_rotation_array) - self.scan.rotation_step/2.
   self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0]
+  ; The SIS does not put out pulses until after one dwell period so need to back up one angle step
+  if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
+    self.scan.rotation_motor->move, (*self.scan.otf_rotation_array)[0] - self.scan.rotation_step
+  endif
   self.scan.rotation_motor->wait
 
   ; Set motor speed
@@ -575,6 +588,9 @@ pro tomo_collect_ad2::scanPoll
     self.scan.current_point++
     ; stop MCS
     t = caput(self.epics_pvs.sis_mcs+'StopAll',1)
+    ; The MCS LNE output stays low after stopping MCS for up to the exposure time = LNE output width
+    ; Need to wait for the exposure time
+    wait, self.scan.exposure_time
 
     if (self.scan.num_flatfields eq 0) then begin
       self->setState, self.scan.states.NORMAL
