@@ -684,13 +684,12 @@ pro tomo_collect_ad2::stopScan
   ; set motor speed high to expedite the motor reset
   self.scan.motor_speed = self.scan.motor_speed_old
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed
-  ; Sometimes the speed is getting set to 0. We need to track down the problem.
-  ; For now, read back the value, if it is 0 then print an error message and try again
+  ; Sometimes the speed is read back as zero.  NEED TO FIGURE OUT WHY!
   self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
   pos = self.scan.rotation_motor->get_slew_speed()
   if (pos eq 0) then begin
-    print, 'Error, tried to set rotation slew speed to self.scan.motor_speed but read back zero, trying again'
-    self.scan.rotation_motor->set_slew_speed, self.scan.motor_speed
+    print, 'Error, read rotation speed as 0, which is not correct. Using 15 instead!'
+    self.scan.rotation_motor->set_slew_speed, 15
   endif
   if(~self.scan.leave_motor) then begin
     ; reset motor to original position
@@ -875,11 +874,11 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
         print, 'Second try, status= ', t, ' value = ', maxChannels
       endif
       t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
-      ; Sometimes zero gets written rather than maxChannels.  Read back to check
+      ; Sometimes read of NUseAll returns 0.  NEED TO FIGURE OUT WHY!
       t = caget(self.epics_pvs.sis_mcs+'NuseAll', val)
       if (val eq 0) then begin
-        print, 'Tried to set MCS NuseAll to ', maxChannels, ' but read back zero.  Trying again.'
-        t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
+        print, 'Read 0 for NUseAll, not correct.  Using 2048 instead.'
+        t = caput(self.epics_pvs.sis_mcs+'NuseAll', 2048)
       endif
       wait, .1
       t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
