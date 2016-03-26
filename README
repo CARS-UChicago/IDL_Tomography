@@ -1,4 +1,4 @@
-Displaying and Analysing GSECARS Tomography Data
+Displaying and Analyzing GSECARS Tomography Data
 
 The IDL and ImageJ software for GSECARS tomography data is contained in this tar file:
 http://cars.uchicago.edu/software/idl/pub/idl_tomography.tar
@@ -18,7 +18,7 @@ http://lmb.informatik.uni-freiburg.de/lmbsoft/imagej_plugins/netcdf.html
 Copy that NetCDF_.jar file to a location in the ImageJ/plugins folder directories, such as in
 plugins/Input-Output/
 
-- Take the GSETomo_.txt file from the idl_tomography.tar file described above and place it in
+- Take the GSETomo_.ijm file from the idl_tomography.tar file described above and place it in
 the ImageJ/plugins folder.
 
 - Start ImageJ click on Plugins/GSETomo.  Browse to open .volume or recon.volume file.
@@ -60,6 +60,6 @@ tomoRecon_linux_x86.so or tomoRecon_linux_x86_64.so depending on whether you are
 On Windows:
 
 - Define the environment variable TOMO_RECON_SHARE to point to the complete path to
-tomoRecon_Win32_x86.dll ortomoRecon_Win32_x86_64.dll depending on whether you are running 32
+tomoRecon_Win32_x86.dll or tomoRecon_Win32_x86_64.dll depending on whether you are running 32
 or 64 bit IDL.
 
