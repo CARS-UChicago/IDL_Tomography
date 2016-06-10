@@ -826,11 +826,11 @@ function tomo_collect_ad2::computeFrameTime
     t = caget(self.epics_pvs.camera_name+'cam1:PixelFormat_RBV', pixel_format, /string)
     t = caget(self.epics_pvs.camera_name+'cam1:Format7Mode_RBV', format7_mode, /string)
     if (pixel_format eq 'Raw8') then begin
-      if (format7_mode eq '0(1920x1200)') then begin
+      if (format7_mode eq '0 (1920x1200)') then begin
         readout = 0.0063
-      endif else if (format7_mode eq '1(960x600)') then begin
+      endif else if (format7_mode eq '1 (960x600)') then begin
         readout = 0.0062
-      endif else if (format7_mode eq '7(1920x1200)') then begin
+      endif else if (format7_mode eq '7 (1920x1200)') then begin
         readout = 0.0079
       endif else begin
         readout = 0.0079
@@ -874,10 +874,13 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
         print, 'Second try, status= ', t, ' value = ', maxChannels
       endif
       t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
-      ; Sometimes read of NUseAll returns 0.  NEED TO FIGURE OUT WHY!
+      if (t ne 0) then begin
+        print, 'Error writing NuseAll, status= ', t
+      endif
+      ; Sometimes read of NuseAll returns 0.  NEED TO FIGURE OUT WHY!
       t = caget(self.epics_pvs.sis_mcs+'NuseAll', val)
-      if (val eq 0) then begin
-        print, 'Read 0 for NUseAll, not correct.  Using 2048 instead.'
+      if ((t ne 0) or (val eq 0)) then begin
+        print, 'Error reading NUseAll, status=', t, ' value= ', val, ' writing 2048'
         t = caput(self.epics_pvs.sis_mcs+'NuseAll', 2048)
       endif
       wait, .1
