@@ -19,10 +19,14 @@ suffix = ['A',  'B',  'C',  'D',  'E',  'F',  'G',$
           'H',  'I',  'J',  'K',  'L',  'M',  'N',$
           'O',  'P',  'Q',  'R',  'S',  'T',  'U',$
           'V',  'W',  'X',  'Z',                  $
-         'AA', 'BB', 'CC', 'DD', 'EE', 'FF', 'GG',$
-         'HH', 'II', 'JJ', 'KK', 'LL', 'MM', 'NN',$
-         'OO', 'PP', 'QQ', 'RR', 'SS', 'TT', 'UU',$
-         'VV', 'WW', 'XX', 'ZZ']
+         'ZA', 'ZB', 'ZC', 'ZD', 'ZE', 'ZF', 'ZG',$
+         'ZH', 'ZI', 'ZJ', 'ZK', 'ZL', 'ZM', 'ZN',$
+         'ZO', 'ZP', 'ZQ', 'ZR', 'ZS', 'ZT', 'ZU',$
+         'ZV', 'ZW', 'ZX', 'ZZ',                  $
+         'ZZA', 'ZZB', 'ZZC', 'ZZD', 'ZZE', 'ZZF', 'ZZG',$
+         'ZZH', 'ZZI', 'ZZJ', 'ZZK', 'ZZL', 'ZZM', 'ZZN',$
+         'ZZO', 'ZZP', 'ZZQ', 'ZZR', 'ZZS', 'ZZT', 'ZZU',$
+         'ZZV', 'ZZW', 'ZZX', 'ZZZ']                     $
 
 open_shutterPV = '13BMA:OpenBMDShutter.PROC'
 close_shutterPV = '13BMA:CloseBMDShutter.PROC'
