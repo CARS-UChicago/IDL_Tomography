@@ -16,13 +16,15 @@
       University of Chicago
     </h2>
     <h2>
-      July 24, 2014
+      October 14, 2015
     </h2>
   </div>
   <p>
     This document describes the IDL software used for reconstructing and viewing tomography
-    data at CARS. All of these IDL routines are available in a <a href="http://cars.uchicago.edu/software/pub/idl_tomography.tar">
-      idl_tomography.tar file</a>. The reconstruction is normally done using the tomoRecon
+    data at CARS. All of these IDL routines are available in 
+    <a href="http://cars.uchicago.edu/software/pub/idl_tomography.tar">tar</a> and 
+    <a href="http://cars.uchicago.edu/software/pub/idl_tomography.zip">zip</a> files.
+    The reconstruction is normally done using the tomoRecon
     reconstruction code, which is written in C++. The idl_tomography.tar file contains
     the required tomoRecon DLLs (Windows) and shareable libraries (Linux, Mac) to run
     the IDL software without compiling any code. The tomoRecon source code is also available
@@ -101,8 +103,8 @@
   <p>
     The reconstructed data are written as 16-bit integer netCDF files. These can be
     read into ImageJ using the (<a href="http://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/netcdf.html">
-      ImageJ netCDF plugin jar file</a>) and a small ImageJ script called GSETomo_.txt
-    that is also in the idl_tomography.tar file. Put both the netCDF_.jar and GSETomo_.txt
+      ImageJ netCDF plugin jar file</a>) and a small ImageJ script called GSETomo_.ijm
+    that is also in the idl_tomography.tar file. Put both the netCDF_.jar and GSETomo_.ijm
     files in the ImageJ/Plugins folder. Plugins/GSETomo can then be used to read the
     reconstructed files.</p>
   <hr />
