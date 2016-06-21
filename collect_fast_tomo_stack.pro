@@ -18,19 +18,22 @@ pro collect_fast_tomo_stack, points, delay_time
 suffix = ['A',  'B',  'C',  'D',  'E',  'F',  'G',$
           'H',  'I',  'J',  'K',  'L',  'M',  'N',$
           'O',  'P',  'Q',  'R',  'S',  'T',  'U',$
-          'V',  'W',  'X',  'Z',                  $
+          'V',  'W',  'X',  'Y',  'Z',            $
          'ZA', 'ZB', 'ZC', 'ZD', 'ZE', 'ZF', 'ZG',$
          'ZH', 'ZI', 'ZJ', 'ZK', 'ZL', 'ZM', 'ZN',$
          'ZO', 'ZP', 'ZQ', 'ZR', 'ZS', 'ZT', 'ZU',$
-         'ZV', 'ZW', 'ZX', 'ZZ',                  $
+         'ZV', 'ZW', 'ZX', 'ZY', 'ZZ',            $
          'ZZA', 'ZZB', 'ZZC', 'ZZD', 'ZZE', 'ZZF', 'ZZG',$
          'ZZH', 'ZZI', 'ZZJ', 'ZZK', 'ZZL', 'ZZM', 'ZZN',$
          'ZZO', 'ZZP', 'ZZQ', 'ZZR', 'ZZS', 'ZZT', 'ZZU',$
-         'ZZV', 'ZZW', 'ZZX', 'ZZZ']                     $
+         'ZZV', 'ZZW', 'ZZX', 'ZZY', 'ZZZ']
 
-open_shutterPV = '13BMA:OpenBMDShutter.PROC'
-close_shutterPV = '13BMA:CloseBMDShutter.PROC'
-rotation_stage = obj_new('epics_motor', '13BMD:m38')
+;open_shutterPV = '13BMA:OpenBMDShutter.PROC'
+;close_shutterPV = '13BMA:CloseBMDShutter.PROC'
+;rotation_stage = obj_new('epics_motor', '13BMD:m38')
+open_shutterPV = '13LAB:UnidigBo0'
+close_shutterPV = '13LAB:UnidigBo1'
+rotation_stage = obj_new('epics_motor', '13LAB:m1')
 shutter_delay = 1
 
 ;Enter your macro here
