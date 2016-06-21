@@ -815,38 +815,32 @@ function tomo_collect_ad2::computeFrameTime
     time = (exposure + readout) * 1.01
   endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
     ; The readout time of the camera depends both on the Format7Mode and the PixelFormat.
-    ; The measured times with 100 microsecond exposure time and 2000 frames without dropping any are:
-    ; PixelFormat = Raw8, Format7Mode=0(1920x1200)  6.3 ms
-    ; PixelFormat = Raw8, Format7Mode=1(960x600)    6.2 ms
-    ; PixelFormat = Raw8, Format7Mode=7(1920x1200)  7.9 ms
-    ; PixelFormat = Mono8, Format7Mode=any         11.6 ms
-    ; PixelFormat = Mono12, Format7Mode=any        11.6 ms  Now 12.1!
-    ; PixelFormat = Mono16, Format7Mode=any        15.4 ms
-    ; We slow it down 1% from theoretical
+    ; These measurements were done with firmware 2.14.3 and Flycap2 8.3.1.
+    ; The measured times in ms with 1 ms exposure time and 1000 frames without dropping any are:
+    ;             Raw8 Raw12  Raw16  Mono8  Mono12  Mono16      Format 7 mode
+    all_times  = [[6.1,  9.5, 12.0,  11.5,   11.5,  12.0], $  ; 0 (1920X1200)
+                  [6.1,  6.1,  6.1,  11.5,   11.5,  11.5], $  ; 1 (960X600) 
+                  [7.8,  9.1, 12.0,  11.5,   11.5,  12.0]]    ; 7 (1920X1200)
     t = caget(self.epics_pvs.camera_name+'cam1:PixelFormat_RBV', pixel_format, /string)
     t = caget(self.epics_pvs.camera_name+'cam1:Format7Mode_RBV', format7_mode, /string)
-    if (pixel_format eq 'Raw8') then begin
-      if (format7_mode eq '0 (1920x1200)') then begin
-        readout = 0.0063
-      endif else if (format7_mode eq '1 (960x600)') then begin
-        readout = 0.0062
-      endif else if (format7_mode eq '7 (1920x1200)') then begin
-        readout = 0.0079
-      endif else begin
-        readout = 0.0079
-        message, 'Unsupported format7 mode='+format7_mode
-      endelse
-    endif else if (pixel_format eq 'Mono8') then begin
-      readout = 0.0116
-    endif else if (pixel_format eq 'Mono12') then begin
-      readout = 0.0121
-    endif else if (pixel_format eq 'Mono16') then begin
-      readout = 0.0154
-    endif else begin
-      readout = 0.0154
-      message, 'Unsupported pixel format='+pixel_format
-    endelse
-    time = (exposure + readout) * 1.01
+    case pixel_format of
+      'Raw8':   pf = 0
+      'Raw12':  pf = 1
+      'Raw16':  pf = 2
+      'Mono8':  pf = 3
+      'Mono12': pf = 4
+      'Mono16': pf = 5
+      else: message, 'Unsupported pixel format:'+pixel_format
+    endcase
+    case format7_mode of
+      '0 (1920x1200)': f7m = 0
+      '1 (960x600)':   f7m = 1
+      '7 (1920x1200)': f7m = 2
+      else: message, 'Unsupported format7 mode='+format7_mode
+    endcase
+    readout = all_times[pf, f7m]
+    ; We slow it down 1% from theoretical
+    time = (exposure + readout/1000.) * 1.01
   endif else if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
     ; Roper is assumed to have 100 msec readout unbinned, 50 ms if bin >= 2
     time = (exposure + 0.1/Min([biny,2]))
