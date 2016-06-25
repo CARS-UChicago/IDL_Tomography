@@ -780,7 +780,8 @@ end
 
 pro tomo_collect_ad2::setExposureTime
   if (not self.epics_pvs_valid) then return
-  if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
+  if ((self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) and $
+      (self.scan.pg_trigger_mode eq 'Bulb')) then begin
     ; Seems to be necessary to write Format7 mode to make mode changes work?
     t = caput(self.epics_pvs.camera_name+'cam1:VideoMode', 'Format7')
     t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
@@ -838,9 +839,17 @@ function tomo_collect_ad2::computeFrameTime
       '7 (1920x1200)': f7m = 2
       else: message, 'Unsupported format7 mode='+format7_mode
     endcase
-    readout = all_times[pf, f7m]
+    readout = all_times[pf, f7m]/1000.
     ; We slow it down 1% from theoretical
-    time = (exposure + readout/1000.) * 1.01
+    if (self.scan.pg_trigger_mode eq 'Bulb') then begin
+      time = (exposure + readout) * 1.01
+    endif 
+    if (self.scan.pg_trigger_mode eq 'Overlapped') then begin
+      ; Add 1 ms to exposure time for margin
+      time  = exposure + .001
+      ; If the time is less than the readout time then use the readout time
+      if (time lt readout) then time = readout
+    endif
   endif else if (self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
     ; Roper is assumed to have 100 msec readout unbinned, 50 ms if bin >= 2
     time = (exposure + 0.1/Min([biny,2]))
@@ -857,28 +866,32 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
       self.scan.ccd->setProperty, 'ImageMode', 'Focus'
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
-      self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
       self.scan.ccd->setProperty, 'ImageMode', 'Continuous'
-      t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
-      t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'Internal')
-      t = caget(self.epics_pvs.sis_mcs+'MaxChannels', maxChannels)
-      if ((t ne 0) or (maxChannels eq 0)) then begin
-        print, 'Error reading maxChannels, status= ', t, ' value= ', maxChannels, ' Trying again.'
+      if (self.scan.pg_trigger_mode eq 'Bulb') then begin
+        self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
+        t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
+        t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'Internal')
         t = caget(self.epics_pvs.sis_mcs+'MaxChannels', maxChannels)
-        print, 'Second try, status= ', t, ' value = ', maxChannels
+        if ((t ne 0) or (maxChannels eq 0)) then begin
+          print, 'Error reading maxChannels, status= ', t, ' value= ', maxChannels, ' Trying again.'
+          t = caget(self.epics_pvs.sis_mcs+'MaxChannels', maxChannels)
+          print, 'Second try, status= ', t, ' value = ', maxChannels
+        endif
+        t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
+        if (t ne 0) then begin
+          print, 'Error writing NuseAll, status= ', t
+        endif
+        ; Sometimes read of NuseAll returns 0.  NEED TO FIGURE OUT WHY!
+        t = caget(self.epics_pvs.sis_mcs+'NuseAll', val)
+        if ((t ne 0) or (val eq 0)) then begin
+          print, 'Error reading NUseAll, status=', t, ' value= ', val, ' writing 2048'
+          t = caput(self.epics_pvs.sis_mcs+'NuseAll', 2048)
+        endif
+        wait, .1
+        t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
+      endif else if (self.scan.pg_trigger_mode eq 'Overlapped') then begin
+        self.scan.ccd->setProperty, 'TriggerMode',  'Internal'
       endif
-      t = caput(self.epics_pvs.sis_mcs+'NuseAll', maxChannels)
-      if (t ne 0) then begin
-        print, 'Error writing NuseAll, status= ', t
-      endif
-      ; Sometimes read of NuseAll returns 0.  NEED TO FIGURE OUT WHY!
-      t = caget(self.epics_pvs.sis_mcs+'NuseAll', val)
-      if ((t ne 0) or (val eq 0)) then begin
-        print, 'Error reading NUseAll, status=', t, ' value= ', val, ' writing 2048'
-        t = caput(self.epics_pvs.sis_mcs+'NuseAll', 2048)
-      endif
-      wait, .1
-      t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
     endif
   endif else if (triggerMode eq 'Single') then begin
     if (self.scan.camera_manufacturer eq self.camera_types.PROSILICA) then begin
@@ -888,7 +901,7 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
       self.scan.ccd->setProperty, 'ImageMode', 'Normal'
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
-      self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
+      self.scan.ccd->setProperty, 'TriggerMode',  self.scan.pg_trigger_mode
       self.scan.ccd->setProperty, 'ImageMode', 'Single'
     endif
     self.scan.ccd->setProperty, 'NumImages', 1
@@ -900,7 +913,7 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       self.scan.ccd->setProperty, 'TriggerMode', 'External'
       self.scan.ccd->setProperty, 'ImageMode', 'Normal'
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
-      self.scan.ccd->setProperty, 'TriggerMode',  'Bulb'
+      self.scan.ccd->setProperty, 'TriggerMode',  self.scan.pg_trigger_mode
       self.scan.ccd->setProperty, 'ImageMode', 'Multiple'
     endif
     ; set number of MCS channels, NumImages, and NumCapture
@@ -1839,6 +1852,8 @@ function tomo_collect_ad2::init
   self.scan.base_filename = 'Test'
   self.scan.filename = 'Test'
   self.scan.attributes_filename = ''
+;  self.scan.pg_trigger_mode = 'Bulb'
+  self.scan.pg_trigger_mode = 'Overlapped'
 
   self.expinfo.sample       = 'My sample'
   self.expinfo.comments[0]  = 'A comment'
@@ -2360,6 +2375,7 @@ pro tomo_collect_ad2__define
     num_flatfields: 0L ,$
     camera_name: '' ,$
     camera_manufacturer: 0L, $
+    pg_trigger_mode: '', $
     file_control: '', $
     num_dark_currents: 0L, $
     start_clock: 0L, $
