@@ -845,6 +845,8 @@ function tomo_collect_ad2::computeFrameTime
       time = (exposure + readout) * 1.01
     endif 
     if (self.scan.pg_trigger_mode eq 'Overlapped') then begin
+      ; We need to use the actual exposure time that the camera is using, not the requested exposure time
+      exposure = self.scan.ccd->getProperty('AcquireTime_RBV',string = 0)
       ; Add 1 ms to exposure time for margin
       time  = exposure + .001
       ; If the time is less than the readout time then use the readout time
@@ -901,7 +903,7 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
       self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
       self.scan.ccd->setProperty, 'ImageMode', 'Normal'
     endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
-      self.scan.ccd->setProperty, 'TriggerMode',  self.scan.pg_trigger_mode
+      self.scan.ccd->setProperty, 'TriggerMode', 'Internal'
       self.scan.ccd->setProperty, 'ImageMode', 'Single'
     endif
     self.scan.ccd->setProperty, 'NumImages', 1
