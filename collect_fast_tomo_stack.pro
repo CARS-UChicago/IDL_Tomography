@@ -28,12 +28,13 @@ suffix = ['A',  'B',  'C',  'D',  'E',  'F',  'G',$
          'ZZO', 'ZZP', 'ZZQ', 'ZZR', 'ZZS', 'ZZT', 'ZZU',$
          'ZZV', 'ZZW', 'ZZX', 'ZZY', 'ZZZ']
 
-;open_shutterPV = '13BMA:OpenBMDShutter.PROC'
-;close_shutterPV = '13BMA:CloseBMDShutter.PROC'
-;rotation_stage = obj_new('epics_motor', '13BMD:m38')
-open_shutterPV = '13LAB:UnidigBo0'
-close_shutterPV = '13LAB:UnidigBo1'
-rotation_stage = obj_new('epics_motor', '13LAB:m1')
+open_shutterPV = '13BMA:OpenBMDShutter.PROC'
+close_shutterPV = '13BMA:CloseBMDShutter.PROC'
+rotation_stage = obj_new('epics_motor', '13BMD:m38')
+; For testing in the lab
+;open_shutterPV = '13LAB:UnidigBo0'
+;close_shutterPV = '13LAB:UnidigBo1'
+;rotation_stage = obj_new('epics_motor', '13LAB:m1')
 shutter_delay = 1
 
 ;Enter your macro here
