@@ -74,14 +74,15 @@ pro tomo_collect_ad2::startScan
     busy = self.scan.ccd->getProperty('DetectorState_RBV',string=0)
   endwhile
 
-  ; need to acquire a single image to get image dimensions
+  ; need to acquire an image to get image dimensions
   ; This is used in prepareScan to get ArraySize_RBV
-  t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
-  self.scan.ccd->setProperty, 'ImageMode', 0
-  self->setTriggerMode, 'Single'
-  self.scan.ccd->setProperty, 'NumImages', 1
+  ; Point Grey needs to collect 3 frames because first 2 are bad exposure.
+  self->setTriggerMode, 'MCSInternal', 3
+  wait, .1
   self.scan.ccd->setProperty, 'Acquire', 1
   wait, .1
+  t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
+ wait, .1
   ; wait for capturing to finish
   busy = self.scan.ccd->getProperty('Acquire_RBV',string=0)
   while (busy ne 0) do begin
@@ -124,8 +125,11 @@ pro tomo_collect_ad2::startScan
   self.scan.motor_speed_old = self.scan.rotation_motor->get_maximum_speed()
   if (self.scan.motor_speed_old eq 0) then begin
     print, 'Error, read maximum rotation speed, got 0, trying again'
+    wait, .1
     self.scan.motor_speed_old = self.scan.rotation_motor->get_maximum_speed()
-    print, 'Second try, got', self.scan.motor_speed_old
+    print, 'Second try, after waiting 0.1 second got', self.scan.motor_speed_old
+    ; If the second try also returned 0 then use 30.  TOTAL KLUDGE, WE NEED TO TRACK DOWN WHY IT IS GETTING A READ ERROR
+    if (self.scan.motor_speed_old eq 0) then self.scan.motor_speed_old = 30.
   endif
 
   widget_control, self.widgets.motor_speed, set_value=self.scan.motor_speed_old
@@ -780,18 +784,23 @@ end
 
 pro tomo_collect_ad2::setExposureTime
   if (not self.epics_pvs_valid) then return
-  if ((self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) and $
-      (self.scan.pg_trigger_mode eq 'Bulb')) then begin
+  self.scan.ccd->setProperty, 'AcquireTime', self.scan.exposure_time
+  if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
     ; Seems to be necessary to write Format7 mode to make mode changes work?
     t = caput(self.epics_pvs.camera_name+'cam1:VideoMode', 'Format7')
     t = caput(self.epics_pvs.sis_mcs+'StopAll', 1)
-    t = caput(self.epics_pvs.sis_mcs+'LNEOutputWidth', self.scan.exposure_time)
+    ; Need to wait for camera to compute actual acquire time after setting it above
+    wait, 0.1
     time = self->computeFrameTime()
     t = caput(self.epics_pvs.sis_mcs+'Dwell', time)
-    t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
-  endif else begin
-    self.scan.ccd->setProperty, 'AcquireTime', self.scan.exposure_time
-  endelse
+    if (self.scan.pg_trigger_mode eq 'Bulb') then begin
+      t = caput(self.epics_pvs.sis_mcs+'LNEOutputWidth', self.scan.exposure_time)
+      t = caput(self.epics_pvs.sis_mcs+'EraseStart', 1)
+    endif else begin
+      t = caput(self.epics_pvs.sis_mcs+'LNEOutputWidth', 0.0001)
+      self.scan.ccd->setProperty, 'AcquireTime', self.scan.exposure_time
+    endelse
+  endif
 end
 
 pro tomo_collect_ad2::setFileComments, comments
@@ -821,7 +830,8 @@ function tomo_collect_ad2::computeFrameTime
     ;             Raw8 Raw12  Raw16  Mono8  Mono12  Mono16      Format 7 mode
     all_times  = [[6.1,  9.5, 12.0,  11.5,   11.5,  12.0], $  ; 0 (1920X1200)
                   [6.1,  6.1,  6.1,  11.5,   11.5,  11.5], $  ; 1 (960X600) 
-                  [7.8,  9.1, 12.0,  11.5,   11.5,  12.0]]    ; 7 (1920X1200)
+                  [7.8, 10.5, 12.0,  11.5,   11.5,  12.0]]    ; 7 (1920X1200)
+    ; I fudged Raw12 Format 7 mode 7 from 9.5 to 10.5 because it was failing on beamline
     t = caget(self.epics_pvs.camera_name+'cam1:PixelFormat_RBV', pixel_format, /string)
     t = caget(self.epics_pvs.camera_name+'cam1:Format7Mode_RBV', format7_mode, /string)
     case pixel_format of
@@ -847,8 +857,12 @@ function tomo_collect_ad2::computeFrameTime
     if (self.scan.pg_trigger_mode eq 'Overlapped') then begin
       ; We need to use the actual exposure time that the camera is using, not the requested exposure time
       exposure = self.scan.ccd->getProperty('AcquireTime_RBV',string = 0)
-      ; Add 1 ms to exposure time for margin
-      time  = exposure + .001
+      ; Add 1 or 2 ms to exposure time for margin
+      if (exposure gt 2.3) then begin
+        time = exposure + .002 
+      endif else begin
+        time = exposure + .001
+      endelse
       ; If the time is less than the readout time then use the readout time
       if (time lt readout) then time = readout
     endif
@@ -938,7 +952,7 @@ pro tomo_collect_ad2::setTriggerMode, triggerMode, numImages
     ; Put MCS in internal trigger mode
     t = caput(self.epics_pvs.sis_mcs+'ChannelAdvance', 'Internal')
     ; Set MCS dwell time to time per angle
-    t = caput(self.epics_pvs.sis_mcs+'Dwell', self.scan.time_per_angle)
+    t = caput(self.epics_pvs.sis_mcs+'Dwell', self->computeFrameTime())
   endif
   
 end
@@ -1341,8 +1355,10 @@ pro tomo_collect_ad2::copy_expinfo_from_widgets
   widget_control, self.expinfo_widgets.sample, get_value=sample
   self.expinfo.sample = sample
   widget_control, self.expinfo_widgets.comments, get_value=comments
-  n_comments = n_elements(self.expinfo.comments) < n_elements(comments)
+  max_comments = n_elements(self.expinfo.comments)
+  n_comments = max_comments < n_elements(comments)
   self.expinfo.comments = comments[0:n_comments-1]
+  for i=n_comments, max_comments-1 do self.expinfo.comments[i] = ''
   widget_control, self.expinfo_widgets.title, get_value=title
   self.expinfo.title = title
   widget_control, self.expinfo_widgets.operator, get_value=operator
