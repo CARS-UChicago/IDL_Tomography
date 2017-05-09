@@ -1,0 +1,236 @@
+﻿﻿<HTML xmlns:p><HEAD>
+<TITLE>vol_tools - by Guilherme Gualda</TITLE>
+<META content="text/html; charset=utf-8" http-equiv=Content-Type></HEAD>
+<BODY>﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿ ﻿
+
+
+<!-- vol_tools -->
+<hr>
+<div style="TEXT-ALIGN: center"><font face=georgia,serif>
+<p><font size=4></font></p>
+<p><strong><font size=5>vol_tools</font></strong></p>
+<p><font size=3><em>A set of IDL tools for processing and visualization of 3D tomographic datasets</em></p>
+</font></div>
+
+<font size=2 face=Verdana>
+<!-- intro -->
+<p>
+<a name=intro><hr></a>
+<strong>introduction:</strong> 
+<p></p>
+<p>The package <em>vol_tools</em> consists of a series of 
+small programs created and maintained by <a 
+href="http://www.vanderbilt.edu/ees/gualda">Guilherme 
+Gualda</a>. </p>
+<p>These tools are designed to complement the capabilities 
+offered by <a href="http://cars.uchicago.edu/software/idl/tomography.html"><em>tomo_display</em></a> (created by 
+<a href="http://cars9.uchicago.edu/pages/staffcards/rivers.html">Mark Rivers</a>) and 
+<a href="http://www.ctlab.geo.utexas.edu/software/index.php"><em>Blob3D</em></a> (by <a 
+href="http://www.geo.utexas.edu/faculty-scientist.php?id=1020">Richard 
+Ketcham</a>). In 
+combination, these tools allow users without programming knowledge to perform 
+all steps necessary to obtain qualitative and quantitative information using 
+tomographic data. </p>
+
+<p>Existing modules include: <br>(1)
+<A href="vol_tools_help.htm#vol_trim" >vol_trim</A> and 
+<A href="vol_tools_help.htm#vol_cut_cylinder" >vol_cut_cylinder</A>: 
+for cropping volumes <br>(2) 
+<A href="vol_tools_help.htm#vol_histogram">vol_histogram</A>: 
+for generating histograms of intensity <br>(3)
+<A href="vol_tools_help.htm#vol_detect_sample">vol_detect_sample</A>: 
+for sample detection and volume measurement (useful for porous samples like pumice) <br>(4) 
+<A href="vol_tools_help.htm#vol_diff_shift">vol_diff_shift</A>: 
+for computation of volume differences useful in differential absorption tomography <br>(5) 
+<A href="vol_tools_help.htm#vol_animate">vol_animate</A>: 
+for generating 3D animations using rendered isosurfaces around objects</p>
+
+<p>All packages use as input reconstructed '.volume' files 
+in the NetCDF format specified by Mark Rivers and written by his <a 
+href="http://cars9.uchicago.edu/software/idl/tomography_routines.html#WRITE_TOMO_VOLUME"><em>write_tomo_volume</em></a>        
+            
+ routine, part of <a 
+href="http://cars.uchicago.edu/software/idl/tomography.html"><em>tomo_display</em></a>. Use 
+<A href="vol_tools_help.htm#tiff_to_volume">tiff_to_volume</A> 
+to convert a stack of slices into a .volume file.</p>
+
+<!-- <p>Download <em>vol_tools</em> as a zip file containing all modules <a 
+href="vol_tools.zip">here</a>.</p> -->
+<p>Contact Guil Gualda by <a 
+href="mailto:g.gualda@vanderbilt.edu">e-mail</a>     to request a zip file containing all modules of <em>vol_tools</em>.</p>
+
+<p>In order to run vol_tools, you will need 
+<a href="http://www.ittvis.com/ProductServices/IDL/VirtualMachine.aspx" target=_blank>IDL Virtual Machine (IDL VM)</a>
+<sup><font size=1>TM</font></sup>, available for free from
+<a href="http://www.ittvis.com/download/download.asp?urlProductCode=10" target=_blank>here</a>. 
+These tools run on any platform that IDL supports, including Microsoft Windows, Linux, and Mac OS X. </p>
+
+<p>Please cite vol_tools as: <br>
+"Rivers ML &amp; Gualda GAR (2009) 'tomo_display' and 'vol_tools': IDL VM Packages for Tomography Data Reconstruction, 
+Processing, and Visualization. <em>Eos Transactions AGU </em>90(22), Joint 
+Assembly Supplement, Abstract V13A-06"
+<a href="http://www.agu.org/cgi-bin/wais?nn=V13A-06" target=_blank>Link to abstract</a></p>
+
+
+
+<!-- vol_trim -->
+<p>
+<a name=vol_trim><hr></a>
+<strong>vol_trim:</strong> 
+<p></p>
+<p>This program trims a volume and saves it as a new volume 
+with '-trim' appended to the original name. It also saves a plain-text '.log' 
+file with the same name that includes the specified parameters used for 
+trimming.</p>
+<p><em>Open volume</em><br>Used to open the volume to be used</p>
+<p><em>Find X, Y</em><br>Averages all XY slices of the volume (i.e. the images 
+stacked in the vertical, or Z, direction) and displays the resulting image using 
+Mark Rivers's image_display tool. The user can use the image to choose the 
+values for trimming.</p>
+<p><em>Find Y, Z</em><br>Similar to Find X, Y, but stacks YZ (along one of the 
+horizontal - called X - direction).</p>
+<p><em>Find X, Z</em><br>Similar to Find X, Y, but stacks XZ (along the other 
+horizontal - called Y - direction).</p>
+<p><em>Trim volume!</em><br>After input of the low and high bounds for trimming in the 
+three orthogonal directions in the appropriate boxes, this button is used to 
+generate and save the trimmed volume and the log file. </p>
+
+
+<!-- vol_cut_cylinder -->
+<p>
+<a name=vol_cut_cylinder><hr></a>
+<strong>vol_cut_cylinder:</strong> 
+<p></p>
+<p>This program is similar to vol_trim, but cuts a cylinder 
+rather than a rectangular object as in vol_trim. The resulting volume is saved 
+with '-cylinder' appended to the original name. A plain-text '.log' file is also 
+saved.</p>
+<p><em>Open volume</em><br>Used to open the volume to be used</p>
+<p><em>Find X, Y</em><br>Averages all XY slices of the volume (i.e. the images 
+stacked in the vertical, or Z, direction) and displays the resulting image using 
+Mark Rivers's image_display tool. The user can use the image to choose the 
+values for trimming.</p>
+<p><em>Find Y, Z</em><br>Similar to Find X, Y, but stacks YZ (along one of the 
+horizontal - called X - direction).</p>
+<p><em>Find X, Z</em><br>Similar to Find X, Y, but stacks XZ (along the other 
+horizontal - called Y - direction).</p>
+<p><em>Direction</em><br>Specifies the direction which will represent the length of 
+the cylinder. </p>
+<p><em>Cut cylinder!</em><br>After input of the low and high bounds for trimming in the 
+three orthogonal directions in the appropriate boxes, this button is used to 
+generate and save the trimmed volume and the log file. </p>
+
+
+<!-- vol_histogram -->
+<p>
+<a name=vol_histogram><hr></a>
+<strong>vol_histogram:</strong> 
+<p></p>
+<p>Forthcoming...</p>
+
+
+<!-- vol_detect_sample -->
+<p>
+<a name=vol_detect_sample><hr></a>
+<strong>vol_detect_sample:</strong> 
+<p></p>
+<p>Forthcoming...</p>
+
+
+<!-- vol_diff_shift -->
+<p>
+<a name=vol_diff_shift><hr></a>
+<strong>vol_diff_shift:</strong> 
+<p></p>
+<p>Forthcoming...</p>
+
+
+<!-- vol_animate -->
+<p>
+<a name=vol_animate><hr></a>
+<strong>vol_animate:</strong> 
+<p></p>
+<p>This program draws isosurfaces around particles in 3D 
+volumes. The user can: <br>(a) create up to 4 objects (each 
+object can be comprised of several independent blobs) to be shown on an obj_view 
+window of IDL, in combination or separately; <br>(b) 
+generate a series of tiffs of a 360º rotation around a vertical axis and then 
+360º rotation around a horizontal axis; <br>(c) generate a 
+movie from the tiff files. </p>
+<p><em>Open volume</em><br>Used to open the volume to be used</p>
+<p><em>Create object</em><br>After reading the volume, the user specifies: <br>1) NAME: any name the user may use for the object <br>2) MIN and MAX: lower and upper bound values for 
+thresholding; all values between min and max will be included in the thresholded 
+volume, and the surfaces will be drawn around them <br>3) 
+DECIMATE: a value between 0 and 100 that specifies the percentage of points to 
+remove from the surface in order to make it less complex; this is a very 
+computer intensive routine, so I recommend using 0, which effectively turns it 
+off and does not decimate <br>4) SMOOTH: a value between 0 
+and 100 that specifies the smoothing factor to be applied to the resulting 
+surfaces; with no smoothing, the surfaces become very jagged; values around 10 
+work well for me <br>5) COLOR: a choice of color from the 
+drop down menu) that is used to color the surfaces drawn; a new color can only 
+be set by recreating the object<br>After choosing the 
+values, click on 'Create object' to create and display the object. Up to 4 
+objects can be created at a time.</p>
+<p><em>Generate View</em><br>Used to show the isosurfaces in isolation or in 
+combination. Objects whose 'Include' check box is checked will be included in 
+the resulting view</p>
+<p><em>Generate Tiffs</em><br>Used to generate a series of 720 tiffs at 1º angular 
+displacements from each other, completing two full revolutions, one about a 
+vertical and one about a horizontal axis. Starting and ending point are the 
+same, so the animation can be played as an infinite loop</p>
+<p><em>Generate Movie</em><br>Used to generate an MPEG movie from a series of tiffs; use 
+the tiffs from 'Generate Tiffs' to generate portable movies that can be watched 
+on media players and included in presentations or websites</p>
+<p><em>Using vol_animate with Blob3D 
+results</em><br>To use vol_animate with data processed 
+using Blob3D, select 'Export Segmented/Separated Data' in Blob3D and generate a 
+.volume file using tiff_to_volume. Inspect the exported tiffs (using an image 
+processing tool) or the volume created (using tomo_display) and find the values 
+assigned for each phase. There may be a range of values for each phase. Choose 
+min and max such that all values for a given phase are included. </p>
+<p><em>Examples</em><br>A few examples of MPEG movies created using vol_animate 
+include: <br><a 
+href="http://geosci.uchicago.edu/~ggualda/extras/Gualda&amp;Rivers-JVGR-2006-Movie1.mpg">Gualda&amp;Rivers-JVGR-2006-Movie1.mpg</a><br><a 
+href="http://geosci.uchicago.edu/~ggualda/extras/Gualda-JPetrol-2006-Movie1.mpg">Gualda-JPetrol-2006-Movie1.mpg</a><br><a 
+href="http://geosci.uchicago.edu/~ggualda/extras/Gualda&amp;Ghiorso-CMP-2007-Video1.mpg">Gualda&amp;Ghiorso-CMP-2007-Video1.mpg</a><br><a 
+href="http://geosci.uchicago.edu/~ggualda/extras/Gualda&amp;Anderson-CMP-2007-Video2.mpg">Gualda&amp;Anderson-CMP-2007-Video2.mpg</a><br><a 
+href="http://geosci.uchicago.edu/~ggualda/extras/ELDG_C1-Combined.mpg">ELDG_C1-Combined.mpg</a></p>
+
+
+
+
+<!-- tiff_to_volume-->
+<p>
+<a name=tiff_to_volume><hr></a>
+<strong>tiff_to_volume:</strong> 
+<p></p>
+<p>This program takes a stack of tiffs and converts them 
+into a .volume file readable by 'tomo_display' and all procedures in 'vol_tools' 
+(including 'vol_animate'). It was particularly created to convert Blob3D output 
+(from 'Export Segmented/Separated Data') into a '.volume' format, so it expects 
+the tiff names to end with '_' followed by a sequential number. 
+</p>
+
+
+<!-- footer -->
+<a name=footer><hr></a>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div style="TEXT-ALIGN: center">
+<em><font size=1>Created by Guilherme Gualda <br>
+<a href="http://www.vanderbilt.edu/ees/gualda" target=_blank>http://www.vanderbilt.edu/ees/gualda</a> <br>
+Last update: May 27, 2009 <br></font></em></div></font><p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p></FONT></BODY></HTML>
