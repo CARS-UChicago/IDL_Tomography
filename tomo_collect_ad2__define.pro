@@ -826,14 +826,39 @@ function tomo_collect_ad2::computeFrameTime
   endif else if (self.scan.camera_manufacturer eq self.camera_types.POINT_GREY) then begin
     ; The readout time of the camera depends both on the Format7Mode and the PixelFormat.
     ; These measurements were done with firmware 2.14.3 and Flycap2 8.3.1.
-    ; The measured times in ms with 1 ms exposure time and 1000 frames without dropping any are:
-    ;             Raw8 Raw12  Raw16  Mono8  Mono12  Mono16      Format 7 mode
-    all_times  = [[6.1,  9.5, 12.0,  11.5,   11.5,  12.0], $  ; 0 (1920X1200)
-                  [6.1,  6.1,  6.1,  11.5,   11.5,  11.5], $  ; 1 (960X600) 
-                  [7.8, 10.5, 12.0,  11.5,   11.5,  12.0]]    ; 7 (1920X1200)
+    ; The measured times in ms with 100 microsecond exposure time and 1000 frames without dropping any are:
+    ;                Raw8 Raw12  Raw16  Mono8  Mono12  Mono16      Format 7 mode
+    all_times  = [ $
+                  ; Grasshopper 3 GS3-U3-23S6M-C 
+                  [[ 6.2,  9.2, 12.2,  11.5,   11.5,  12.2],  $  ; 0 (1920X1200)
+                   [ 6.2,  6.2,  6.2,  11.5,   11.5,  11.5],  $  ; 1 (960X600) 
+                   [   0,    0,    0,     0,      0,     0],  $  ; 2 (960X600)  Not supported!
+;                  [ 7.9,  9.2, 12.2,  11.5,   11.5,  12.2]], $  ; 7 (1920X1200)
+; Mark increased from 9.2 because it was failing on the beamline
+                   [ 7.9, 12, 12.2,  11.5,   11.5,  12.2]], $  ; 7 (1920X1200)
+                  ; Grasshopper 3 GS3-U3-28S5M-C 
+;                  [[   0,    0, 39.1,  39.1,   39.1,  39.1],  $  ; 0 (1920X1440)
+;                   [   0,    0, 25.0,  25.0,   25.0,  25.0],  $  ; 1 (960X720)
+; Mark increased from above values because it was failing for Tony at long exposures
+; Need to figure out what is required for long exposures
+                  [[   0,    0, 45.0,  45.0,   45.0,  45.0],  $  ; 0 (1920X1440)
+                   [   0,    0, 28.0,  28.0,   28.0,  28.0],  $  ; 1 (960X720)
+                   [   0,    0,    0,     0,      0,     0],  $  ; 2 (960X600)  Not supported!
+                   [   0,    0,    0,     0,      0,     0]], $  ; 7 (1920X1200) Supported but don't use; single tap readout slower and no quality improvement
+                  ; Grasshopper 3 GS3-U3-51S5M-C 
+                  [[13.3, 20.0, 26.4,  25.8,   25.8,  26.5],  $  ; 0 (2448x2048)
+                   [ 6.7,    0,  6.8,  13.3,      0,  13.3],  $  ; 1 (1224x1024)
+                   [ 4.7,    0,  6.5,   6.5,      0,   6.5],  $  ; 2 (1224x1024)
+                   [14.8, 20.0, 26.5,  25.8,   25.8,  26.6]]]    ; 7 (2448x2048)
     ; I fudged Raw12 Format 7 mode 7 from 9.5 to 10.5 because it was failing on beamline
     t = caget(self.epics_pvs.camera_name+'cam1:PixelFormat_RBV', pixel_format, /string)
     t = caget(self.epics_pvs.camera_name+'cam1:Format7Mode_RBV', format7_mode, /string)
+    case self.scan.camera_model of
+      'Grasshopper3 GS3-U3-23S6M': cm = 0
+      'Grasshopper3 GS3-U3-28S5M': cm = 1
+      'Grasshopper3 GS3-U3-51S5M': cm = 2
+      else: message, 'Unsupported camera model: ' + self.scan.camera_model
+    endcase
     case pixel_format of
       'Raw8':   pf = 0
       'Raw12':  pf = 1
@@ -841,15 +866,20 @@ function tomo_collect_ad2::computeFrameTime
       'Mono8':  pf = 3
       'Mono12': pf = 4
       'Mono16': pf = 5
-      else: message, 'Unsupported pixel format:'+pixel_format
+      else: message, 'Unsupported pixel format: ' + pixel_format
     endcase
-    case format7_mode of
-      '0 (1920x1200)': f7m = 0
-      '1 (960x600)':   f7m = 1
-      '7 (1920x1200)': f7m = 2
-      else: message, 'Unsupported format7 mode='+format7_mode
+    case strmid(format7_mode, 0, 1) of
+      '0': f7m = 0
+      '1': f7m = 1
+      '2': f7m = 2
+      '7': f7m = 3
+      else: message, 'Unsupported format7 mode= ' + format7_mode
     endcase
-    readout = all_times[pf, f7m]/1000.
+    readout = all_times[pf, f7m, cm]/1000.
+    if (readout eq 0) then begin
+      message, 'Unsupported combination of camera model, pixel format and format7 mode: ' $
+        + self.scan.camera_model + pf + f7m
+    endif
     ; We slow it down 1% from theoretical
     if (self.scan.pg_trigger_mode eq 'Bulb') then begin
       time = (exposure + readout) * 1.01
@@ -1003,6 +1033,8 @@ function tomo_collect_ad2::validateEpicsPvs
     pvs_ok = 0
     goto, finish
   endelse
+  
+  self.scan.camera_model = self.scan.ccd.getProperty('Model_RBV')
 
   if(self.scan.camera_manufacturer eq self.camera_types.ROPER) then begin
     self.scan.file_control = self.epics_pvs.camera_name + 'cam1:'
@@ -2393,6 +2425,7 @@ pro tomo_collect_ad2__define
     num_flatfields: 0L ,$
     camera_name: '' ,$
     camera_manufacturer: 0L, $
+    camera_model: '', $
     pg_trigger_mode: '', $
     file_control: '', $
     num_dark_currents: 0L, $
