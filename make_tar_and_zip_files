@@ -11,7 +11,7 @@ win64dll \
 *.so \
 
 rm -f $DESTINATION.zip
-zip $DESTINATION.zip   \
+zip -r $DESTINATION.zip   \
 README \
 *.pro \
 *.sav \
