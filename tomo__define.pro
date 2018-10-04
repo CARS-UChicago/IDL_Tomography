@@ -334,6 +334,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
   status_widget=status_widget, abort_widget=abort_widget, $
   flip_data = flip_data
   
+  tstart = systime(1)
   nfiles = stop - start + 1
   if (n_elements(debug) eq 0) then debug=1
   if (n_elements(threshold) eq 0) then threshold=1.25
@@ -436,6 +437,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     endelse
   endif
   
+  tread = systime(1)
   ; Do dark current correction
   str = 'Doing dark current correction ...'
   if (widget_info(status_widget, /valid_id)) then $
@@ -491,7 +493,8 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
   endif else begin
     message, 'Must specify dark keyword since no dark frames in data files'
   endelse
-  
+  tdark = systime(1)
+
   ; Do flat field current correction and zinger removal on flat field frames
   str = 'Doing white field correction ...'
   if (widget_info(status_widget, /valid_id)) then $
@@ -596,6 +599,8 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     message, 'Must specify white keyword since no white frames in data files'
   endelse
   
+  tflat = systime(1)
+
   ; Now we have normalized data.
   ; Correct for zingers now that flat field normalization is done
   ; Write out to disk file, sorted by angle, arranged by slice
@@ -664,9 +669,18 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
       zoffset=zoffset
   endif
   status = self->write_setup(setup)
+  tend = systime(1)
   if (widget_info(status_widget, /valid_id)) then $
     widget_control, status_widget, set_value='Preprocessing complete.'
+
+  print, 'preprocess execution times:'
+  print, '        Reading input file:', tread - tstart
+  print, '              Dark current:', tdark - tread
+  print, '                Flat field:', tflat - tdark
+  print, '            Writing output:', tend - tflat
+  print, '                     Total:', tend - tstart
     
+  
 end
 
 
