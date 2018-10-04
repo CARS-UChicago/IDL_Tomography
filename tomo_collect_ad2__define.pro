@@ -830,12 +830,12 @@ function tomo_collect_ad2::computeFrameTime
     ;                Raw8 Raw12  Raw16  Mono8  Mono12  Mono16      Format 7 mode
     all_times  = [ $
                   ; Grasshopper 3 GS3-U3-23S6M-C 
-                  [[ 6.2,  9.2, 12.2,  11.5,   11.5,  12.2],  $  ; 0 (1920X1200)
+                  [[ 6.2,  9.2, 12.2,  11.5,   11.5,  15.0],  $  ; 0 (1920X1200)
                    [ 6.2,  6.2,  6.2,  11.5,   11.5,  11.5],  $  ; 1 (960X600) 
                    [   0,    0,    0,     0,      0,     0],  $  ; 2 (960X600)  Not supported!
 ;                  [ 7.9,  9.2, 12.2,  11.5,   11.5,  12.2]], $  ; 7 (1920X1200)
 ; Mark increased from 9.2 because it was failing on the beamline
-                   [ 7.9, 12, 12.2,  11.5,   11.5,  12.2]], $  ; 7 (1920X1200)
+                   [ 7.9, 13, 12.2,  11.5,   11.5,  14]], $  ; 7 (1920X1200)
                   ; Grasshopper 3 GS3-U3-28S5M-C 
 ;                  [[   0,    0, 39.1,  39.1,   39.1,  39.1],  $  ; 0 (1920X1440)
 ;                   [   0,    0, 25.0,  25.0,   25.0,  25.0],  $  ; 1 (960X720)
@@ -887,8 +887,10 @@ function tomo_collect_ad2::computeFrameTime
     if (self.scan.pg_trigger_mode eq 'Overlapped') then begin
       ; We need to use the actual exposure time that the camera is using, not the requested exposure time
       exposure = self.scan.ccd->getProperty('AcquireTime_RBV',string = 0)
-      ; Add 1 or 2 ms to exposure time for margin
-      if (exposure gt 2.3) then begin
+      ; Add 1, 2, or 5 ms to exposure time for margin
+      if (exposure gt 4.0) then begin
+        time = exposure + .005
+      endif else if (exposure gt 2.3) then begin
         time = exposure + .002 
       endif else begin
         time = exposure + .001
