@@ -23,7 +23,7 @@ pro tomo_display::set_tomo_params
     widget_control, self.widgets.slicesPerChunk, get_value=slicesPerChunk
  
     self.tomoParams = tomo_params_init(*self.pvolume, $
-            sinoScale = 0.0001, $
+            sinoScale = 10000., $
             reconScale = reconScale, $
             paddedSinogramWidth=paddedSinogramWidth, $
             paddingAverage=paddingAverage, $
