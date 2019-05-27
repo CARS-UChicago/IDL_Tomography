@@ -46,15 +46,6 @@
 ;   LAST_ROW:
 ;       The ending row (slice) to be processed.  The defaults is the last row
 ;       in each image.  See comments under FIRST_ROW above.
-;   BUFF_ANGLES:
-;       The size of the buffer (in # of angles) to be used when writing the normalized
-;       data to the output file.  The default is no limit, so an array of size
-;       (ncols, nrows, nangles) is allocated.  If BUFF_ANGLES is specified then the
-;       output file is write in chunks of "BUFF_ANGLES" at a time, and an array
-;       of only (ncols, nrows, BUFF_ANGLES) is needed.  This keyword is useful
-;       when processing data sets with many angles.  The output file is identical
-;       whether or not this keyword is used, it only affects how many times the
-;       output file is opened and appended to.
 ;   WHITE_FIELD:
 ;       The white field value, either a scaler or a 2-D array.  If this is a
 ;       scaler value then each pixel in each data frame is normalized by this
@@ -329,7 +320,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
   white_field=input_white, threshold=threshold, $
   double_threshold=double_threshold, debug=debug, $
   first_row=first_row, last_row=last_row, output=output, $
-  setup=setup, buff_angles=buff_angles, $
+  setup=setup, $
   white_smooth=white_smooth, white_average=white_average, $
   status_widget=status_widget, abort_widget=abort_widget, $
   flip_data = flip_data
@@ -456,7 +447,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
           data_temp =data_buff[*,*,i] - dark
           zeros = where(data_temp le 0, count)
           if (count gt 0) then data_temp[zeros] = 1
-          data_buff[*,*,i] = data_temp
+          data_buff[0,0,i] = data_temp
         endfor
         self.dark_current = dark
       end
@@ -469,7 +460,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
           data_temp =data_buff[*,*,i] - dark
           zeros = where(data_temp le 0, count)
           if (count gt 0) then data_temp[zeros] = 1
-          data_buff[*,*,i] = data_temp
+          data_buff[0,0,i] = data_temp
         endfor
       end
       else: message, 'Wrong dims on dark'
@@ -496,7 +487,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
   tdark = systime(1)
 
   ; Do flat field current correction and zinger removal on flat field frames
-  str = 'Doing white field correction ...'
+  str = 'Doing flat field correction ...'
   if (widget_info(status_widget, /valid_id)) then $
     widget_control, status_widget, set_value=str
   if (debug ne 0) then print, str
@@ -537,16 +528,17 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     endelse
     ; If we are smoothing white fields ...
     if (white_smooth gt 1) then begin
-      if (debug ge 1) then print, 'Smoothing white fields, smooth width=', white_smooth
+      if (debug ge 1) then print, 'Smoothing flat fields, smooth width=', white_smooth
       for i=0, nwhites-1 do begin
         white_data[0,0,i] = smooth(white_data[*,*,i], white_smooth)
       endfor
     endif
     ; If we are averaging white fields ...
     if keyword_set(white_average) then begin
-      if (debug ge 1) then print, 'Averaging white fields'
+      if (debug ge 1) then print, 'Averaging flat fields'
       white = total(white_data, 3)/nwhites
-      for i=0, nframes-1 do begin ; we don't subtract the white fields, we divide them...
+      if (debug ge 1) then print, 'Doing flat field correction'
+      for i=0, nframes-1 do begin
         data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
         if (widget_info(abort_widget, /valid_id)) then begin
           event = widget_event(/nowait, abort_widget)
@@ -560,7 +552,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
         endif
       endfor
     endif else begin
-      if (debug ge 1) then print, 'Interpolating white fields'
+      if (debug ge 1) then print, 'Interpolating flat fields'
       ; We are interpolating white fields
       ; Files up to the first white field use the first white field
       white = white_data[*,*,0]
@@ -573,6 +565,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
       ; Files in between the first white field and the last white field use the
       ; weighted average of the white field before and after
       nseries = nwhites-1
+      if (debug ge 1) then print, 'Doing flat field correction'
       for j=0, nseries-1 do begin
         white1 = white_data[*,*,j]
         white2 = white_data[*,*,j+1]
@@ -604,7 +597,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
   ; Now we have normalized data.
   ; Correct for zingers now that flat field normalization is done
   ; Write out to disk file, sorted by angle, arranged by slice
-  str = 'Writing volume file ...'
+  str = 'Doing zinger correction and data reformatting ...'
   if (widget_info(status_widget, /valid_id)) then $
     widget_control, status_widget, set_value=str
   if (debug ne 0) then print, str
@@ -618,13 +611,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
   ncols = long(ncols)
   nrows = long(nrows)
   nangles = long(nangles)
-  if (n_elements(buff_angles) eq 0) then buff_angles = nangles
-  dummy = intarr(2,2,2)
-  self->write_volume, output, dummy, /corrected, xmax=ncols, ymax=nrows, $
-    zmax=nangles
-  vol = intarr(ncols, nrows, buff_angles)
-  angle_index = 0
-  zoffset=0
+  vol = intarr(ncols, nrows, nangles)
   for i=0, nangles-1 do begin
     proj = reform(data_buff[*,*,data_images[i]])
     negatives = where(proj lt 0, count)
@@ -636,18 +623,7 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
     if (widget_info(status_widget, /valid_id)) then $
       widget_control, status_widget, set_value=str
     if (debug ne 0) then print, str
-    vol[0,0,angle_index] = proj
-    if (angle_index eq (buff_angles-1)) then begin
-      str = 'Writing volume file ...'
-      if (widget_info(status_widget, /valid_id)) then $
-        widget_control, status_widget, set_value=str
-      if (debug ne 0) then print, str
-      write_tomo_volume, output, vol, /corrected, /append, zoffset=zoffset
-      angle_index=0
-      zoffset = zoffset + buff_angles
-    endif else begin
-      angle_index = angle_index+1
-    endelse
+    vol[0,0,i] = proj
     if (widget_info(abort_widget, /valid_id)) then begin
       event = widget_event(/nowait, abort_widget)
       widget_control, abort_widget, get_uvalue=abort
@@ -659,15 +635,13 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
       endif
     endif
   endfor
-  if (angle_index ne 0) then begin
-    ; We have a partially filled buffer that needs to be written
-    str = 'Writing volume file ...'
-    if (widget_info(status_widget, /valid_id)) then $
-      widget_control, status_widget, set_value=str
-    if (debug ne 0) then print, str
-    write_tomo_volume, output, vol[*,*,0:angle_index-1], /corrected, /append, $
-      zoffset=zoffset
-  endif
+  treformat = systime(1)
+
+  str = 'Writing volume file ...'
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value=str
+  if (debug ne 0) then print, str
+  write_tomo_volume, output, vol, /corrected
   status = self->write_setup(setup)
   tend = systime(1)
   if (widget_info(status_widget, /valid_id)) then $
@@ -677,7 +651,8 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
   print, '        Reading input file:', tread - tstart
   print, '              Dark current:', tdark - tread
   print, '                Flat field:', tflat - tdark
-  print, '            Writing output:', tend - tflat
+  print, '     Dezinger and reformat:', treformat - tflat
+  print, '            Writing output:', tend - treformat
   print, '                     Total:', tend - tstart
     
   
