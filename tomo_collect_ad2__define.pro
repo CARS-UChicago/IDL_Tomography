@@ -891,7 +891,7 @@ function tomo_collect_ad2::computeFrameTime
       if (exposure gt 4.0) then begin
         time = exposure + .005
       endif else if (exposure gt 2.3) then begin
-        time = exposure + .002 
+        time = exposure + .005 
       endif else begin
         time = exposure + .001
       endelse
