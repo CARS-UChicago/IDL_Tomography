@@ -62,4 +62,6 @@ On Windows:
 - Define the environment variable TOMO_RECON_SHARE to point to the complete path to
 tomoRecon_Win32_x86.dll or tomoRecon_Win32_x86_64.dll depending on whether you are running 32
 or 64 bit IDL.
+- Add the win32dll (for 32-bit) or win64dll (for 64-bit) directory to your PATH environment variable.
+This is needed because those directories contain the fftw library needed by tomoRecon.
 
