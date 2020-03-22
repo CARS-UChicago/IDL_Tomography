@@ -890,7 +890,7 @@ function tomo_collect_ad2::computeFrameTime
       ; Add 1, 2, or 5 ms to exposure time for margin
       if (exposure gt 4.0) then begin
         time = exposure + .005
-      endif else if (exposure gt 2.3) then begin
+      endif else if (exposure gt 2.0) then begin
         time = exposure + .005 
       endif else begin
         time = exposure + .001
