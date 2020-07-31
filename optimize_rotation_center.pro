@@ -1,4 +1,4 @@
-pro optimize_rotation_center, tomoParams, slice, vol, center, entropy
+pro optimize_rotation_center, tomoParams, slice, vol, center, entropy, angles=angles
 
    t0 = systime(1)
    ; This routine calculates an array of image figure of merit as the rotation center is varied
@@ -18,7 +18,7 @@ pro optimize_rotation_center, tomoParams, slice, vol, center, entropy
        endfor
 
        tomoParams.numSlices = ncenter*2
-       tomo_recon, tomoParams, input, recon, center=ctr
+       tomo_recon, tomoParams, input, recon, angles=angles, center=ctr
 
        ; Use the slice in center of range to get min/max of reconstruction for histogram
        r1 = recon[*,*,ncenter]
