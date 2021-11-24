@@ -31,8 +31,8 @@
 ;                    TOMO::RECONSTRUCT_VOLUME.
 ;-
 
-pro reconstruct_volume, base_file, _ref_extra=extra
+pro reconstruct_volume, tomoParams, base_file, _ref_extra=extra
     tomo = obj_new('tomo')
-    tomo->reconstruct_volume, base_file, _extra=extra
+    tomo->reconstruct_volume, tomoParams, base_file, _extra=extra
     obj_destroy, tomo
 end
