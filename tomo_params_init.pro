@@ -12,7 +12,7 @@ pro tomo_params_set_dimensions, tp, volume
     endif
 end
 
-function tomo_params_init, volume, $
+function tomo_params_init, volume, dimensions=dimensions, $
             sinoScale = sinoScale, $
             reconScale = reconScale, $
             paddedSinogramWidth=paddedSinogramWidth, $
@@ -41,7 +41,15 @@ function tomo_params_init, volume, $
             RadonInterpolation = RadonInterpolation
 
     tp = {tomo_params}
-    tomo_params_set_dimensions, tp, volume
+    if (n_elements(volume) ne 0) then begin
+        tomo_params_set_dimensions, tp, volume
+    endif
+
+    if (n_elements(dimensions) ne 0) then begin
+        tp.numPixels      = dimensions[0]
+        tp.numSlices      = dimensions[1]
+        tp.numProjections = dimensions[2]
+    endif
 
     ; GSECARS normalized .volume files are 16-bit integers with I/IO*10000.
     ; If air normalization is not done then divide by 10000.
