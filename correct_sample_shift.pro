@@ -1,4 +1,4 @@
-pro correct_sample_shift, file
+pro correct_sample_shift, file, yrange=yrange
   ; This procedure corrects for sample motion in the X direction for the Stack data
   ; It uses the left edge of the sample column which is a sharp edge
   ; It finds the location of the maximum of the derivative of this edge to determine the
@@ -10,6 +10,11 @@ pro correct_sample_shift, file
   nx = dims[0]
   ny = dims[1]
   nz = dims[2]
+  if (n_elements(yrange) eq 0) then begin
+    yrange = [0,ny-1]
+  endif
+  
+  vol = vol[*,yrange[0]:yrange[1], *]
   
   print, 'Averaging rows ...'
   ; Average all the rows in the dataset
@@ -22,12 +27,12 @@ pro correct_sample_shift, file
   d = v - shift(v, 1, 0)
   
   ; Extract the left half of the image, without first column which is garbage from shift
-  ds = d[1:nx/2,*]
+  ds = d[1:nx-1,*]
   
   ; Find the location of the maximum in each row
   m = max(ds, max_index, dimension=1)
   
-  max_index = max_index mod (nx/2)
+  max_index = max_index mod (size(ds, /dimensions)[0]
   max_index = max_index - (moment(max_index))[0]
   
   ; Fit max_index to a 5th order polynomial and subtract
