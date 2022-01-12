@@ -805,9 +805,9 @@ pro tomo::reconstruct_volume, tomoParams, base_file, center=center, $
         ncols = n_elements(r[*,0])
         recon = intarr(ncols, ncols, nrows, /nozero)
       endif
-      recon[0,0,i] = r
+      recon[0,0,i] = round(r)
       if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
-        recon[0,0,i+1] = r2
+        recon[0,0,i+1] = round(r2)
       endif
       if (widget_info(abort_widget, /valid_id)) then begin
         event = widget_event(/nowait, abort_widget)
