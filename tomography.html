@@ -1,6 +1,6 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
-        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+        "https://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="https://www.w3.org/1999/xhtml">
 <head>
   <title>GSECARS Tomography Processing Software</title>
   <meta content="text/html; charset=ISO-8859-1" http-equiv="Content-Type" />
@@ -22,13 +22,13 @@
   <p>
     This document describes the IDL software used for reconstructing and viewing tomography
     data at CARS. All of these IDL routines are available in 
-    <a href="http://cars.uchicago.edu/software/pub/idl_tomography.tar">tar</a> and 
-    <a href="http://cars.uchicago.edu/software/pub/idl_tomography.zip">zip</a> files.
+    <a href="https://cars.uchicago.edu/software/pub/idl_tomography.tar">tar</a> and 
+    <a href="https://cars.uchicago.edu/software/pub/idl_tomography.zip">zip</a> files.
     The reconstruction is normally done using the tomoRecon
     reconstruction code, which is written in C++. The idl_tomography.tar file contains
     the required tomoRecon DLLs (Windows) and shareable libraries (Linux, Mac) to run
     the IDL software without compiling any code. The tomoRecon source code is also available
-    through the <a href="http://cars.uchicago.edu/software/epics/tomoRecon.html">tomoRecon
+    through the <a href="https://cars.uchicago.edu/software/epics/tomoRecon.html">tomoRecon
       home page</a>. tomoRecon is based on the Gridrec reconstruction algorithm, but
     with multi-threading to utilize multiple cores on modern workstations.</p>
   <p>
@@ -102,7 +102,7 @@
     3-D tomography (or other) data.</p>
   <p>
     The reconstructed data are written as 16-bit integer netCDF files. These can be
-    read into ImageJ using the (<a href="http://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/netcdf.html">
+    read into ImageJ using the (<a href="https://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/netcdf.html">
       ImageJ netCDF plugin jar file</a>) and a small ImageJ script called GSETomo_.ijm
     that is also in the idl_tomography.tar file. Put both the netCDF_.jar and GSETomo_.ijm
     files in the ImageJ/Plugins folder. Plugins/GSETomo can then be used to read the
