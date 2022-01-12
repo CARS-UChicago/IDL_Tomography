@@ -7,7 +7,7 @@
 ;    - The calculation is only done for slices in which the maximum error in the fit is less
 ;      than max_error pixels (default=10).
 
-pro correct_rotation_axis, infile, outfile, airPixels=airPixels, max_error=max_error
+pro correct_rotation_axis, infile, outfile, airPixels=airPixels, max_error=max_error, subpixel=subpixel
 
    if (n_elements(max_error) eq 0) then max_error = 10
    if (n_elements(airPixels) eq 0) then airPixels = 10
@@ -40,7 +40,7 @@ pro correct_rotation_axis, infile, outfile, airPixels=airPixels, max_error=max_e
       ;  - the maximum error in the fitted center of gravity is more than max_error pixels
       if (max(abs(err)) ge max_error) then begin
          errs[0,i] = zeros
-      end else begin
+      endif else begin
          errs[0,i] = yfit-y
          ngood = ngood + 1
       endelse
@@ -48,13 +48,22 @@ pro correct_rotation_axis, infile, outfile, airPixels=airPixels, max_error=max_e
           ' max(errs[*,i])=', max(errs[*,i]), ' min(errs[*,i])=', min(errs[*,i])
    endfor
    image_display, errs, min=-10, max=10
-   t = total(errs, 2)/ ngood
-   sh = round(t)
-   plot, sh, xtitle='Angle', ytitle='Shift'
+   sh = total(errs, 2)/ ngood
+   if (not keyword_set(subpixel)) then begin
+     sh = round(sh)
+   endif
+   p = plot(sh, xtitle='Angle', ytitle='Shift')
    v = vol
    for i=0, nangles-1 do begin
       print, 'shifting angle ', i, ' by ', sh[i]
-      v[0,0,i] = shift(reform(vol[*,*,i]), sh[i], 0)
+      proj = vol[0,0,i]
+      if (keyword_set(subpixel)) then begin
+        t = rss2pq(0, 0, xshift=sh[i], p=p, q=q)
+        v[0,0,i] =  poly_2d(proj,p,q,2,cubic=-0.5)
+      endif else begin
+        v[0,0,i] = shift(proj, sh[i], 0)
+      endelse
+
    endfor
    print, 'Writing output file ', outfile
    write_tomo_volume, outfile, v
