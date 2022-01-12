@@ -90,7 +90,7 @@ pro tomo_recon_netcdf, tomoParams, input_file, output_file, $
     if (v2Exists) then begin
       print, systime(0), ' tomo_recon_netcdf: writing v2, offset = ', v2Offset
       t0 = systime(1)
-      r2 = fix(r2)
+      r2 = fix(round(r2))
       outputConvertTime = outputConvertTime + systime(1) - t0
       t0 = systime(1)
       write_tomo_volume, output_file, r2, zoffset=v2Offset, /append
@@ -134,7 +134,7 @@ pro tomo_recon_netcdf, tomoParams, input_file, output_file, $
     if (v1Exists) then begin
       print, systime(0), ' tomo_recon_netcdf: writing v1, offset = ', v1Offset
       t0 = systime(1)
-      r1 = fix(r1)
+      r1 = fix(round(r1))
       outputConvertTime = outputConvertTime + systime(1) - t0
       t0 = systime(1)
       write_tomo_volume, output_file, r1, zoffset=v1Offset, /append
