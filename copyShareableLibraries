@@ -1,9 +1,5 @@
-cp -pfv /usr/local/tomography/tomoRecon/bin/win32-x86/tomoRecon.dll   ./tomoRecon_Win32_x86.dll
-cp -pfv /usr/local/tomography/tomoRecon/bin/windows-x64/tomoRecon.dll ./tomoRecon_Win32_x86_64.dll
-cp -pfv /usr/local/tomography/tomoRecon/lib/linux-x86/libtomoRecon.so    ./tomoRecon_linux_x86.so
+cp -pfv /usr/local/tomography/tomoRecon/bin/windows-x64-static/tomoRecon.dll ./tomoRecon_Win32_x86_64.dll
 cp -pfv /usr/local/tomography/tomoRecon/lib/linux-x86_64/libtomoRecon.so ./tomoRecon_linux_x86_64.so
 
-cp -pfv /usr/local/tomography/Gridrec/bin/win32-x86/GridrecIDL.dll   ./GridrecIDL_Win32_x86.dll
-cp -pfv /usr/local/tomography/Gridrec/bin/windows-x64/GridrecIDL.dll  ./GridrecIDL_Win32_x86_64.dll
-cp -pfv /usr/local/tomography/Gridrec/lib/linux-x86/libGridrecIDL.so    ./GridrecIDL_linux_x86.so
+cp -pfv /usr/local/tomography/Gridrec/bin/windows-x64-static/GridrecIDL.dll  ./GridrecIDL_Win32_x86_64.dll
 cp -pfv /usr/local/tomography/Gridrec/lib/linux-x86_64/libGridrecIDL.so ./GridrecIDL_linux_x86_64.so
