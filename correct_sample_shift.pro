@@ -13,28 +13,28 @@ pro correct_sample_shift, file, yrange=yrange
   if (n_elements(yrange) eq 0) then begin
     yrange = [0,ny-1]
   endif
-  
+
   vol = vol[*,yrange[0]:yrange[1], *]
-  
+
   print, 'Averaging rows ...'
   ; Average all the rows in the dataset
   v = rebin(vol, nx, 1, nz)
-  
+
   ; Collapse to 2 dimensions
   v = reform(v)
-  
+
   ; Take the derivative of the data in this X direction
   d = v - shift(v, 1, 0)
-  
+
   ; Extract the left half of the image, without first column which is garbage from shift
   ds = d[1:nx-1,*]
-  
+
   ; Find the location of the maximum in each row
   m = max(ds, max_index, dimension=1)
-  
-  max_index = max_index mod (size(ds, /dimensions)[0]
+
+  max_index = max_index mod (size(ds, /dimensions))[0]
   max_index = max_index - (moment(max_index))[0]
-  
+
   ; Fit max_index to a 5th order polynomial and subtract
   x = findgen(nz)/(nz) * !pi
   coeffs = poly_fit(x, max_index, 5, yfit=yfit)
@@ -47,13 +47,13 @@ pro correct_sample_shift, file, yrange=yrange
     print, 'Shifting row ' + strtrim(i, 2) + ' by ' + strtrim(-error[i],2) + ' pixels'
     vol[0,0,i] = shift(vol[*,*,i], -error[i], 0)
   endfor
- 
-  ; Uncomment this line to examine variables, etc. 
+
+  ; Uncomment this line to examine variables, etc.
   ;stop
-  
+
   print, 'Saving new volume file ...'
   write_tomo_volume, file + '_shifted.volume', vol
 
-  
+
 end
-  
+
