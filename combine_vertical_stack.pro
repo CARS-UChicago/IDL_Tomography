@@ -1,8 +1,8 @@
 ; Procedure to read multiple volume files collected with vertical translation between them
 
-pro combine_vertical_stack, base_file_name, num_volumes, pixel_overlap, zstart=zstart
+pro combine_vertical_stack, base_file_name, num_volumes, pixel_overlap, zstart=zstart, extensions=extensions
     if (n_elements(zstart) eq 0) then zstart=0
-    extensions = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+    if (n_elements(extensions) eq 0) then extensions = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
     print, 'Reading volume ', 0
     v = read_tomo_volume(base_file_name + '_' + extensions[0] + 'recon.volume')
     dims = size(v, /dimensions)
