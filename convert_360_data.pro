@@ -23,7 +23,7 @@ pro convert_360_data, input, output, center, yrange=yrange
         t1 = systime(1)
         print, 'Reversing and copying right side of image ...'
         for i=0, nz/2-1 do begin
-          vtotal[0,0,i] = rotate(vol[0:center:-1, *, i+nz/2], 5)
+          vtotal[center,0,i] = rotate(vol[0:center-1, *, i+nz/2], 5)
         endfor
         print, 'Time to reverse and copy = ', systime(1) - t1
    endif else begin
