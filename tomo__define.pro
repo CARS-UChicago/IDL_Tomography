@@ -1,27 +1,109 @@
 ;+
 ; NAME:
-;  TOMO::PREPROCESS
+;  TOMO::READ_DATA_FILE
 ;
 ; PURPOSE:
-;   This procedure reads a tomography data set from individual Princeton
-;   Instruments .SPE files.  It writes a 3-D volume file to disk.
+;   This procedure reads a tomography data set from 2 types of data files:
+;     netCDF files.  There are 3 files
+;       base_1.nc contains flat fields collected at the beginning
+;       base_2.nc contains the projections
+;       base_3.nc contains the flat fields collected at the end
+;     HDF5 files.  There is a single file that contains the flat fields and the projections
 ;
 ; CATEGORY:
 ;   Tomography
 ;
 ; CALLING SEQUENCE:
-;   TOMO->PREPROCESS, Base_file, First, Last
+;   TOMO->READ_DATA_FILE, Filename, Projections, Flats, Darks, Angles, Status_widget
 ;
 ; INPUTS:
-;   Base_file:
-;       The base file name for the data set.  The actual file name are assumed
+;   Filename:
+;       For netCDF this can be the name of any of the 3 files
+;       For HDF5 this is the name of the file
 ;       to be of the form Base_file + strtrim(file_number,2) + '.SPE'.
-;   First:
-;       The number of the first file, typically 1.
-;   Last:
-;       The number of the last file
 ;
 ; KEYWORD PARAMETERS:
+;   STATUS_WIDGET:
+;       The widget ID of a text widget used to display the status of the
+;       preprocessing operation.  If this is a valid widget ID then
+;       informational messages will be written to this widget.
+;
+; OUTPUTS:
+;   Projections:
+;       A 3-D array of the projection data, [NCOLS, NROWS, NANGLES]
+;
+;   Flats:
+;       A 3-D array of flat field data, [NCOLS, NROWS, NFLATS]
+;
+;   Darks:
+;       A 3-D array of dark field data, [NCOLS, NROWS, NDARKS]
+;
+;   Angles:
+;       A 1-D array of the projection angles
+;
+pro tomo::read_data_file, filename, projections, flats, darks, angles, status_widget
+
+  ; See if the file is netCDF
+  if (ncdf_is_ncdf(filename)) then begin
+    base_file = filename.remove(-4)
+    file = base_file + '1.nc'
+    if (widget_info(status_widget, /valid_id)) then widget_control, status_widget, set_value='Reading ' + file
+    flat1       = read_nd_netcdf(file)
+    file = base_file + '3.nc'
+    if (widget_info(status_widget, /valid_id)) then widget_control, status_widget, set_value='Reading ' + file
+    flat2       = read_nd_netcdf(file)
+    file = base_file + '2.nc'
+    if (widget_info(status_widget, /valid_id)) then widget_control, status_widget, set_value='Reading ' + file
+    projections = read_nd_netcdf(file)
+    flats = [[[flat1]], [[flat2]]]
+    status = self.read_setup(base_file + '.setup')
+    dims = size(projections, /dimensions)
+    darks = intarr(dims[0], dims[1]) + fix(self.dark_current)
+    angles = findgen(dims[2])/dims[2] * 180.
+    return
+  endif
+
+  ; See if the file is HDF5
+  if (h5f_is_hdf5(filename)) then begin
+    flats = h5_getdata(filename, '/exchange/data_white')
+    projections = h5_getdata(filename, '/exchange/data')
+    ; For now we assume there are no dark field images
+    darks = h5_getdata(filename, '/process/acquisition/dark_fields/dark_field_value')
+    darks = fix(darks[0])
+    dims = size(projections, /dimensions)
+    angles = findgen(dims[2])/dims[2] * 180.
+  endif
+end
+
+
+function tomo::find_attribute, attributes, name
+  for i=0, n_elements(attributes) do begin
+    if (attributes[i].name eq name) then return, i
+  endfor
+  message, 'Could not find attribute ' + name
+end
+
+;+
+; NAME:
+;  TOMO::PREPROCESS
+;
+; PURPOSE:
+;   This procedure reads a tomography data set from netCDF or HDF5 raw data files.
+;   It corrects the flat fields for dark current and zingers, and averages them together.
+;   It then corrects each projection for dark current, flat field, and zingers.
+;   It optionally saves the normalized data to an HDF5 file.
+;
+; CATEGORY:
+;   Tomography
+;
+; CALLING SEQUENCE:
+;   TOMO->PREPROCESS, Filename
+;
+; INPUTS:
+;   Filename
+;       The name of the raw data file.  For netCDF input this can be the name of any of the 3 files.
+;
+;; KEYWORD PARAMETERS:
 ;   THRESHOLD:
 ;       The threshold for zinger removal in normal frames.  See documentation
 ;       for REMOVE_TOMO_ARTIFACTS for details.  Default=1.25
@@ -34,8 +116,10 @@
 ;       every frame.  If this is a 2-D array then it must have the same
 ;       dimensions as each frame in the data set.  In this case the specified
 ;       2-D dark current will be substracted from each frame in the data set.
-;       Note that if the data set contains dark current frames (frame type =
-;       DARK_FIELD) then this keyword is normally not used.
+;       With netCDF files the dark current scalar value is taken from the .setup file.
+;       With HDF5 files the dark current scalar value is in the HDF5 file, or there are
+;       actual dark current frames in the file.
+;       This keyword is thus normally not used.
 ;   FIRST_ROW:
 ;       The starting row (slice) to be processed.  The default is 0.  This
 ;       keyword, together with LAST_ROW below are provided for processing
@@ -46,30 +130,16 @@
 ;   LAST_ROW:
 ;       The ending row (slice) to be processed.  The defaults is the last row
 ;       in each image.  See comments under FIRST_ROW above.
-;   WHITE_FIELD:
-;       The white field value, either a scaler or a 2-D array.  If this is a
+;  FLAT_FIELD:
+;       The flat field value, either a scaler or a 2-D array.  If this is a
 ;       scaler value then each pixel in each data frame is normalized by this
 ;       constant value.  If this is a 2-D array then it must have the same
 ;       dimensions as each frame in the data set.  In this case then each data
 ;       frame in the data set is normalized by the specified 2-D array.
-;       Note that if the data set contains white field frames (frame type =
-;       FLAT_FIELD), which is typically the case, then this keyword is
-;       normally not used.
-;   WHITE_AVERAGE:
-;       Set this flag to 1 to process the flat fields by averaging all of them
-;       together.  The default (WHITE_AVERAGE=0) is to interpolate flat fields in time.
-;       NOTE: The default value for this flag is 0 for backward compatibility.
-;       However, in general setting WHITE_AVERAGE=1 greatly reduces ring artifacts
-;       compared with the default interpolation method, so it's use is strongly
-;       recommended.
-;   WHITE_SMOOTH:
-;       The size of the smoothing kernal for smoothing the white fields.  Set this
-;       value to 2 or more to smooth the white fields before normalization.
-;       Since white fields generally do not have much high frequency content,
-;       smoothing can be used to reduce noise in the normalization.
-;       Default=0 (no smoothing).
+;       Note that if the data set contains flat field frames which is typically the case, 
+;       then this keyword is normally not used.
 ;   OUTPUT:
-;       The name of the output file.  The default is Base_file + '.volume'
+;       The name of the output file.  The default is Base_file + 'volume.h5'
 ;   STATUS_WIDGET:
 ;       The widget ID of a text widget used to display the status of the
 ;       preprocessing operation.  If this is a valid widget ID then
@@ -85,545 +155,158 @@
 ;           1: Prints each input filename as it is read, and prints limited
 ;              information on processing steps
 ;           2: Prints detailed information on processing steps
-;    FLIP_DATA
-;        Rotates image data 90 degrees
-;
 ; OUTPUTS:
 ;   This function returns a 3-dimensional signed 16-bit integer volume array
-;   of size [NCOLS, NROWS, NANGLES].  The data is the ratio of the input image
+;   of size [NCOLS, NROWS, NPROJECTIONS].  The data is the ratio of the input image
 ;   to the flat field, multiplied by 10,000.  The ratio of the data to the
 ;   flat field should be in the range 0 to 1 (with occasional values slightly
 ;   greater than 1).  Multiplying by 10000 should give sufficient resolution,
 ;   since even values with 99% absorption will be stored with a precision of
 ;   1%.
 ;
-; RESTRICTIONS:
-;   - There must not be any missing files between the numbers specified by the
-;     First and Last parameters.
-;   - The input files must follow the naming convention Base_file +
-;     strtrim(number,2) + '.SPE', where number varies from First to Last.
-;   - By storing the normalized data as 16-bit integers, there is a
-;     possibility of loss of some information when using a true 16-bit camera.
-;
 ; PROCEDURE:
 ;   This function performs the following steps:
-;   - Reads each frame in the data set into a large 3-D data buffer.  Stores
-;     a flag for each frame indicating if the frame is a dark current, a
-;     white field or normal data.
+;   - Reads the raw data into a 3-D array usually of type UINT (unsigned 16-bit integer)
 ;     Stores the rotation angle at which each frame was collected.
 ;   - Subtracts the dark current from each data frame and white field frame,
-;     using dark current images in the data set if present, or the input dark
-;     current if present.
-;     If the data set contains multiple dark current frames, then the
-;     correction is done as follows:
-;         - Use the first dark current for all frames collected before the
-;           first dark current
-;         - Use the last dark current for all frames collected after the last
-;           dark current
-;         - Use the average of the closest preceeding and following dark
-;           currents for all frames collected between two dark currents.
+;     using dark current scalar value or images in the data set or passed as argument
 ;   - Removes zingers from white field frames using REMOVE_TOMO_ARTIFACTS with
 ;     /DOUBLE_CORRELATION if possible, or /ZINGERS if not.
 ;   - Divides each data frame by the white field, using white field images in
-;     the data set, or the input white field if present.  If the
-;     data set contains multiple white field frames, and WHITE_AVERAGE=0,
-;     then the correction is done as follows:
-;         - Use the first white field for all frames collected before the
-;           first white field
-;         - Use the last white field for all frames collected after the last
-;           white field
-;         - Use the weighted average of the closest preceeding and following white
-;           fields for all frames collected between two white fields.
-;     If WHITE_AVERAGE=1 then all of the white fields in the data are averaged
-;     before normalizing.  This is recommended.
+;     the data set, or the input white field if present.
 ;     The ratio of each frame to the white field is multiplied by 10,000 to be
 ;     able to use 16 bit integers, rather than floats to store the results,
 ;     saving a factor of 2 in memory, which is important for these large 3-D
 ;     data sets.
-;   - Sorts the rotation angle array, to determine the order in which the
-;     normalized data frames should be written back out to disk in the volume
-;     file.
 ;   - Corrects for zingers in the white-field normalized data frames, using
 ;     REMOVE_TOMO_ARTIFACTS, /ZINGERS.
-;   - Writes the normalized data frames to a single disk file.  The default
-;     file name is Base_file + '.volume'.  This file is in little-endian binary
-;     format, with the following data:
-;       - NCOLS (long integer, number of columns in each frame)
-;       - NROWS (long integer, number of rows in each frame)
-;       - NANGLES (long integer, number of frames)
-;       - DATA (short integer array [NCOLS, NROWS, NANGLES]
-;       The volume file can be read back in to IDL with function
-;       READ_TOMO_VOLUME
+;   - Optionally writes the normalized data frames to a single disk file.  The default
+;     file name is Base_file + 'volume.h5'.  
+;     The volume file can be read back in to IDL with function READ_TOMO_VOLUME
 ;
-; EXAMPLE:
-;   The following example will read files Mydata1.SPE through Mydata370.SPE,
-;   using a constant dark current of 50 counts at each pixel.  This data set
-;   is assumed to have white field frames in it.  The output file will be
-;   Mydata.volume
-;       IDL>  READ_TOMO_DATA, 'Mydata', 1, 370, dark=50
-;       ; Now read the volume file back into IDL
-;       IDL> vol = READ_TOMO_VOLUME('Mydata.volume')
-;       ; Play the volume data as a movie, rotating the sample
-;       IDL> window, 0
-;       IDL> make_movie, vol, min=3000, max=12000
-;
-; MODIFICATION HISTORY:
-;   Written by: Mark Rivers, March 27, 1999.
-;   3-APR-1999 MLR  Changed white field normalization to use weighted average
-;                   of white fields before and after, rather than simple
-;                   average
-;   4-APR-1999 MLR  Changed the default value of threshold from 1.20 to 1.05
-;                   Switched to double correlation method of zinger removal
-;                   for white field images when possible.
-;   18-MAY-1999 MLR Added missing keyword DOUBLE_THRESHOLD to procedure line
-;   07-JUL-1999 MLR Changed zinger removal for data frames so it is done after
-;                   whitefield correction.  This makes the identification of
-;                   zingers (versus high-frequency structure in the whitefield)
-;                   much more robust.
-;   13-SEP-1999 MLR Changed the dark current correction to use a loop, so that
-;                   two large arrays are not required at the same time.
-;   08-DEC-1999 MLR Added FIRST_ROW and LAST_ROW keywords for handling very
-;                   large data sets.
-;                   Added OUTPUT keyword
-;   02-MAR-2000 MLR Added DEBUG keyword to calls to REMOVE_TOMO_ARTIFACTS
-;                   large data sets.
-;   02-MAR-2000 MLR Changed the default value of THRESHOLD from 1.05 to 1.25
-;                   because the lower threshold was causing significant
-;                   blurring of sharp edges.  Changed the default value of
-;                   DOUBLE_THRESHOLD from 1.02 to 1.05, since it was finding
-;                   many more zingers than physically plausible.
-;   02-MAR-2000 MLR Added SWAP_IF_BIG_ENDIAN keyword when opening output file.
-;   22-JAN-2001 MLR Added some default debugging when writing output file
-;   11-APR-2001 MLR Changed the name of this routine from READ_TOMO_DATA to
-;                   TOMO::PREPROCESS when it was incorporated in the TOMO class
-;                   library.
-;                   This routine now updates the .SETUP file with the dark current
-;                   that was specified when running this procedure.
-;                   The output file is now written with TOMO::WRITE_VOLUME rather
-;                   than being incrementally written as the data are processed.  This
-;                   requires more memory, but is necessary to allow use of netCDF
-;                   and other file formats.
-;   1-NOV-2001 MLR  Added BUFF_ANGLES keyword
-;   20-NOV-2001 MLR  Added ABORT_WIDGET and STATUS_WIDGET keywords
-;   25-APR-2002 MLR  Added support for reading 3-D .SPE files, created when doing
-;                    fast scanning
-;   18-DEC-2005 MLR  Added white_average and white_smooth keywords.
-;                    Renamed WHITE keyword to WHITE_FIELD
-;                    Setting white_average greatly reduces ring artifacts in many cases.
-;-
-;   24-JUN-2010 DTC Changed read_data_file to be able to process .nc files in addition to .SPE files
-;                   Changed preprocess to be able to concatenate multiple 3-D fast and OTF scan files into a single data set
-;                   After dark field subtraction, added check against dividing by zero (replace all zeroes with ones?)
-;   16-JUL-2011 DTC Added widget to transpose image data in the case that the camera is rotated 90 degrees
 
-pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, debug, $
-  status_widget, flip_data
-  cd, current = current
-  file = base_file + strtrim(file_number, 2) + file_type
-  str = 'Reading ' + file
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (file_type eq '.SPE') then read_princeton, file, data, header=header, comment=comment
-  if (file_type eq '.nc') then data = read_nd_netcdf(file, attributes=attributes)
-  if (file_type ne '.SPE' AND file_type ne '.nc') then message, 'No files found'
-  
-  ndims = size(data, /n_dimensions)
-  if (ndims eq 2) then begin; slow scan data
-    if flip_data then data = transpose(data)
-    if (file_type eq '.SPE') then begin
-      angle=float(strmid(comment[0], 6))
-      type=strmid(comment[1], 5)
-    endif else if (file_type eq '.nc') then begin  ; .nc is actually always fast-scan
-      i = self->find_attribute(attributes, 'Attr_Comment1')
-      start_angle = float(strmid( (*(attributes.pvalue)[i])[0], 12))
-      i = self->find_attribute(attributes, 'Attr_Comment2')
-      angle_step = float(strmid( (*(attributes.pvalue)[i])[0], 11))
-      i = self->find_attribute(attributes, 'Attr_Comment3')
-      flat_fields = strmid( (*(attributes.pvalue)[i])[0], 12)
-      ang = double(start_angle)
-      if (flat_fields ne '') then begin
-        type = 'FLAT_FIELD'
-        angle = ang
-      endif else begin
-        type = 'NORMAL'
-        angle = ang
-      endelse
-    endif
-    str = str + ' angle=' + string(angle, format='(f6.2)') + ' type=' + type
-    if (widget_info(status_widget, /valid_id)) then $
-      widget_control, status_widget, set_value=str
-    if (debug ne 0) then print, str
-  endif else if (ndims eq 3) then begin ; fast or otf scan data
-    if flip_data then data = transpose(data, [1,0,2])
-    dims = size(data, /dimensions)
-    n_views = dims[2]
-    type = strarr(n_views)
-    angle = fltarr(n_views)
-    if (file_type eq '.SPE') then begin
-      start_angle = float(strmid(comment[0], 12))
-      angle_step = float(strmid(comment[1], 11))
-      flat_fields = strmid(comment[2], 12)
-      flat_fields_2 = string(comment[3])
-      flat_fields_3 = string(comment[4])
-      flat_fields = flat_fields + flat_fields_2+flat_fields_3
-      if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
-      ang = double(start_angle)
-      for i=0, n_views-1 do begin
-        angle[i] = ang
-        if (max(i eq flat_fields)) then begin
-          type[i] = 'FLAT_FIELD'
-        endif else begin
-          type[i] = 'NORMAL'
-          ang = ang + angle_step
-        endelse
-      endfor
-    endif else if (file_type eq '.nc') then begin
-      i = self->find_attribute(attributes, 'Attr_Comment1')
-      start_angle = float(strmid( (*(attributes.pvalue)[i])[0], 12))
-      i = self->find_attribute(attributes, 'Attr_Comment2')
-      angle_step = float(strmid( (*(attributes.pvalue)[i])[0], 11))
-      i = self->find_attribute(attributes, 'Attr_Comment3')
-      flat_fields = strmid( (*(attributes.pvalue)[i])[0], 12)
-      i = self->find_attribute(attributes, 'uniqueId')
-      UIDS = fix(*(attributes.pvalue)[i])
-      if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
-      ang = double(start_angle)
-      index = UIDS[0]
-      FFS = 0
-      for i = 0, n_views-1 do begin
-        if (max(i eq flat_fields)) then begin
-          type[i] = 'FLAT_FIELD'
-          angle[i] = ang
-          FFS = FFS+1
-        endif else begin
-          type[i] = 'NORMAL'
-          ang = ang + angle_step*(UIDS[i]-index-FFS)
-          angle[i] = ang
-          index = UIDS[i]
-          FFS = 0
-        endelse
-      endfor
-    endif
-    
-  endif
-end
-
-
-function tomo::find_attribute, attributes, name
-  for i=0, n_elements(attributes) do begin
-    if (attributes[i].name eq name) then return, i
-  endfor
-  message, 'Could not find attribute ' + name
-end
-
-pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
+function tomo::preprocess, filename, dark=input_dark, $
   white_field=input_white, threshold=threshold, $
   double_threshold=double_threshold, debug=debug, $
   first_row=first_row, last_row=last_row, output=output, $
   setup=setup, $
   white_smooth=white_smooth, white_average=white_average, $
   status_widget=status_widget, abort_widget=abort_widget, $
-  flip_data = flip_data
+  save_result=save_result
   
   tstart = systime(1)
-  nfiles = stop - start + 1
   if (n_elements(debug) eq 0) then debug=1
   if (n_elements(threshold) eq 0) then threshold=1.25
   if (n_elements(double_threshold) eq 0) then double_threshold=1.05
-  if (n_elements(output) eq 0) then output=base_file + '.volume'
+  if (filename.endswith('.nc')) then begin
+    base_file = filename.remove(-4)
+  endif
+  if (filename.endswith('.h5')) then begin
+    base_file = filename.remove(-3)
+  endif
   if (n_elements(setup) eq 0) then setup=base_file + '.setup'
-  if (n_elements(white_smooth) eq 0) then white_smooth=0
-  if (n_elements(white_average) eq 0) then white_average=0
   if (n_elements(status_widget) eq 0) then status_widget = -1L
   if (n_elements(abort_widget) eq 0) then abort_widget = -1L
-  
+  if (n_elements(save_result) eq 0) then save_result = 0
+  if (n_elements(output) eq 0) then output = base_file + '_normalized.h5'
+
   status = self->read_setup(setup)
   
-  ; Read one file to get the dimensions
-  self->read_data_file, base_file, file_type, 1, data, type, angle, debug, status_widget, flip_data
-  ndims = size(data, /n_dimensions)
-  dims = size(data, /dimensions)
+  ; Read data file(s)
+  str = 'Reading data file ...'
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value=str
+  if (debug ge 0) then print, systime() + ' ' + str
+  self->read_data_file, filename, projections, flats, darks, angles, status_widget
+  dims = size(projections, /dimensions)
   ncols = dims[0]
   nrows = dims[1]
-  if (ndims eq 2) then begin ; slow scan data
-    nframes = nfiles
-    ystart = 0
-    ystop = nrows-1
-    if (n_elements(first_row) ne 0) then ystart = first_row
-    if (n_elements(last_row) ne 0) then ystop = last_row
-    ; The subset flag is for efficiency below
-    if ((ystart eq 0) and (ystop eq nrows-1)) then subset=0 else subset=1
-    nrows = ystop - ystart + 1
-    if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
-    
-    data_buff = uintarr(ncols, nrows, nframes, /nozero)
-    angles = fltarr(nframes)
-    image_type = strarr(nframes)
-    for i=0, nframes-1 do begin
-      self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-        status_widget, flip_data
-      if (subset) then begin
-        data_buff[0,0,i]=data[*,ystart:ystop]
-      endif  else begin
-        data_buff[0,0,i]=data
-      endelse
-      angles[i]=angle
-      image_type[i]=type
-      if (widget_info(abort_widget, /valid_id)) then begin
-        event = widget_event(/nowait, abort_widget)
-        widget_control, abort_widget, get_uvalue=abort
-        if (abort) then begin
-          if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, $
-            set_value='Preprocessing aborted'
-          return
-        endif
-      endif
-    endfor
-  endif else if (ndims eq 3) then begin ; fast and otf scan data
-    if (nfiles eq 1) then begin
-      nframes = dims[2]
-      data_buff = temporary(data)
-      data_buff = uint(data_buff)
-      image_type = type
-      angles = angle
-    endif else begin
-      ; We have to read the data twice; once to figure out how many frames there are, and a second time
-      ; to put into the array
-      nframes = 0
-      for i=0, nfiles-1 do begin
-        self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-          status_widget, flip_data
-        dims = size(data, /dimensions)
-        n_dims = size(data, /n_dimensions)
-        if (n_dims eq 2) then nf=1 else nf=dims[2]
-        nframes = nframes + nf
-      endfor
-      data_buff = uintarr(ncols, nrows, nframes, /nozero)
-      image_type = strarr(nframes)
-      angles = fltarr(nframes,/nozero)
-      current_frame = 0
-      for i=0, nfiles-1 do begin
-        self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-          status_widget, flip_data
-        dims = size(data, /dimensions)
-        n_dims = size(data, /n_dimensions)
-        data_buff[0, 0, current_frame] = data
-        data = 0
-        angles[current_frame] = angle
-        image_type[current_frame] = type
-        if (n_dims eq 2) then nf=1 else nf=dims[2]
-        current_frame = current_frame + nf
-        
-        if (widget_info(abort_widget, /valid_id)) then begin ; check for abort from user
-          event = widget_event(/nowait, abort_widget)
-          widget_control, abort_widget, get_uvalue=abort
-          if (abort) then begin
-            if (widget_info(status_widget, /valid_id)) then $
-              widget_control, status_widget, set_value='Preprocessing aborted'
-            return
-          endif
-        endif
-      endfor
-    endelse
-  endif
-  
+  nprojections = dims[2]
+  normalized = uintarr(ncols, nrows, nprojections, /nozero)
+  dims = size(darks, /dimensions)
+  ndarks = 1
+  if (n_elements(dims) eq 3) then ndarks = dims[2]
+  dims = size(flats, /dimensions)
+  nflats = 1
+  if (n_elements(dims) eq 3) then nflats = dims[2]
+  self.angles = ptr_new(angles)
+
+  ; Convert darks to float for efficiency
+  darks = float(darks)
   tread = systime(1)
   ; Do dark current correction
-  str = 'Doing dark current correction ...'
+  str = 'Doing corrections on flat fields ...'
   if (widget_info(status_widget, /valid_id)) then $
     widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  darks = where(image_type eq 'DARK_FIELD', ndarks)
-  if (debug ge 2) then print, 'ndarks= ', ndarks, 'darks=', darks
-  if (n_elements(input_dark) ne 0) then begin
-    dark = input_dark
-    s = size(dark)  ; Input dark current
-    if (debug ge 2) then print, 'input_dark= ', input_dark, $
-      'size(input_dark)=', s
-    case s[0] of
-      0: begin ; Constant dark current
-        for i=0, nframes-1 do begin
-          data_temp =data_buff[*,*,i] - dark
-          zeros = where(data_temp le 0, count)
-          if (count gt 0) then data_temp[zeros] = 1
-          data_buff[0,0,i] = data_temp
-        endfor
-        self.dark_current = dark
-      end
-      2: begin  ; Dark current array
-        if (s[1] ne ncols) or (s[2] ne nrows) then $
-          message, 'Wrong dims on dark'
-        if (max(dark) ge 16.* max(data_buff[*,*,0])) then $
-          message, 'Wrong data type on dark'
-        for i=0, nframes-1 do begin
-          data_temp =data_buff[*,*,i] - dark
-          zeros = where(data_temp le 0, count)
-          if (count gt 0) then data_temp[zeros] = 1
-          data_buff[0,0,i] = data_temp
-        endfor
-      end
-      else: message, 'Wrong dims on dark'
-    endcase
-  endif else if (ndarks gt 0) then begin
-    ; File contains one or more dark current images
-    ; Files up to the first dark current use the first dark current
-    dark = data_buff[*, *, darks[0]]
-    for i=0, darks[0]-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
-    ; Files after the last dark current use the last dark current
-    for i=darks[ndarks-1]+1, nframes-1 do $
-      data_buff[0,0,i]=data_buff[*,*,i] - dark
-    ; Files in between the first dark and the last dark use the average of
-    ; the dark current before and after
-    nseries = ndarks-1
-    for j=0, nseries-1 do begin
-      dark = (data_buff[*,*,darks[j]] + data_buff[*,*,darks[j+1]]) / 2
-      for i=darks[j]+1, darks[j+1]-1 do $
-        data_buff[0,0,i]=data_buff[*,*,i] - dark
-    endfor
-  endif else begin
-    message, 'Must specify dark keyword since no dark frames in data files'
-  endelse
-  tdark = systime(1)
+  if (debug ge 0) then print, systime() + ' '+ str
+  ; If there is more than one dark field image then average them
+  if (ndarks gt 1) then begin
+    darks = fix(total(darks, 3) / ndarks)
+  endif
+  
+  if (debug ge 0) then print, systime() + ' Doing dark correction on flats'
+  for i=0, nflats-1 do begin
+    data_temp = flats[*,*,i] - darks
+    if (min(data_temp) le 0) then data_temp = data_temp > 1
+    flats[0,0,i] = data_temp
+  endfor
 
-  ; Do flat field current correction and zinger removal on flat field frames
-  str = 'Doing flat field correction ...'
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  whites = where(image_type eq 'FLAT_FIELD', nwhites)
-  if (debug ge 2) then print, 'nwhites= ', nwhites, 'whites=', whites
-  if (n_elements(input_white) ne 0) then begin
-    white = input_white
-    s = size(white)  ; Input white field
-    case s[0] of
-      0: data_buff[0,0,0] = 10000 * (data_buff/float(white))  ; Constant
-      2: begin  ; White field array
-        if (s[1] ne ncols) or (s[2] ne nrows) then $
-          message, 'Wrong dims on white'
-        for i=0, nframes-1 do $
-          data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
-      end
-      else: message, 'Wrong dims on white'
-    endcase
-  endif else if (nwhites gt 0) then begin
-    ; File contains one or more white field images
-    ; Extract the white fields into their own array
-    white_data = fltarr(ncols, nrows, nwhites)
-    for i=0, nwhites-1 do white_data[0,0,i] = data_buff[*,*,whites[i]]
-    ; Remove zingers from white fields.  If there is more than 1 white field
-    ; do it with double correlation, else do it with spatial filter
-    if (nwhites eq 1) then begin
-      if (debug ge 1) then print, 'Single white field, correcting zingers with spatial'
-      white_data[0,0,0] = remove_tomo_artifacts(white_data[*,*,0], /zingers, threshold=threshold, $
-        debug=debug)
-    endif else begin
-      if (debug ge 1) then print, 'Multiple white fields, correcting zingers with double correlation'
-      for i=0, nwhites-2 do begin
-        white_data[0,0,i] = remove_tomo_artifacts(white_data[*,*,i],   $
-          image2=white_data[*,*,i+1], $
+  ; Remove zingers from flat fields.  If there is more than 1 flat field
+  ; do it with double correlation, else do it with spatial filter
+  if (debug gt 0) then print, systime() + ' Correcting zingers in flat fields'
+  if (nflats eq 1) then begin
+    if (debug ge 1) then print, systime() + ' Single flat file, correcting zingers with threshold'
+    flats = remove_tomo_artifacts(flats, /zingers, threshold=threshold, debug=debug)
+  endif else begin
+    if (debug ge 1) then print, systime() + ' Multiple flat fields, correcting zingers with double correlation'
+    for i=0, nflats-2 do begin
+      flats[0,0,i] = remove_tomo_artifacts(flats[*,*,i],   $
+          image2=flats[*,*,i+1], $
           /double_correlation, threshold=double_threshold, $
           debug=debug)
-      endfor
-    endelse
-    ; If we are smoothing white fields ...
-    if (white_smooth gt 1) then begin
-      if (debug ge 1) then print, 'Smoothing flat fields, smooth width=', white_smooth
-      for i=0, nwhites-1 do begin
-        white_data[0,0,i] = smooth(white_data[*,*,i], white_smooth)
-      endfor
-    endif
-    ; If we are averaging white fields ...
-    if keyword_set(white_average) then begin
-      if (debug ge 1) then print, 'Averaging flat fields'
-      white = total(white_data, 3)/nwhites
-      if (debug ge 1) then print, 'Doing flat field correction'
-      for i=0, nframes-1 do begin
-        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-        if (widget_info(abort_widget, /valid_id)) then begin
-          event = widget_event(/nowait, abort_widget)
-          widget_control, abort_widget, get_uvalue=abort
-          if (abort) then begin
-            if (widget_info(status_widget, /valid_id)) then $
-              widget_control, status_widget, $
-              set_value='Preprocessing aborted'
-            return
-          endif
-        endif
-      endfor
-    endif else begin
-      if (debug ge 1) then print, 'Interpolating flat fields'
-      ; We are interpolating white fields
-      ; Files up to the first white field use the first white field
-      white = white_data[*,*,0]
-      for i=0, whites[0]-1 do $
-        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-      ; Files after the last white field use the last white field
-      white = white_data[*,*,[nwhites-1]]
-      for i=whites[nwhites-1]+1, nframes-1 do $
-        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-      ; Files in between the first white field and the last white field use the
-      ; weighted average of the white field before and after
-      nseries = nwhites-1
-      if (debug ge 1) then print, 'Doing flat field correction'
-      for j=0, nseries-1 do begin
-        white1 = white_data[*,*,j]
-        white2 = white_data[*,*,j+1]
-        nf = whites[j+1] - whites[j] - 1
-        for i=0, nf-1 do begin
-          k = i + whites[j]+1
-          ratio = float(i)/float(nf-1)
-          white = white1*(1.0-ratio) + white2*ratio
-          data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
-        endfor
-        if (widget_info(abort_widget, /valid_id)) then begin
-          event = widget_event(/nowait, abort_widget)
-          widget_control, abort_widget, get_uvalue=abort
-          if (abort) then begin
-            if (widget_info(status_widget, /valid_id)) then $
-              widget_control, status_widget, $
-              set_value='Preprocessing aborted'
-            return
-          endif
-        endif
-      endfor
-    endelse  ; Interpolate
-  endif else begin
-    message, 'Must specify white keyword since no white frames in data files'
+    endfor
   endelse
+  if (debug ge 1) then print, systime() + ' Averaging flat fields'
+  flats = total(flats, 3)/nflats
+
+  tflats = systime(1)
+
+  str = 'Doing dark and flat field correction ...'
+  if (widget_info(status_widget, /valid_id)) then $
+    widget_control, status_widget, set_value=str
+  if (debug ge 0) then print, systime() + ' ' + str
+  for i=0, nprojections-1 do begin
+    data_temp = 10000 * ((projections[*,*,i] - darks) / flats)
+    if (min(data_temp) le 0) then data_temp = data_temp > 1
+    normalized[0,0,i] = data_temp
+    if (widget_info(abort_widget, /valid_id)) then begin
+      event = widget_event(/nowait, abort_widget)
+      widget_control, abort_widget, get_uvalue=abort
+      if (abort) then begin
+        if (widget_info(status_widget, /valid_id)) then begin
+          widget_control, status_widget, set_value='Preprocessing aborted'
+        endif
+        return, 0
+      endif
+    endif
+  endfor
   
-  tflat = systime(1)
+  tdarkflat = systime(1)
 
   ; Now we have normalized data.
   ; Correct for zingers now that flat field normalization is done
   ; Write out to disk file, sorted by angle, arranged by slice
-  str = 'Doing zinger correction and data reformatting ...'
+  str = 'Doing zinger correction ...'
   if (widget_info(status_widget, /valid_id)) then $
     widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  data_images = where(image_type eq 'NORMAL', nangles)
-  angles = angles[data_images]
-  sorted_indices = sort(angles)
-  angles = angles[sorted_indices]
-  ptr_free, self.angles
-  self.angles = ptr_new(angles)
-  data_images = data_images[sorted_indices]
-  ncols = long(ncols)
-  nrows = long(nrows)
-  nangles = long(nangles)
-  vol = intarr(ncols, nrows, nangles)
-  for i=0, nangles-1 do begin
-    proj = reform(data_buff[*,*,data_images[i]])
-    negatives = where(proj lt 0, count)
-    if (count gt 0) then proj(negatives) = 2^15-1
-    proj = remove_tomo_artifacts(proj, /zingers, threshold=threshold, $
-      debug=debug)
-    str = 'Copying projection ' + strtrim(i+1,2) + '/' + $
-      strtrim(nangles,2)
+  if (debug ne 0) then print, systime() + ' ' + str
+  for i=0, nprojections-1 do begin
+    ;data_temp = remove_tomo_artifacts(normalized[*,*,i], /zingers, threshold=threshold, debug=debug)
+    data_temp = remove_tomo_artifacts(normalized[*,*,i], /zingers, threshold=threshold, debug=0)
+    str = 'Removing zingers on projection ' + strtrim(i+1,2) + '/' + strtrim(nprojections,2)
     if (widget_info(status_widget, /valid_id)) then $
       widget_control, status_widget, set_value=str
-    if (debug ne 0) then print, str
-    vol[0,0,i] = proj
+    normalized[0,0,i] = data_temp
     if (widget_info(abort_widget, /valid_id)) then begin
       event = widget_event(/nowait, abort_widget)
       widget_control, abort_widget, get_uvalue=abort
@@ -631,31 +314,34 @@ pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
         if (widget_info(status_widget, /valid_id)) then $
           widget_control, status_widget, $
           set_value='Preprocessing aborted'
-        return
+        return, 0
       endif
     endif
   endfor
-  treformat = systime(1)
 
-  str = 'Writing volume file ...'
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  write_tomo_volume, output, vol, /corrected
+  tzinger = systime(1)
+
+  if (save_result) then begin
+    str = 'Writing volume file ...'
+    if (widget_info(status_widget, /valid_id)) then $
+      widget_control, status_widget, set_value=str
+    if (debug ne 0) then print, systime() + ' ' + str
+    write_tomo_volume, output, normalized, /corrected
+  endif
   status = self->write_setup(setup)
   tend = systime(1)
   if (widget_info(status_widget, /valid_id)) then $
     widget_control, status_widget, set_value='Preprocessing complete.'
 
-  print, 'preprocess execution times:'
+  print, 'Preprocess execution times:'
   print, '        Reading input file:', tread - tstart
-  print, '              Dark current:', tdark - tread
-  print, '                Flat field:', tflat - tdark
-  print, '     Dezinger and reformat:', treformat - tflat
-  print, '            Writing output:', tend - treformat
+  print, '          Flat adjustments:', tflats - tread
+  print, '  Dark and flat correction:', tdarkflat - tflats
+  print, '                  Dezinger:', tzinger - tdarkflat
+  print, '            Writing output:', tend - tzinger
   print, '                     Total:', tend - tstart
-    
-  
+ 
+  return, normalized
 end
 
 
@@ -920,26 +606,14 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
   ;-
   ;-
   
-  if (n_elements(netcdf) eq 0) then netcdf=1
-  
   size = size(volume)
   ; If this is a 2-D array fake it out by setting third dimension to 1
   if (size[0] eq 2) then size[3]=1
   if (keyword_set(raw)) then self.image_type = "RAW"
   if (keyword_set(corrected)) then self.image_type = "CORRECTED"
   if (keyword_set(reconstructed)) then self.image_type = "RECONSTRUCTED"
-  
-  
-  if (netcdf eq 0) then begin
-    openw, lun, file, /get, /swap_if_big_endian
-    ncols = size[1]
-    nrows = size[2]
-    nangles = size[3]
-    writeu, lun, ncols, nrows, nangles, volume
-    free_lun, lun
-    return
-  endif else begin
-  
+
+  if (keyword_set(netcdf)) then begin
     ; netCDF file format
     if (keyword_set(append)) then begin
       ; If APPEND keyword is specifified then open an existing netCDF file
@@ -1015,7 +689,25 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
       
     ; Close the file
     ncdf_close, file_id
+  endif else begin
+    ; Write HDF5 file
+    file_id = h5f_create(file)
+    group_id = h5g_create(file_id, "exchange")
+    ;; get data type and space, needed to create the dataset
+    datatype_id = h5t_idl_create(volume)
+    dataspace_id = h5s_create_simple(size(volume, /dimensions))
+    ;; create dataset in the output file
+    dataset_id = h5d_create(group_id, 'data', datatype_id, dataspace_id)
+    ;; write data to dataset
+    h5d_write, dataset_id, volume
+    ;; close all open identifiers
+    h5d_close, dataset_id
+    h5s_close, dataspace_id
+    h5t_close, datatype_id
+    h5g_close, group_id
+    h5f_close, file_id
   endelse
+  
 end
 
 
@@ -1081,46 +773,9 @@ function tomo::read_volume, file, $
   if (n_elements(file) eq 0) then file = dialog_pickfile(/read, /must_exist)
   if file eq "" then return, 0
   
-  on_ioerror, ignore_error
-  ncdf_control, 0, /noverbose
-  file_id = ncdf_open(file, /nowrite)
-  ignore_error:
-  if (n_elements(file_id) eq 0) then begin
-    on_ioerror, null
-    ; This is not a netCDF file, it is an old APS format file
-    openr, lun, file, error=error, /get, /swap_if_big_endian
-    if (error ne 0) then message, 'Error opening file: ' + file
-    nx = 0L
-    ny = 0L
-    nz = 0L
-    header = 12  ; Size of header in bytes
-    readu, lun, nx, ny, nz
-    ; Simplest case is if no ranges are specified, no need to loop
-    if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
-      (n_elements(xrange) eq 0) then begin
-      volume = intarr(nx, ny, nz, /nozero)
-      readu, lun, volume
-    endif else begin
-      if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
-      if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
-      if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
-      ; Compute nx, ny, nz clip if user specified too large a range
-      ix = (xrange[1] - xrange[0] + 1) < nx
-      iy = (yrange[1] - yrange[0] + 1) < ny
-      iz = (zrange[1] - zrange[0] + 1) < nz
-      volume = intarr(ix, iy, iz, /nozero)
-      slice = intarr(nx, ny, /nozero)
-      point_lun, lun, header + zrange[0]*nx*ny*2L
-      for i = 0, iz-1 do begin
-        readu, lun, slice
-        volume[0, 0, i] = $
-          slice[xrange[0]:xrange[1], yrange[0]:yrange[1]]
-      endfor
-      volume = reform(volume, /overwrite)
-      free_lun, lun
-    endelse
-  endif else begin
+  if (ncdf_is_ncdf(file)) then begin
     ; This is a netCDF file
+    file_id = ncdf_open(file, /nowrite)
     ; Process the global attributes
     status = ncdf_inquire(file_id)
     for i=0, status.ngatts-1 do begin
@@ -1190,11 +845,14 @@ function tomo::read_volume, file, $
         'scale_factor': self.scale_factor = value
       endcase
     endfor
-    
     ; Close the netCDF file
     ncdf_close, file_id
-  endelse  ; netCDF
-  
+
+  endif else begin
+    ; File must be HDF5
+    volume = h5_getdata(file, '/exchange/data')
+  endelse
+
   return, volume
 end
 
