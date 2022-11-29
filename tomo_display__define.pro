@@ -329,37 +329,6 @@ pro tomo_display::free_memory
 end
 
 
-; method for loading dark current data into program before preprocessing
-pro tomo_display::measure_dc, dc_filename, dark = dark_current, file_type = file_type
-    dark_old = dark_current
-    spe = strpos(dc_filename,'.SPE')
-    nc = strpos(dc_filename,'.nc')    
-    if (spe ne -1) then begin
-        if (file_type ne '.SPE') then begin
-          dark_current = dark_old
-          message, 'Wrong dark field file format'
-        endif
-        read_princeton, dc_filename, dc_data, header=header, comment=comment
-        image_type = strmid(comment[1],5)
-    endif else if (nc ne -1) then begin
-        if (file_type ne '.nc') then begin
-          dark_current = dark_old
-          message, 'Wrong dark field file format'
-        endif
-        dc_data = read_nd_netcdf(dc_filename, attributes=comment)
-        image_type = strmid((*(comment.pvalue)[8])[0],5)
-    endif
-    if (image_type ne 'DARK_FIELD') then begin ; if image is not the right type, return
-        dark_current = dark_old
-        return
-    endif else if (image_type eq 'DARK_FIELD') then begin ; average together dark fields, return averaged value
-        dark_current = total(dc_data, 3)/(size(dc_data,/dimensions))[2]
-        return
-    endif
-end
-
-
-
 pro tomo_options_event, event
     widget_control, event.top, get_uvalue=tomo_display
     tomo_display->options_event, event
@@ -664,45 +633,30 @@ pro tomo_display::event, event
             self->set_base_file, base_file[0]
         end
 
-        self.widgets.flip_data: begin
-            ; Nothing to be doe
-        end
-        
         self.widgets.preprocess_go: begin
             ; Delete any volume array to free up memory
             self->free_memory
-            widget_control, self.widgets.base_file, get_value=base_file
-            base_file = base_file[0]
-            widget_control, self.widgets.file_type, get_value=file_type
-            file_type = file_type[0]
-            widget_control, self.widgets.first_file, get_value=first_file
-            widget_control, self.widgets.last_file, get_value=last_file
+            ; Get file name and set default directory
+            file = dialog_pickfile( get_path=path)
+            if (file eq '') then break
+            pos = strpos(file, path)
+            if (pos ge 0) then begin
+              pos = pos + strlen(path)
+              file = strmid(file, pos)
+            endif
+            cd, path
+            self->set_directory
             widget_control, self.widgets.dark_current, get_value=dark_current
             widget_control, self.widgets.threshold, get_value=threshold
             widget_control, self.widgets.double_threshold, get_value=double_threshold
-            widget_control, self.widgets.white_average, get_value=white_average
-            widget_control, self.widgets.white_smooth, get_value=white_smooth
-            widget_control, self.widgets.flip_data, get_value = flip_data
             widget_control, self.widgets.abort, set_uvalue=0
             widget_control, self.widgets.status, set_value=""
             ; dark current file loading
-            widget_control, self.widgets.dc_filename, get_value = dc_filename
-              dc_filename = dc_filename[0]
-              if (dc_filename ne '') then begin
-                self->measure_dc, dc_filename, dark = dark_current, file_type = file_type
-              endif
-            self.ptomo->preprocess, base_file, file_type, first_file, last_file, $
+            self.ptomo->preprocess, file, $
                             dark=dark_current, $
                             threshold=threshold, double_threshold=double_threshold, $
-                            white_average=white_average, white_smooth=white_smooth, $
                             abort_widget=self.widgets.abort, $
-                            status_widget=self.widgets.status,$
-                            flip_data = flip_data
-        end
-
-        self.widgets.dc_search : begin
-            dc_filename = dialog_pickfile()
-            widget_control, self.widgets.dc_filename, set_value = dc_filename
+                            status_widget=self.widgets.status
         end
 
         self.widgets.reconstruct_slice[0]: begin
