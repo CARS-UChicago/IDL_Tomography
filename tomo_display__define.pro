@@ -22,7 +22,7 @@ pro tomo_display::set_tomo_params
     widget_control, self.widgets.numThreads, get_value=numThreads
     widget_control, self.widgets.slicesPerChunk, get_value=slicesPerChunk
  
-    self.tomoParams = tomo_params_init(*self.pvolume, $
+    self.tomoParams = tomo_params_init(*self.tomoStruct.pvolume, $
             sinoScale = 10000., $
             reconScale = reconScale, $
             paddedSinogramWidth=paddedSinogramWidth, $
@@ -84,8 +84,8 @@ end
 pro tomo_display::reconstruct, islice
     ; This function is called to reconstruct a single slice or to reconstruct all
     ; If islice is defined then we are to reconstruct a single slice
-    if (not ptr_valid(self.pvolume)) then begin
-        t = dialog_message('Must read in volume file first.', /error)
+    if (not ptr_valid(self.tomoStruct.pvolume)) then begin
+        t = dialog_message('Must read in file first.', /error)
         return
     endif
     widget_control, /hourglass
@@ -95,9 +95,9 @@ pro tomo_display::reconstruct, islice
     if (n_elements(islice) ne 0) then begin
         widget_control, self.widgets.rotation_center[islice], get_value=center
         widget_control, self.widgets.recon_slice[islice], get_value=slice
-        slice = slice < (self.ny-1)
-        angles=*self.setup.angles
-        r = reconstruct_slice(self.tomoParams, angles=angles, slice, *self.pvolume, $
+        slice = slice < (self.tomoStruct.ny-1)
+        angles=*self.tomoStruct.angles
+        r = reconstruct_slice(self.tomoParams, angles=angles, slice, *self.tomoStruct.pvolume, $
                               center=center, sinogram=sinogram, cog=cog)
         ; If reconstruction was with backproject, rotate image so it is the same
         ; orientation as with gridrec
@@ -110,13 +110,13 @@ pro tomo_display::reconstruct, islice
             widget_control, self.widgets.display_max, get_value=max
         endelse
         dims = size(r, /dimensions)
-        xdist = findgen(dims[0])*self.setup.x_pixel_size
+        xdist = findgen(dims[0])*self.tomoStruct.x_pixel_size
         ydist = xdist
         ; Change the size of the image before calling image_display
         self->rebin, r, xdist, ydist
-        widget_control, self.widgets.volume_file, get_value=file
+        widget_control, self.widgets.input_file, get_value=file
         dims = size(r, /dimensions)
-        xdist = findgen(dims[0])*self.setup.x_pixel_size
+        xdist = findgen(dims[0])*self.tomoStruct.x_pixel_size
 
         title = file + '    Center='+strtrim(string(center),2) + $
                        '     Slice='+strtrim(string(slice),2)
@@ -130,7 +130,7 @@ pro tomo_display::reconstruct, islice
         ; Plot center-of-gravity if desired
         widget_control, self.widgets.plot_cog, get_value=plot_cog
         if (plot_cog and (n_elements(cog) ne 0)) then begin
-            angles = *self.setup.angles
+            angles = *self.tomoStruct.angles
             iplot, angles, cog[*,0], ytitle='Center of gravity', xtitle='Angle (degrees)', $
                    name='Measured', color=[0,0,255], identifier=id, /disable_splash_screen, /no_saveprompt
             iplot, angles, cog[*,1], /overplot,  $
@@ -141,42 +141,79 @@ pro tomo_display::reconstruct, islice
         endif
     endif else begin
         ; Reconstruct entire file
-        ; Delete any volume array to free up memory
-        self->free_memory
-        widget_control, self.widgets.base_file, get_value=base_file
-        base_file = base_file[0]
         widget_control, self.widgets.abort, set_uvalue=0
         widget_control, self.widgets.status, set_value=""
         widget_control, self.widgets.rotation_center[0], get_value=center0
         widget_control, self.widgets.rotation_center[1], get_value=center1
         widget_control, self.widgets.recon_slice[0], get_value=slice0
         widget_control, self.widgets.recon_slice[1], get_value=slice1
+        widget_control, self.widgets.recon_data_type, get_value=index, get_uvalue=data_types
+        data_type = data_types[index]
+        widget_control, self.widgets.recon_write_output, get_value=write_output
+        widget_control, self.widgets.recon_file_format, get_value=file_format
+        netcdf = file_format eq 1
         slice = float([slice0, slice1])
         cent = float([center0, center1])
         ; Compute the rotation center of the first and last slices
         coeffs = poly_fit(slice, cent, 1)
         center0 = coeffs[0]
-        center1 = coeffs[0] + coeffs[1]*(self.ny-1)
+        center1 = coeffs[0] + coeffs[1]*(self.tomoStruct.ny-1)
         center = [center0, center1]
-        angles = *self.setup.angles
-        self.ptomo->reconstruct_volume, self.tomoParams, base_file, $
-                              angles=angles, center=center, $
-                              abort_widget=self.widgets.abort, $
-                              status_widget=self.widgets.status
+        angles = *self.tomoStruct.angles
+        self.tomoObj->reconstruct_volume, self.tomoParams, $
+                                          center=center, data_type=data_type, $
+                                          write_output=write_output, netcdf=netcdf
+        self.tomoStruct = self.tomoObj->get_struct()
+        self->update_volume_widgets
     endelse
 end
 
+pro tomo_display::update_file_widgets
+  widget_control, self.widgets.input_file, set_value=self.tomoStruct.input_filename
+  widget_control, self.widgets.base_file, set_value=self.tomoStruct.base_filename
+  widget_control, self.widgets.directory, set_value=self.tomoStruct.directory
+end
+
+pro tomo_display::update_volume_widgets
+    widget_control, self.widgets.volume_type, set_value=self.tomoStruct.image_type
+    widget_control, self.widgets.nx, set_value=self.tomoStruct.nx
+    widget_control, self.widgets.ny, set_value=self.tomoStruct.ny
+    widget_control, self.widgets.nz, set_value=self.tomoStruct.nz
+    ; Set the intensity range
+    min = min(*self.tomoStruct.pvolume, max=max)
+    widget_control, self.widgets.data_min, set_value=min
+    widget_control, self.widgets.data_max, set_value=max
+    ; Set the slice display range
+    self->set_limits
+end
 
+pro tomo_display::set_limits
+  widget_control, self.widgets.direction, get_value=direction
+  case direction of
+    0: last_slice=self.tomoStruct.nx-1
+    1: last_slice=self.tomoStruct.ny-1
+    2: last_slice=self.tomoStruct.nz-1
+  endcase
+  widget_control, self.widgets.last_slice, set_value=last_slice
+  widget_control, self.widgets.disp_slice, set_value=last_slice/2
+  widget_control, self.widgets.disp_slider, set_slider_max=last_slice
+  widget_control, self.widgets.disp_slider, set_value=last_slice/2
+  widget_control, self.widgets.recon_slice[0], set_value=self.tomoStruct.ny*0.1
+  widget_control, self.widgets.recon_slice[1], set_value=self.tomoStruct.ny*0.9
+  widget_control, self.widgets.filter_size, set_value=self.tomoStruct.nx
+end
+
+
 pro tomo_display::optimize_rotation_center
-    if (not ptr_valid(self.pvolume)) then begin
+    if (not ptr_valid(self.tomoStruct.pvolume)) then begin
         t = dialog_message('Must read in volume file first.', /error)
         return
     endif
     widget_control, /hourglass
     widget_control, self.widgets.recon_slice[0], get_value=top_slice
-    top_slice = top_slice < (self.ny-1)
+    top_slice = top_slice < (self.tomoStruct.ny-1)
     widget_control, self.widgets.recon_slice[1], get_value=bottom_slice
-    bottom_slice = bottom_slice < (self.ny-1)
+    bottom_slice = bottom_slice < (self.tomoStruct.ny-1)
 
     self.set_tomo_params
     
@@ -187,10 +224,10 @@ pro tomo_display::optimize_rotation_center
     npoints = long(range/step) + 1
     centers = findgen(npoints)*step + (center-range/2.)
     
-    proj0 = reform((*self.pvolume)[*,*,0])
-    proj180 = reform((*self.pvolume)[*,*,self.setup.nz-1])
+    proj0 = reform((*self.tomoStruct.pvolume)[*,*,0])
+    proj180 = reform((*self.tomoStruct.pvolume)[*,*,self.tomoStruct.nz-1])
     if (method eq 0) then begin
-      optimize_rotation_center, self.tomoParams, [top_slice, bottom_slice], *self.pvolume, centers, entropy
+      optimize_rotation_center, self.tomoParams, [top_slice, bottom_slice], *self.tomoStruct.pvolume, centers, entropy
     endif else begin
       optimize_rotation_mirror, [top_slice, bottom_slice], proj0, proj180, centers, error
       entropy = error  ; Give variable the same name for plotting
@@ -204,7 +241,7 @@ pro tomo_display::optimize_rotation_center
       center1 = center1 - 0.5
       center2 = center2 - 0.5
     endif
-    widget_control, self.widgets.volume_file, get_value=file
+    widget_control, self.widgets.input_file, get_value=file
     title = file + '   Slice=['+strtrim(string(top_slice),2)+','+strtrim(string(bottom_slice),2)+']'
     iplot, centers, entropy[*,0], xtitle='Rotation center', ytitle='Image entropy', sym_index=2, $
            view_title=title, id=id, /disable_splash_screen, /no_saveprompt
@@ -222,110 +259,31 @@ end
 
 
 pro tomo_display::correct_rotation_tilt
-  if (not ptr_valid(self.pvolume)) then begin
+  if (not ptr_valid(self.tomoStruct.pvolume)) then begin
     t = dialog_message('Must read in volume file first.', /error)
     return
   endif
   widget_control, /hourglass
   widget_control, self.widgets.recon_slice[0], get_value=top_slice
-  top_slice = top_slice < (self.ny-1)
+  top_slice = top_slice < (self.tomoStruct.ny-1)
   widget_control, self.widgets.recon_slice[1], get_value=bottom_slice
-  bottom_slice = bottom_slice < (self.ny-1)
+  bottom_slice = bottom_slice < (self.tomoStruct.ny-1)
   widget_control, self.widgets.rotation_center[0], get_value=top_center
   widget_control, self.widgets.rotation_center[1], get_value=bottom_center
   angle = (top_center-bottom_center) / (bottom_slice - top_slice) / !dtor
-  for i=0, self.nz-1 do begin
-    proj = (*self.pvolume)[*,*,i]
+  for i=0, self.tomoStruct.nz-1 do begin
+    proj = (*self.tomoStruct.pvolume)[*,*,i]
     r = rot(proj, angle, cubic=-0.5)
-    (*self.pvolume)[0,0,i] = r
+    (*self.tomoStruct.pvolume)[0,0,i] = r
     widget_control, self.widgets.status, $
-      set_value='Correcting projection ' + strtrim(i+1, 2) + '/' + strtrim(self.nz, 2)
+      set_value='Correcting projection ' + strtrim(i+1, 2) + '/' + strtrim(self.tomoStruct.nz, 2)
   endfor
   widget_control, self.widgets.status, set_value='Optimizing rotation center ...'
   self.optimize_rotation_center
-  widget_control, self.widgets.volume_file, get_value=file
+  widget_control, self.widgets.input_file, get_value=file
   widget_control, self.widgets.status, set_value='Saving volume file ...'
-  write_tomo_volume, file, *self.pvolume
+  write_tomo_volume, file, *self.tomoStruct.pvolume
   widget_control, self.widgets.status, set_value=''
-end
-
-
-pro tomo_display::set_base_file, base_file
-    widget_control, self.widgets.base_file, set_value=base_file
-    widget_control, self.widgets.first_file, set_value=1
-    widget_control, self.widgets.file_type, get_value=file_type
-    files = file_search(base_file + '*' + file_type, count=count)
-    
-    ; if the number of found files of the given type equals 0, try looking for other types
-    if(count eq 0) then begin
-      file_type = '*.SPE'
-      files = file_search(base_file + file_type, count=count)
-      if (count ne 0) then widget_control, self.widgets.file_type, set_value = '.SPE'
-    endif
-    if(count eq 0) then begin
-      file_type = '*.nc'
-      files = file_search(base_file + file_type, count=count)
-      if (count ne 0) then widget_control, self.widgets.file_type, set_value = '.nc'
-    endif
-    
-    widget_control, self.widgets.last_file, set_value=count
-    ; Read the setup file.  If there are non-zero values for the dark current
-    ; or rotation axis then use them.
-    s = self.ptomo->read_setup(base_file + '.setup')
-    self.setup = self.ptomo->get_setup()
-    if (self.setup.dark_current ne 0.) then begin
-        widget_control, self.widgets.dark_current, $
-                        set_value=self.setup.dark_current
-    endif
-    if (self.setup.center ne 0.) then begin
-        center = self.setup.center
-        widget_control, self.widgets.rotation_center[0], set_value=center
-        widget_control, self.widgets.rotation_center[1], set_value=center
-        widget_control, self.widgets.rotation_optimize_center, set_value=center
-    endif
-    
-    ; look for a dark current file
-    dc_file = file_search('Dark_Current_Measurement*',count = count)
-    if (count ne 0) then begin
-      cd, current = current
-      widget_control, self.widgets.dc_filename, set_value = current + '\'+ dc_file[0]
-    endif else widget_control, self.widgets.dc_filename, set_value = ''
-    
-end
-
-pro tomo_display::set_directory
-    cd, current=current
-    widget_control, self.widgets.directory, set_value=current
-    ; See if there are any .setup files in this directory
-    ; If so, make the first one the default base file
-    files = file_search('*.setup', count=count)
-    if (count ge 1) then begin
-        file = files[0]
-        index = strpos(file, '.setup')
-        file = strmid(file, 0, index)
-        self->set_base_file, file
-    endif
-end
-
-pro tomo_display::set_limits
-    widget_control, self.widgets.direction, get_value=direction
-    case direction of
-        0: last_slice=self.nx-1
-        1: last_slice=self.ny-1
-        2: last_slice=self.nz-1
-    endcase
-    widget_control, self.widgets.last_slice, set_value=last_slice
-    widget_control, self.widgets.disp_slice, set_value=last_slice/2
-    widget_control, self.widgets.disp_slider, set_slider_max=last_slice
-    widget_control, self.widgets.disp_slider, set_value=last_slice/2
-    widget_control, self.widgets.recon_slice[0], set_value=self.ny*0.1
-    widget_control, self.widgets.recon_slice[1], set_value=self.ny*0.9
-    widget_control, self.widgets.filter_size, set_value=self.nx;;/4
-end
-
-pro tomo_display::free_memory
-    ptr_free, self.pvolume
-    widget_control, self.widgets.volume_file, set_value=''
 end
 
 
@@ -402,35 +360,35 @@ pro tomo_display_event, event
 end
 
 pro tomo_display::display_slice, new_window=new_window
-    if (ptr_valid(self.pvolume)) then begin
+    if (ptr_valid(self.tomoStruct.pvolume)) then begin
         widget_control, self.widgets.disp_slice, get_value=slice
         widget_control, self.widgets.direction, get_value=direction
-        widget_control, self.widgets.volume_file, get_value=file
+        widget_control, self.widgets.input_file, get_value=file
         ; Set the axis dimensions
-        if (self.setup.image_type eq 'RECONSTRUCTED') then begin
-            xdist = findgen(self.nx)*self.setup.x_pixel_size
-            ydist = findgen(self.ny)*self.setup.x_pixel_size
-            zdist = findgen(self.nz)*self.setup.y_pixel_size
+        if (self.tomoStruct.image_type eq 'RECONSTRUCTED') then begin
+            xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.x_pixel_size
+            ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.x_pixel_size
+            zdist = findgen(self.tomoStruct.nz)*self.tomoStruct.y_pixel_size
         endif else begin
-            xdist = findgen(self.nx)*self.setup.x_pixel_size
-            ydist = findgen(self.ny)*self.setup.y_pixel_size
-            zdist = *self.setup.angles
+            xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.x_pixel_size
+            ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.y_pixel_size
+            zdist = *self.tomoStruct.angles
         endelse
         case direction of
             0: begin
-                slice = (slice > 0) < (self.nx-1)
-                r = (*(self.pvolume))[slice, *, *]
+                slice = (slice > 0) < (self.tomoStruct.nx-1)
+                r = (*(self.tomoStruct.pvolume))[slice, *, *]
                 xdist = ydist
                 ydist = zdist
                 end
             1: begin
-                slice = (slice > 0) < (self.ny-1)
-                r = (*(self.pvolume))[*, slice, *]
+                slice = (slice > 0) < (self.tomoStruct.ny-1)
+                r = (*(self.tomoStruct.pvolume))[*, slice, *]
                 ydist = zdist
                 end
             2: begin
-                slice = (slice > 0) < (self.nz-1)
-                r = (*(self.pvolume))[*, *, slice]
+                slice = (slice > 0) < (self.tomoStruct.nz-1)
+                r = (*(self.tomoStruct.pvolume))[*, *, slice]
                 end
         endcase
         axes = ['X', 'Y', 'Z']
@@ -460,10 +418,10 @@ pro tomo_display::display_slice, new_window=new_window
 end
 
 pro tomo_display::volume_render
-    if (ptr_valid(self.pvolume)) then begin
+    if (ptr_valid(self.tomoStruct.pvolume)) then begin
         widget_control, self.widgets.display_min, get_value=min
         widget_control, self.widgets.display_max, get_value=max
-        v = bytscl(*self.pvolume, min=min, max=max)
+        v = bytscl(*self.tomoStruct.pvolume, min=min, max=max)
         volume_render, v
     endif else begin
         t = dialog_message('Must read in volume file first.', /error)
@@ -486,131 +444,50 @@ pro tomo_display::event, event
 ;    endif
 
     case event.id of
-        self.widgets.change_directory: begin
-            f = dialog_pickfile(/directory, get_path=p)
-            if (p ne "") then begin
-                cd, p
-                self->set_directory
-            endif
-        end
-
-        self.widgets.read_volume_file: begin
-            file = dialog_pickfile(filter='*.volume', get_path=path)
-            if (file eq '') then break
-            pos = strpos(file, path)
-            if (pos ge 0) then begin
-                pos = pos + strlen(path)
-                file = strmid(file, pos)
-            endif
-            cd, path
-            self->set_directory
-            pos = strpos(file, 'recon.volume')
-            if (pos ge 0) then begin
-                base_file = strmid(file, 0, pos)
-                self->set_base_file, base_file
-            endif else begin
-                pos = strpos(file, '.volume')
-                if (pos ge 0) then begin
-                    base_file = strmid(file, 0, pos)
-                    self->set_base_file, base_file
-                endif
-            endelse
-            ptr_free, self.pvolume
-            widget_control, /hourglass
-            widget_control, self.widgets.status, $
-                            set_value='Reading volume file ...'
-            vol = self.ptomo->read_volume(file)
-            self.setup = self.ptomo->get_setup()
-            widget_control, self.widgets.volume_type, $
-                            set_value=self.setup.image_type
-            self.pvolume = ptr_new(vol, /no_copy)
-            dims = size(*self.pvolume, /dimensions)
-            ; Set the volume filename and path
-            widget_control, self.widgets.volume_file, set_value=file
-            widget_control, self.widgets.directory, set_value=path
-            ; Set the array dimensions
-            widget_control, self.widgets.nx, set_value=dims[0]
-            self.nx = dims[0]
-            widget_control, self.widgets.ny, set_value=dims[1]
-            self.ny = dims[1]
-            widget_control, self.widgets.nz, set_value=dims[2]
-            self.nz = dims[2]
-            ; Set the intensity range
-            min = min(*self.pvolume, max=max)
-            widget_control, self.widgets.data_min, set_value=min
-            widget_control, self.widgets.data_max, set_value=max
-            ; Set the slice display range
-            self->set_limits
-            ; Build the angle array if it does not exist
-            if (not ptr_valid(self.setup.angles)) then begin
-                ; Assume evenly spaced angles 0 to 180-angle_step degrees
-                self.setup.angles = ptr_new(findgen(self.nz)/(self.nz) * 180.)
-            endif
-            ; Set the pixel sizes to 1 if they are zero
-            if (self.setup.x_pixel_size eq 0.) then self.setup.x_pixel_size=1.0
-            if (self.setup.y_pixel_size eq 0.) then self.setup.y_pixel_size=1.0
-            if (self.setup.z_pixel_size eq 0.) then self.setup.z_pixel_size=1.0
-            ; Set the rotation center either from the .setup file or to nx/2.
-            if (self.setup.center ne 0.) then begin
-                center = self.setup.center
-            endif else begin 
-                center = self.nx/2.
-            endelse
-            widget_control, self.widgets.rotation_center[0], set_value=center
-            widget_control, self.widgets.rotation_center[1], set_value=center
-            widget_control, self.widgets.rotation_optimize_center, set_value=center
-            widget_control, self.widgets.status, $
-                            set_value='Done reading volume file ' + file
-        end
-
         self.widgets.read_camera_file: begin
-            file = dialog_pickfile(filter=['*.SPE','*.nc'], get_path=path)
+          file = dialog_pickfile(filter=['*.nc', '*.h5'], get_path=path)
+          if (file eq '') then break
+          cd, path
+          self->update_file_widgets
+          widget_control, /hourglass
+          widget_control, self.widgets.status, $
+            set_value='Reading camera file ' + file + ' ...'
+          self.tomoObj->read_camera_file, file
+          self.tomoStruct = self.tomoObj->get_struct()
+          self->update_file_widgets
+          self->update_volume_widgets
+          ; Set the rotation center either from the tomo object
+          widget_control, self.widgets.dark_current, set_value=self.tomoStruct.dark_current
+          widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
+          widget_control, self.widgets.rotation_center[1], set_value=self.tomoStruct.rotation_center
+          widget_control, self.widgets.rotation_optimize_center, set_value=self.tomoStruct.rotation_center
+          widget_control, self.widgets.status, $
+            set_value='Done reading camera file ' + file
+        end
+
+        self.widgets.read_processed_file: begin
+            file = dialog_pickfile(filter=['*.nc', '*.h5'], get_path=path)
             if (file eq '') then break
+            cd, path
+            self->update_file_widgets
             widget_control, /hourglass
             widget_control, self.widgets.status, $
-                            set_value='Reading camera file ...'
-            if (strpos(file, '.SPE') ne -1) then begin
-              read_princeton, file, vol
-            endif else if (strpos(file, '.nc') ne -1) then begin
-              vol = read_nd_netcdf(file)
-            endif
+                            set_value='Reading input file ' + file + ' ...'
+            t = self.tomoObj->read_volume(file, /store)
+            self.tomoStruct = self.tomoObj->get_struct()
+            self->update_file_widgets
+            self->update_volume_widgets
+            ; Set the rotation center either from the tomo object
+            widget_control, self.widgets.dark_current, set_value=self.tomoStruct.dark_current
+            widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
+            widget_control, self.widgets.rotation_center[1], set_value=self.tomoStruct.rotation_center
+            widget_control, self.widgets.rotation_optimize_center, set_value=self.tomoStruct.rotation_center
             widget_control, self.widgets.status, $
-                            set_value='Done reading camera file ' + file
-            if (size(vol, /n_dimensions) eq 3) then begin
-               ptr_free, self.pvolume
-               widget_control, self.widgets.volume_type, $
-                            set_value='RAW'
-               self.pvolume = ptr_new(vol, /no_copy)
-               dims = size(*self.pvolume, /dimensions)
-               ; Set the array dimensions
-               widget_control, self.widgets.nx, set_value=dims[0]
-               self.nx = dims[0]
-               widget_control, self.widgets.ny, set_value=dims[1]
-               self.ny = dims[1]
-               widget_control, self.widgets.nz, set_value=dims[2]
-               self.nz = dims[2]
-               ; Set the intensity range
-               min = min(*self.pvolume, max=max)
-               widget_control, self.widgets.data_min, set_value=min
-               widget_control, self.widgets.data_max, set_value=max
-               ; Set the slice display range
-                self->set_limits
-               ; Build the angle array if it does not exist
-               if (not ptr_valid(self.setup.angles)) then begin
-                   ; Assume evenly spaced angles 0 to 180-angle_step degrees
-                   self.setup.angles = ptr_new(findgen(self.nz)/(self.nz) * 180.)
-               endif
-               ; Set the pixel sizes to 1 if they are zero
-               if (self.setup.x_pixel_size eq 0.) then self.setup.x_pixel_size=1.0
-               if (self.setup.y_pixel_size eq 0.) then self.setup.y_pixel_size=1.0
-               if (self.setup.z_pixel_size eq 0.) then self.setup.z_pixel_size=1.0
-            endif else begin
-               image_display, vol
-            endelse
+                            set_value='Done reading file ' + file
         end
 
         self.widgets.free_memory: begin
-            self->free_memory
+            self.tomoObj->free_memory
         end
 
         self.widgets.exit: begin
@@ -623,40 +500,41 @@ pro tomo_display::event, event
             widget_control, self.widgets.options_base, map=1
         end
 
-        self.widgets.base_file: begin
-            widget_control, self.widgets.base_file, get_value=base_file
-            self->set_base_file, base_file[0]
-        end
-
-        self.widgets.file_type: begin
-            widget_control, self.widgets.base_file, get_value=base_file
-            self->set_base_file, base_file[0]
-        end
-
         self.widgets.preprocess_go: begin
-            ; Delete any volume array to free up memory
-            self->free_memory
-            ; Get file name and set default directory
-            file = dialog_pickfile( get_path=path)
-            if (file eq '') then break
-            pos = strpos(file, path)
-            if (pos ge 0) then begin
-              pos = pos + strlen(path)
-              file = strmid(file, pos)
-            endif
-            cd, path
-            self->set_directory
             widget_control, self.widgets.dark_current, get_value=dark_current
             widget_control, self.widgets.threshold, get_value=threshold
             widget_control, self.widgets.double_threshold, get_value=double_threshold
+            widget_control, self.widgets.preprocess_data_type, get_value=index, get_uvalue=data_types
+            data_type = data_types[index]
+            widget_control, self.widgets.preprocess_write_output, get_value=write_output
+            widget_control, self.widgets.preprocess_file_format, get_value=file_format
+            netcdf = file_format eq 1
             widget_control, self.widgets.abort, set_uvalue=0
             widget_control, self.widgets.status, set_value=""
-            ; dark current file loading
-            self.ptomo->preprocess, file, $
-                            dark=dark_current, $
+            widget_control, /hourglass
+            widget_control, self.widgets.status, set_value='Preprocessing ...'
+            self.tomoObj->preprocess, dark=dark_current, $
                             threshold=threshold, double_threshold=double_threshold, $
-                            abort_widget=self.widgets.abort, $
-                            status_widget=self.widgets.status
+                            data_type=data_type, write_output=write_output, netcdf=netcdf
+            self.tomoStruct = self.tomoObj->get_struct()
+            self->update_volume_widgets
+            ; Set the rotation center
+            widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
+            widget_control, self.widgets.rotation_center[1], set_value=self.tomoStruct.rotation_center
+            widget_control, self.widgets.rotation_optimize_center, set_value=self.tomoStruct.rotation_center
+            widget_control, self.widgets.status, set_value='Preprocessing complete'
+        end
+
+        self.widgets.preprocess_data_type: begin
+            ; Nothing to do
+        end
+
+        self.widgets.preprocess_write_output: begin
+          ; Nothing to do
+        end
+
+        self.widgets.preprocess_file_format: begin
+          ; Nothing to do
         end
 
         self.widgets.reconstruct_slice[0]: begin
@@ -673,6 +551,18 @@ pro tomo_display::event, event
 
         self.widgets.rotation_optimize: begin
           self->optimize_rotation_center
+        end
+
+        self.widgets.recon_data_type: begin
+          ; Nothing to do
+        end
+
+        self.widgets.recon_write_output: begin
+          ; Nothing to do
+        end
+
+        self.widgets.recon_file_format: begin
+          ; Nothing to do
         end
 
         self.widgets.reconstruct_all: begin
@@ -728,7 +618,7 @@ pro tomo_display::event, event
 
         self.widgets.make_movie: begin
             widget_control, self.widgets.disp_slice, get_value=slice
-            if (ptr_valid(self.pvolume)) then begin
+            if (ptr_valid(self.tomoStruct.pvolume)) then begin
                 widget_control, self.widgets.auto_intensity, get_value=auto
                 if (auto) then begin
                     widget_control, self.widgets.data_min, get_value=min
@@ -758,14 +648,14 @@ pro tomo_display::event, event
                 endcase
                 widget_control, self.widgets.abort, set_uvalue=0
                 widget_control, self.widgets.status, set_value=""
-                make_movie, index=direction+1, scale=scale, *self.pvolume, $
+                make_movie, index=direction+1, scale=scale, *self.tomoStruct.pvolume, $
                             jpeg_file=jpeg_file, tiff_file=tiff_file, mp4_file=mp4_file, $
                             min=min, max=max, start=start, stop=stop, step=step, wait=wait, $
                             unscaled_tiff=unscaled_tiff, fps=fps, bps=bps, $
                             label=label, abort_widget=self.widgets.abort, /color, $
                             status_widget=self.widgets.status
             endif else begin
-                t = dialog_message('Must read in volume file first.', /error)
+                t = dialog_message('Must read in file first.', /error)
             endelse
         end
 
@@ -773,8 +663,8 @@ pro tomo_display::event, event
     endcase
 
 end_event:
-    ; If there is a valid volume array make the visualize base sensitive
-    sensitive = ptr_valid(self.pvolume)
+    ; If there is a valid array make the visualize base sensitive
+    sensitive = ptr_valid(self.tomoStruct.pvolume)
     widget_control, self.widgets.visualize_base, sensitive=sensitive
 
 end
@@ -818,12 +708,10 @@ function tomo_display::init
                                    title='IDL Tomography Processing', mbar=mbar)
 
     file = widget_button(mbar, /menu, value = 'File')
-    self.widgets.change_directory = widget_button(file, $
-                                            value = 'Change directory ...')
-    self.widgets.read_volume_file = widget_button(file, $
-                                            value = 'Read volume file ...')
     self.widgets.read_camera_file = widget_button(file, $
                                             value = 'Read camera file ...')
+    self.widgets.read_processed_file = widget_button(file, $
+                                            value = 'Read processed file ...')
     self.widgets.free_memory = widget_button(file, value='Free volume array')
     self.widgets.exit = widget_button(file, $
                                             value = 'Exit')
@@ -837,13 +725,10 @@ function tomo_display::init
     self.widgets.main_base = col
     t = widget_label(col, value='File/Status', font=self.fonts.heading1)
     self.widgets.base_file = cw_field(col, title="Base file name:", $
-                                        xsize=25, /return_events)
-    self.widgets.file_type = cw_field(col, title="Base file type:", $
-                                        xsize=25, /return_events)
-    widget_control, self.widgets.file_type, set_value = '.SPE'
+                                        xsize=25, /noedit)
     self.widgets.directory = cw_field(col, title="Working directory:", $
                                         xsize=50, /noedit)
-    self.widgets.volume_file = cw_field(col, title="Volume file name:", $
+    self.widgets.input_file = cw_field(col, title="Input file name:", $
                                         xsize=50, /noedit)
     row = widget_base(col, /row)
     self.widgets.status = cw_field(row, title="Status:", $
@@ -858,21 +743,22 @@ function tomo_display::init
     self.widgets.preprocess_base = col
     t = widget_label(col, value='Preprocess', font=self.fonts.heading1)
     row = widget_base(col, /row, /base_align_bottom)
-    self.widgets.first_file = cw_field(row, /column, title='First file', $
-                                      /integer, xsize=10, value=1)
-    self.widgets.last_file = cw_field(row, /column, title='Last file', $
-                                      /integer, xsize=10, value=1)
     self.widgets.dark_current = cw_field(row, /column, title='Dark current', $
                                       /integer, xsize=10, value=100)
-    self.widgets.flip_data = cw_bgroup(row, /column, ['Transpose Data'], /nonexclusive, $
-                                       set_value = 0)
     col1 = widget_base(row, /column)
     self.widgets.preprocess_go = widget_button(col1, value=' Preprocess ')
-    row = widget_base(col, /row, /base_align_bottom)
-    self.widgets.dc_filename = cw_field(row, title="Dark Field file name:", $
-                                        xsize=25)
-    self.widgets.dc_search = widget_button(row, value = ' Search for Dark Field file ')
-
+    row = widget_base(col, /row)
+    choices = ['UInt16', 'Float32']
+    self.widgets.preprocess_data_type = cw_bgroup(row, choices, $
+      label_left='Data type:', $
+      row=1, set_value=0, /exclusive, ypad=0, uvalue=choices)
+    row = widget_base(col, /row)
+    self.widgets.preprocess_write_output = cw_bgroup(row, ['No', 'Yes'], $
+      label_left='Save result:', $
+      row=1, set_value=0, /exclusive, ypad=0)
+    self.widgets.preprocess_file_format = cw_bgroup(row, ['HDF5', 'netCDF'], $
+      label_left='File format:', $
+      row=1, set_value=0, /exclusive, ypad=0)
 
     ; Reconstruction
     col = widget_base(left_column, /column, /frame)
@@ -906,10 +792,22 @@ function tomo_display::init
     row = widget_base(col, /row, /base_align_bottom)
     t = widget_label(row, value='Correct rotation tilt:')
     self.widgets.correct_rotation_tilt = widget_button(row, value='Correct rotation tilt')
-    row = widget_base(col, /row, /base_align_bottom)
+    row = widget_base(col, /row)
+    choices = ['Int16', 'UInt16', 'Float32']
+    self.widgets.recon_data_type = cw_bgroup(row, choices, $
+      label_left='Data type:', $
+      row=1, set_value=0, /exclusive, ypad=0, uvalue=choices)
+    row = widget_base(col, /row)
+    self.widgets.recon_write_output = cw_bgroup(row, ['No', 'Yes'], $
+      label_left='Save result:', $
+      row=1, set_value=1, /exclusive, ypad=0)
+    self.widgets.recon_file_format = cw_bgroup(row, ['HDF5', 'netCDF'], $
+      label_left='File format:', $
+      row=1, set_value=0, /exclusive, ypad=0)
+    row = widget_base(col, /row)
     t = widget_label(row, value='Reconstruct all:')
     self.widgets.reconstruct_all = widget_button(row, $
-                                                   value='Reconstruct all')
+      value='Reconstruct all')
 
     ; Visualization
     right_column = widget_base(whole_display, /column)
@@ -1009,8 +907,6 @@ function tomo_display::init
     row = widget_base(col, /row)
     self.widgets.movie_file = cw_field(row, title="JPEG/TIFF/MP4 file name:", $
                                         xsize=40)
-
-    self.ptomo = obj_new('tomo')
 
     widget_control, self.widgets.base, set_uvalue=self
     ; Make all of the base widgets the same size so they line up nicely
@@ -1150,7 +1046,7 @@ function tomo_display::init
     widget_control, self.widgets.options_base, /realize, map=0
     widget_control, self.widgets.options_base, set_uvalue=self
 
-    self->set_directory
+    self.tomoObj = obj_new('tomo', abort_widget=self.widgets.abort, status_widget=self.widgets.status)
 
     xmanager, 'tomo_display', self.widgets.base, /no_block
     xmanager, 'tomo_options', self.widgets.options_base, /no_block
@@ -1158,33 +1054,29 @@ function tomo_display::init
 end
 
 pro tomo_display::cleanup
-    ptr_free, self.pvolume
 end
 
 pro tomo_display__define
 
     widgets={ tomo_display_widgets, $
         base: 0L, $
-        change_directory: 0L, $
-        read_volume_file: 0L, $
         read_camera_file: 0L, $
+        read_processed_file: 0L, $
         free_memory: 0L, $
         exit: 0L, $
         processing_options: 0L, $
         main_base: 0L, $
         base_file: 0L, $
-        file_type: 0L, $
         directory: 0L, $
-        volume_file: 0L, $
+        input_file: 0L, $
         status: 0L, $
         abort: 0L, $
         preprocess_base: 0L, $
-        first_file: 0L, $
-        last_file: 0L, $
         dark_current: 0L, $
         preprocess_go: 0L, $
-        dc_filename: 0L, $
-        dc_search: 0L, $
+        preprocess_data_type: 0L, $
+        preprocess_write_output: 0L, $
+        preprocess_file_format: 0L, $
         reconstruct_base: 0L, $
         recon_slice: lonarr(2), $
         rotation_center: lonarr(2), $
@@ -1195,6 +1087,9 @@ pro tomo_display__define
         correct_rotation_tilt: 0L, $
         rotation_optimize_method: 0L, $
         rotation_optimize: 0L, $
+        recon_data_type: 0L, $
+        recon_write_output: 0L, $
+        recon_file_format: 0L, $
         reconstruct_all: 0L, $
         visualize_base: 0L, $
         nx: 0L, $
@@ -1262,12 +1157,13 @@ pro tomo_display__define
     tomo_display = {tomo_display, $
         widgets: widgets, $
         pvolume: ptr_new(), $
-        ptomo: obj_new(), $
-        setup: {tomo}, $
+        tomoObj: obj_new(), $
+        tomoStruct: {tomo}, $
         tomoParams: {tomo_params}, $
         nx: 0, $
         ny: 0, $
         nz: 0, $
+        image_type: '', $
         image_display: obj_new(), $
         fonts: fonts $
     }
