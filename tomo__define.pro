@@ -37,7 +37,10 @@
 ;
 pro tomo::read_camera_file, filename
 
+  t0 = systime(1)
   self->set_file_components, filename
+  ptr_free, self.pvolume
+
   ; See if the file is netCDF
   if (ncdf_is_ncdf(filename)) then begin
     self.base_filename = filename.remove(-4)
@@ -87,11 +90,12 @@ pro tomo::read_camera_file, filename
   self.pflats = ptr_new(flats, /no_copy)
   self.pdarks = ptr_new(darks, /no_copy)
   self.rotation_center = dims[0]/2.
-  self.rotation_center_slope = 1.0
+  self.rotation_center_slope = 0.
   self.nx = dims[0]
   self.ny = dims[1]
   self.nz = dims[2]
 
+  print, 'Time to read camera file=', systime(1)-t0
 end
 
 function tomo::find_attribute, attributes, name
@@ -102,6 +106,7 @@ function tomo::find_attribute, attributes, name
 end
 
 pro tomo::display_status, message, debug_level
+  if (n_elements(debug_level) eq 0) then debug_level = 0
   if (widget_info(self.status_widget, /valid_id)) then begin
     widget_control, self.status_widget, set_value=message
   endif
@@ -214,7 +219,7 @@ pro tomo::preprocess, dark=input_dark, $
   data_type=data_type, $
   write_output=write_output, netcdf=netcdf 
   
-  tstart = systime(1)
+  tStart = systime(1)
   if (n_elements(threshold) eq 0) then threshold=1.25
   if (n_elements(double_threshold) eq 0) then double_threshold=1.05
   if (n_elements(data_type) eq 0) then data_type = 'UInt16'
@@ -265,7 +270,7 @@ pro tomo::preprocess, dark=input_dark, $
   endelse
   flats = total(flats, 3)/nflats
 
-  tflats = systime(1)
+  tFlats = systime(1)
 
   num_projections = self.nz
   self.data_offset = 0.
@@ -288,7 +293,7 @@ pro tomo::preprocess, dark=input_dark, $
     endif
   endfor
   
-  tnormalize = systime(1)
+  tNormalize = systime(1)
 
   self.image_type = 'NORMALIZED'
   if (keyword_set(write_output)) then begin
@@ -298,15 +303,348 @@ pro tomo::preprocess, dark=input_dark, $
   ptr_free, self.pvolume
   self.pvolume = ptr_new(normalized, /no_copy)
   status = self->write_setup(setup)
-  tend = systime(1)
+  tEnd = systime(1)
   self->display_status, 'Preprocessing complete', 1
 
   print, 'Preprocess execution times:'
-  print, '                  Flat adjustments:', tflats - tstart
-  print, '  Dark, flat and zinger correction:', tnormalize - tflats
-  print, '                    Writing output:', tend - tnormalize
-  print, '                             Total:', tend - tstart
+  print, '                  Flat adjustments:', tFlats - tStart
+  print, '  Dark, flat and zinger correction:', tNormalize - tFlats
+  print, '                    Writing output:', tEnd - tNormalize
+  print, '                             Total:', tEnd - tStart
  
+end
+
+pro tomo::set_tomo_params, _EXTRA=extra
+  dimensions = [self.nx, self.ny, self.nz]
+  ; Can't pass self.tomoParams because it will be a copy
+  tp = self.tomoParams
+  tomo_params_update, tp, dimensions=dimensions, _EXTRA=extra
+  self.tomoParams = tp
+end
+
+pro tomo::optimize_center, slices, center, merit, width=width, step=step, method=method
+  ; This routine calculates an array of image figure of merit as the rotation center is varied
+
+  if (n_elements(method) eq 0) then method = 'Entropy'
+  if (n_elements(width) eq 0) then width = 10
+  if (n_elements(step) eq 0) then begin
+    if (method eq 'Entropy') then step = 0.25 else step = 0.5
+  endif
+
+  t0 = systime(1)
+  ncenter = fix(2*width/step)
+  if (n_elements(center) eq 1) then begin
+    center = center - width + findgen(ncenter)*step
+  endif
+  merit = dblarr(ncenter, 2)
+  if (method eq 'Entropy') then begin
+    self->optimize_center_entropy, slices, center, merit
+  endif else begin
+    self->optimize_center_mirror, slices, center, merit
+  endelse
+
+  ; Finds the minumum in the figure of merit for each slice
+  t = min(merit[*,0], min_pos1)
+  t = min(merit[*,1], min_pos2)
+  center1 = center[min_pos1]
+  center2 = center[min_pos2]
+  if (method eq '0-180') then begin
+    ; It appears that the center is 0.5 pixel larger than the center position used by gridrec
+    center1 = center1 - 0.5
+    center2 = center2 - 0.5
+  endif
+  self->set_rotation, slices[0], center1, slices[1], center2
+  t1 = systime(1)
+  print, 'optimize_center, time=', t1-t0
+end
+
+pro tomo::optimize_center_entropy, slices, center, merit
+  ncenter = n_elements(center)
+  s = size(*self.pvolume, /dimensions)
+  input = fltarr(s[0], ncenter*2, s[2])
+  ctr = fltarr(ncenter*2)
+  for i=0, ncenter-1 do begin
+    ctr[i*2] = center[i]
+    ctr[i*2+1] = center[i]
+    input[*, i*2, *] = (*self.pvolume)[*, slices[0], *]
+    input[*, i*2+1, *] = (*self.pvolume)[*, slices[1], *]
+  endfor
+  self.tomoParams.numSlices = ncenter*2
+  tomo_recon, self.tomoParams, input, recon, angles=*self.angles, center=ctr
+
+  ; Use the slice in center of range to get min/max of reconstruction for histogram
+  r1 = recon[*,*,ncenter]
+  r2 = recon[*,*,ncenter+1]
+
+  mn1 = min(r1)
+  if ((mn1) lt 0) then mn1=2*mn1 else mn1=0.5*mn1
+  mx1 = max(r1)
+  if ((mx1) gt 0) then mx1=2*mx1 else mx1=0.5*mx1
+  binsize1=(mx1-mn1)/1.e4
+
+  mn2 = min(r2)
+  if ((mn2) lt 0) then mn2=2*mn2 else mn2=0.5*mn2
+  mx2 = max(r2)
+  if ((mx2) gt 0) then mx2=2*mx2 else mx2=0.5*mx2
+  binsize2=(mx2-mn2)/1.e4
+
+  npixels = n_elements(r1)
+  for i=0, ncenter-1 do begin
+    r1 = recon[*,*,i*2]
+    r2 = recon[*,*,i*2+1]
+    h1 = histogram(r1, min=mn1, max=mx1, bin=binsize1) > 1
+    h1 = float(h1) / npixels
+    h2 = histogram(r2, min=mn2, max=mx2, bin=binsize2) > 1
+    h2 = float(h2) / npixels
+    merit[i,0] = -total(h1*alog(h1))
+    merit[i,1] = -total(h2*alog(h2))
+  endfor
+end
+
+pro tomo::optimize_center_mirror, slices, center, merit
+  ; Determines rotation center from 2 images that are close to 180 degrees apart
+  numShift = n_elements(center)
+  if (max(*self.angles) gt 181) then begin
+    stripWidth = 101
+    mid_center = center[numShift/2]
+    overlap = min([mid_center, self.nx-1 - mid_center])
+    xmin = mid_center - overlap
+    xmax = mid_center + overlap
+    proj180 = float((*self.pvolume)[xmin:xmax, *, self.nz/2])
+    shft = round((center - mid_center) * 2)
+    shft = (shft < overlap) > (-overlap)
+  endif else begin
+    stripWidth = 11
+    xmin = 0
+    xmax = self.nx-1
+    proj180 = float((*self.pvolume)[xmin:xmax, *, self.nz-1])
+    shft = round((center - self.nx/2) * 2)
+  endelse
+  proj0 = float((*self.pvolume)[xmin:xmax, *, 0])
+  dims = size(proj0, /dimensions)
+  nx = dims[0]
+  max_shift = max(abs(shft))
+  for j=0, 1 do begin
+    ymin = slices[j] - stripWidth[0]/2 > 0
+    ymax = slices[j] + stripWidth[0]/2 < (self.ny-1)
+    p0 = reform(proj0[*, ymin:ymax])
+    p180 = reform(proj180[*, ymin:ymax])
+    p180 = rotate(p180, 5)
+    for i=0, numShift-1 do begin
+      diff = p0 - shift(p180, shft[i], 0)
+      diff = diff[max_shift:nx-max_shift-1, *]
+      d = diff^2
+      merit[i, j] = total(d)
+    endfor
+  endfor
+end
+
+pro tomo::set_rotation, slice1, center1, slice2, center2
+  slices = float([slice1, slice2])
+  center = float([center1, center2])
+  ; Do a linear fit of slice number and rotation center
+  coeffs = poly_fit(slices, center, 1)
+  self.rotation_center = coeffs[0]
+  self.rotation_center_slope = coeffs[1]
+  print, 'Rotation center, slope =', self.rotation_center, self.rotation_center_slope
+end
+
+pro tomo::correct_rotation_tilt, angle
+  if (not ptr_valid(self.pvolume)) then begin
+    t = dialog_message('Must read in volume file first.', /error)
+    return
+  endif
+  for i=0, self.nz-1 do begin
+    proj = (*self.pvolume)[*,*,i]
+    r = rot(proj, angle, cubic=-0.5)
+    (*self.pvolume)[0,0,i] = r
+    self->display_status, 'Correcting projection ' + strtrim(i+1, 2) + '/' + strtrim(self.nz, 2)
+  endfor
+end
+
+function tomo::convert_360_data, input, center, angles
+  ; This procedure converts 360 degree data to 180
+  ; It can accept a single slice or 3-D data
+  dims = size(input, /dimensions)
+  if (n_elements(dims) eq 2) then begin
+    input = reform(input, dims[0], 1, dims[1])
+  endif
+  dims = size(input, /dimensions)
+  nx = dims[0]
+  ny = dims[1]
+  nz = dims[2]
+  datatype = size(input, /type)
+  if (center gt nx/2) then begin
+    nxtotal = 2*center
+  endif else begin
+    nxtotal = 2*(nx - center)
+  endelse
+  output = make_array(nxtotal, ny, nz/2, type=datatype, /nozero)
+  if (center gt nx/2) then begin
+    output[0,0,0] = input[0:center-1, *, 0:nz/2-1]
+    for i=0, nz/2-1 do begin
+      output[center, 0, i] = rotate(input[0:center-1, *, i+nz/2], 5)
+    endfor
+  endif else begin
+    output[nxtotal/2,0,0] = input[center:nx-1, *, 0:nz/2-1]
+    for i=0, nz/2-1 do begin
+      output[0, 0, i] = rotate(input[center:nx-1, *, i+nz/2], 5)
+    endfor
+  endelse
+  angles = angles[0:nz/2-1]
+  return, output
+end
+
+function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=cog
+  ;+
+  ; NAME:
+  ;   RECONSTRUCT_SLICE
+  ;
+  ; PURPOSE:
+  ;   Reconstructs a single slice in a tomography volume array.
+  ;
+  ; CATEGORY:
+  ;   Tomography data processing
+  ;
+  ; CALLING SEQUENCE:
+  ;   Result = RECONSTRUCT_SLICE(tomoParams, Slice, Volume)
+  ;
+  ; INPUTS:
+  ;   tomoParams: A tomo_params structure
+  ;   Slice:      The number of the slice to be reconstructed.
+  ;   Volume:     The 3-D volume array from which the slice is extracted
+  ;
+  ; KEYWORD PARAMETERS:
+  ;   ANGLES:
+  ;       An array of angles (in degrees) at which each projection was collected.
+  ;       If this keyword is not specified then the routine assumes that the data was
+  ;       collected in evenly spaced increments of 180/n_angles.
+  ;   CENTER:
+  ;       The rotation centers.  If this keyword is not specified then the
+  ;       center is assumed to be the center pixel of the image
+  ;
+  ; OUTPUTS:
+  ;   This function returns the reconstructed slice.  It is a floating point
+  ;   array of dimensions NX x NX.
+  ;
+  ; PROCEDURE:
+  ;   Does the following:  extracts the slice, computes the sinogram with
+  ;   centering and optional center tweaking, removes ring artifacts, filters
+  ;   with a Shepp-Logan filter and backprojects.  It also prints the time
+  ;   required for each step at the end.
+  ;
+  ; EXAMPLE:
+  ;   r = reconstruct_slice(tomoParams, 264, volume)
+  ;
+  ; MODIFICATION HISTORY:
+  ;   Written by: Mark Rivers, May 13, 1998
+  ;   Many changes over time, see CVS log.
+  ;-
+
+  time1 = systime(1)
+  input = reform(input)
+  dims = size(input, /dimensions)
+  if (n_elements(dims) ne 2) then begin
+    message, 'tomo::reconstruct_slice, input must be 2-D'
+  endif
+  nx = dims[0]
+  nz = dims[1]
+  angles = *self.angles
+  tomoParams = self.tomoParams
+  
+  ; If this is 360 degree data we need to convert to 180
+  if (max(angles) gt 181) then begin
+    input = self->convert_360_data(input, center, angles)
+    tomo_params_update, tomoParams, input, paddedsinogramwidth=0
+  endif
+
+  if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
+    tomo_recon, tomoParams, input, r, center=center, angles=angles
+  endif
+
+  if (tomoParams.reconMethod eq tomoParams.reconMethodGridrec) then begin
+    t1 = input
+    t2 = input
+    s1 = sinogram(tomoParams, t1, angles, cog=cog)
+    singram = s1
+    s2 = sinogram(tomoParams, t2, angles, cog=cog)
+    time3 = systime(1)
+
+    if (tomoParams.ringWidth eq 0) then begin
+      g1 = s1
+      g2 = s2
+    endif else begin
+      g1 = remove_tomo_artifacts(s1, /rings, width=tomoParams.ringWidth)
+      g2 = remove_tomo_artifacts(s2, /rings, width=tomoParams.ringWidth)
+    endelse
+
+    ; pad sinogram
+    pad = tomoParams.paddedSinogramWidth
+    if (pad ne 0) then begin
+      size = size(g1)
+      if (size[1] gt pad) then begin
+        t = dialog_message('Padded sinogram too small, proceed without padding')
+        pad = 0
+      endif else begin
+        data_temp1 = temporary(g1)
+        data_temp2 = temporary(g2)
+        g1 = fltarr(pad-1, size[2])
+        g2 = fltarr(pad-1, size[2])
+        p = (pad - size[1] -1)/2
+        g1[p:p+size[1]-1, *] = data_temp1
+        g2[p:p+size[1]-1, *] = data_temp2
+        center = center + p
+      endelse
+    endif
+
+    time4 = systime(1)
+    gridrec, tomoParams, g1, g2, angles, r, unused, center=center
+
+    ; crop results if sinogram was padded
+    if (pad ne 0 AND size[1] le pad) then begin
+      r = r[p:p+size[1] - 1,p:p+size[1] - 1]
+      center = center - p
+    endif
+
+    ; Scale results
+    if ((tomoParams.reconScale ne 0.) and (tomoParams.reconScale ne 1.0)) then begin
+      r = r * tomoParams.reconScale
+    endif
+
+    time5 = systime(1)
+    print, 'Gridrec: center= ', center
+    print, 'Time to compute sinogram: ', time3-time2
+    print, 'Time to reconstruct:      ', time5-time4
+  endif
+
+  if (tomoParams.reconMethod eq tomoParams.reconMethodBackproject) then begin
+    s1 = sinogram(tomoParams, t1, angles, cog=cog)
+    cent = -1
+    time3 = systime(1)
+    if (tomoParams.ringWidth eq 0) then begin
+      g1 = s1
+    endif else begin
+      g1 = remove_tomo_artifacts(s1, /rings, width=tomoParams.ringWidth)
+    endelse
+
+    time4 = systime(1)
+    ss1 = tomo_filter(g1, filter_size=tomoParams.BP_filterSize, filter_name=string(tomoParams.BP_filterName))
+    singram = ss1
+    time5 = systime(1)
+    if (center ge (nx-1)/2) then ctr = center else ctr = center + 2*abs(round(center - (nx-1)/2))
+    r = backproject(tomoParams, ss1, angles, center=ctr)
+    time6 = systime(1)
+    ; Scale results
+    if ((tomoParams.reconScale ne 0.) and (tomoParams.reconScale ne 1.0)) then begin
+      r = r * tomoParams.reconScale
+    endif
+    print, 'Backproject: center= ', center
+    print, 'Time to compute sinogram: ', time3-time2
+    print, 'Time to filter sinogram:  ', time5-time4
+    print, 'Time to backproject:      ', time6-time5
+  endif
+
+  return, r
 end
 
 
@@ -396,10 +734,10 @@ end
 ;   11-APR-2002 MLR  Fixed bug introduced on 02-APR with center
 ;-
 
-pro tomo::reconstruct_volume, tomoParams, center=center, $
-                              data_type=data_type, scale=scale, debug=debug, $
+pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
                               write_output=write_output, netcdf=netcdf
 
+  tStart = systime(1)
   self->display_status, 'Initializing reconstruction ...', 1
   if (keyword_set(netcdf)) then output_file = self.base_filename + 'recon.nc' $
                            else output_file = self.base_filename + 'recon.h5'
@@ -408,34 +746,33 @@ pro tomo::reconstruct_volume, tomoParams, center=center, $
   
   if (n_elements(debug) ne 0) then self.debug_level = debug
 
-  normalized = self.pvolume
-  dims = size(*normalized, /dimensions)
+  angles = *self.angles
+  tomoParams = self.tomoParams
+  dims = size(*self.pvolume, /dimensions)
   numPixels = dims[0]
   numSlices = dims[1]
   numProjections = dims[2]
-  status = self->read_setup(self.base_filename+'.setup')
-  if (n_elements(scale) eq 0) then scale=1.e6
   self.data_scale = 1./tomoParams.reconScale
-  center_offset = tomoParams.numPixels/2.
-  center_slope = 0.
-  if (n_elements(center) ge 1) then center_offset=center[0]
-  if (n_elements(center) eq 2) then center_slope = (center[1]-center[0])/float(tomoParams.numSlices)
-  cent = center_offset + findgen(tomoParams.numSlices)*center_slope
-  ; Use the center in the middle slice as the value written to the .setup file
-  self.rotation_center = cent[tomoParams.numSlices/2]
-  
-  tStart = systime(1)
-  if (size(*normalized, /tname) ne 'FLOAT') then begin
-    *normalized = float(*normalized)
+  center = self.rotation_center + findgen(self.ny)*self.rotation_center_slope
+
+  ; If this is 360 degree data we need to convert to 180
+  if (max(angles) gt 181) then begin
+    self->display_status, 'Converting 360 data ...', 1
+    *self.pvolume = self->convert_360_data(*self.pvolume, center[0], angles)
+    center = self.rotation_center + findgen(self.ny)*0
+    tomo_params_update, tomoParams, *self.pvolume, paddedsinogramwidth=0
+  endif
+  tConvert360 = systime(1)
+  if (size(*self.pvolume, /tname) ne 'FLOAT') then begin
+    self->display_status, 'Converting to float ...', 1
+    *self.pvolume = float(*self.pvolume)
   endif
   tConvertFloat = systime(1)
   recon = fltarr(numPixels, numPixels, numSlices, /nozero)
   self->display_status, 'Beginning reconstruction ...', 1
   if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
-    maxSlices = tomoParams.slicesPerChunk
-    if (n_elements(maxSlices) eq 0) then maxSlices = numSlices
     ; Reconstruct volume
-    tomo_recon, tomoParams, *normalized, recon, angles=angles, wait=0, create=1, center=cent
+    tomo_recon, tomoParams, *self.pvolume, recon, angles=angles, wait=0, create=1, center=center
     repeat begin
       tomo_recon_poll, reconComplete, slicesRemaining
       wait, 0.1
@@ -443,17 +780,12 @@ pro tomo::reconstruct_volume, tomoParams, center=center, $
         + strtrim(numSlices-slicesRemaining,2) + '/' + strtrim(numSlices,2), 2
     endrep until reconComplete
   endif else begin
-    t0 = systime(1)
-    self->display_status, 'Reading volume file ...', 1
-    vol = self->read_volume(input_file)
-    t1 = systime(1)
-    
+    nrows = self.ny
     ; This procedure reconstructs all of the slices for a tomography data set
-    nrows = n_elements(vol[0,*,0])
     ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
     for i=0, nrows-1, 2 do begin
       self->display_status, 'Reconstructing slice ' + strtrim(i,2) + '/' + strtrim(nrows-1,2), 2
-      r = reconstruct_slice(tomoParams, i, vol, r2, center=cent[i], angles=angles)
+      r = reconstruct_slice((*self.pvolume)[*,[i,(i+1)<self.ny],*], r2, center=center[i])
       if (i eq 0) then begin
         ncols = n_elements(r[*,0])
         recon = intarr(ncols, ncols, nrows, /nozero)
@@ -467,22 +799,9 @@ pro tomo::reconstruct_volume, tomoParams, center=center, $
         return
       endif
     endfor
-    ; If there was no input angle array copy the one that reconstruct_slice
-    ; generated back into self
-    if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
-    ; We are all done with the vol array, free it
-    vol = 0
-    self->display_status, 'Writing volume file ...', 1
-    t2 = systime(1)
-    self->write_volume, output_file, recon, /reconstructed
-    t3 = systime(1)
-    print, 'read_tomo_netcdf execution times:'
-    print, '              Reading input file:', t1-t0
-    print, '                  Reconstructing:', t2-t1
-    print, '             Writing output file:', t3-t2
-    print, '                           Total:', t3-t0
   endelse
   
+  ptr_free, self.pvolume
   tReconDone = systime(1)
   status = self->write_setup(self.base_filename + '.setup')
   
@@ -505,16 +824,15 @@ pro tomo::reconstruct_volume, tomoParams, center=center, $
     self->display_status, 'Writing reconstructed file ...', 1
     self->write_volume, output_file, recon, netcdf=netcdf
   endif
-  normalized = 0
-  ptr_free, self.pvolume
   self.pvolume = ptr_new(recon, /no_copy)
   tEnd = systime(1)
-  self->display_status, 'Reconstruction complete.', 1
-  print, ' Convert input to float:', tConvertFloat - tStart
+  print, '     Convert 360 to 180:', tConvert360 - tStart
+  print, ' Convert input to float:', tConvertFloat - tConvert360
   print, '            Reconstruct:', tReconDone-tConvertFloat
   print, 'Convert output to ' + data_type + ':', tConvertInt - tReconDone
   print, '             Write file:', tEnd-tConvertInt
   print, '             Total time:', tEnd-tStart
+  self->display_status, 'Reconstruction complete.', 1
 end
 
 
@@ -770,8 +1088,13 @@ function tomo::read_volume, file, store=store, xrange=xrange, yrange=yrange, zra
   
   if (n_elements(file) eq 0) then file = dialog_pickfile(/read, /must_exist)
   if file eq "" then return, 0
+  t0 = systime(1)
   self->set_file_components, file
   
+  if (keyword_set(store)) then begin
+    ptr_free, self.pvolume
+  endif
+
   if (ncdf_is_ncdf(file)) then begin
     ; This is a netCDF file
     file_id = ncdf_open(file, /nowrite)
@@ -861,9 +1184,9 @@ function tomo::read_volume, file, store=store, xrange=xrange, yrange=yrange, zra
     self.data_offset           = h5_getdata(file, '/process/data_offset')
   endelse
 
+  print, 'Time to read file=', systime(1)-t0
   if (keyword_set(store)) then begin
     dims = size(volume, /dimensions)
-    ptr_free, self.pvolume
     self.pvolume = ptr_new(volume, /no_copy)
     self.nx = dims[0]
     self.ny = dims[1]
@@ -1069,6 +1392,7 @@ function tomo::init, file=file, status_widget=status_widget, abort_widget=abort_
   if (n_elements(status_widget) ne 0) then self.status_widget = status_widget
   if (n_elements(abort_widget) ne 0) then self.abort_widget = abort_widget
   if (n_elements(debug_level) ne 0) then self.debug_level = debug_level else self.debug_level=1
+  self.tomoParams = tomo_params_create()
   return, 1
 end
 
@@ -1125,6 +1449,7 @@ end
 pro tomo__define
   tomo = $
     {tomo, $
+    tomoParams: tomo_params_create(), $
     pvolume: ptr_new(), $
     pflats: ptr_new(), $
     pdarks: ptr_new(), $
