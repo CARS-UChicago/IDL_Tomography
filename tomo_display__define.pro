@@ -22,8 +22,7 @@ pro tomo_display::set_tomo_params
     widget_control, self.widgets.numThreads, get_value=numThreads
     widget_control, self.widgets.slicesPerChunk, get_value=slicesPerChunk
  
-    self.tomoParams = tomo_params_init(*self.tomoStruct.pvolume, $
-            sinoScale = 10000., $
+    self.tomoObj->set_tomo_params, $
             reconScale = reconScale, $
             paddedSinogramWidth=paddedSinogramWidth, $
             paddingAverage=paddingAverage, $
@@ -33,22 +32,19 @@ pro tomo_display::set_tomo_params
             reconMethod = reconMethod, $
             numThreads = numThreads, $
             slicesPerChunk = slicesPerChunk, $
-            debug = 0, $            ; Make a widget for this!
-            dbgFile = dbgFile, $    ; Make a widget for this!
-            geom=0, $
-            pswfParam=6., $         ; Make a widget for this?
+            ;debug = 0, $            ; Make a widget for this!
+            ;dbgFile = dbgFile, $    ; Make a widget for this!
+            ;pswfParam=6., $         ; Make a widget for this?
             sampl=sampl, $
-            maxPixSize=1.0, $ ; Make a widget for this?
-            ROI=1.0, $       ; Make a widget for this?
-            X0=0, $
-            Y0=0, $
-            ltbl=512, $
+            ;maxPixSize=1.0, $ ; Make a widget for this?
+            ;ROI=1.0, $       ; Make a widget for this?
             GR_filterName=GR_filterName, $
             BP_method = BP_method, $
             BP_filterName = BP_filterName, $
             BP_filterSize = BP_filterSize, $
             RadonInterpolation = RadonInterpolation, $
-            RiemannInterpolation = RiemannInterpolation)
+            RiemannInterpolation = RiemannInterpolation
+    self->update_tomo_struct
 end
 
 
@@ -90,18 +86,18 @@ pro tomo_display::reconstruct, islice
     endif
     widget_control, /hourglass
     
-    self.set_tomo_params
+    self->set_tomo_params
 
     if (n_elements(islice) ne 0) then begin
         widget_control, self.widgets.rotation_center[islice], get_value=center
         widget_control, self.widgets.recon_slice[islice], get_value=slice
         slice = slice < (self.tomoStruct.ny-1)
         angles=*self.tomoStruct.angles
-        r = reconstruct_slice(self.tomoParams, angles=angles, slice, *self.tomoStruct.pvolume, $
-                              center=center, sinogram=sinogram, cog=cog)
+        r = self.tomoObj->reconstruct_slice((*self.tomoStruct.pvolume)[*, slice, *], $
+                                             center=center, sinogram=sinogram, cog=cog)
         ; If reconstruction was with backproject, rotate image so it is the same
         ; orientation as with gridrec
-        if (self.tomoParams.reconMethod eq self.tomoParams.reconMethodBackproject) then r = rotate(r, 4)
+        if (self.tomoStruct.tomoParams.reconMethod eq self.tomoStruct.tomoParams.reconMethodBackproject) then r = rotate(r, 4)
         widget_control, self.widgets.auto_intensity, get_value=auto
         if (auto) then begin
             min=min(r, max=max)
@@ -143,29 +139,24 @@ pro tomo_display::reconstruct, islice
         ; Reconstruct entire file
         widget_control, self.widgets.abort, set_uvalue=0
         widget_control, self.widgets.status, set_value=""
-        widget_control, self.widgets.rotation_center[0], get_value=center0
-        widget_control, self.widgets.rotation_center[1], get_value=center1
-        widget_control, self.widgets.recon_slice[0], get_value=slice0
-        widget_control, self.widgets.recon_slice[1], get_value=slice1
         widget_control, self.widgets.recon_data_type, get_value=index, get_uvalue=data_types
         data_type = data_types[index]
         widget_control, self.widgets.recon_write_output, get_value=write_output
         widget_control, self.widgets.recon_file_format, get_value=file_format
         netcdf = file_format eq 1
-        slice = float([slice0, slice1])
-        cent = float([center0, center1])
-        ; Compute the rotation center of the first and last slices
-        coeffs = poly_fit(slice, cent, 1)
-        center0 = coeffs[0]
-        center1 = coeffs[0] + coeffs[1]*(self.tomoStruct.ny-1)
-        center = [center0, center1]
-        angles = *self.tomoStruct.angles
-        self.tomoObj->reconstruct_volume, self.tomoParams, $
-                                          center=center, data_type=data_type, $
-                                          write_output=write_output, netcdf=netcdf
-        self.tomoStruct = self.tomoObj->get_struct()
+        widget_control, self.widgets.recon_slice[0], get_value=top_slice
+        widget_control, self.widgets.recon_slice[1], get_value=bottom_slice
+        widget_control, self.widgets.rotation_center[0], get_value=top_center
+        widget_control, self.widgets.rotation_center[1], get_value=bottom_center
+        self.tomoObj->set_rotation, top_slice, top_center, bottom_slice, bottom_center
+        self.tomoObj->reconstruct_volume, data_type=data_type, write_output=write_output, netcdf=netcdf
+        self->update_tomo_struct
         self->update_volume_widgets
     endelse
+end
+
+pro tomo_display::update_tomo_struct
+  self.tomoStruct = self.tomoObj->get_struct()
 end
 
 pro tomo_display::update_file_widgets
@@ -205,54 +196,35 @@ end
 
 
 pro tomo_display::optimize_rotation_center
-    if (not ptr_valid(self.tomoStruct.pvolume)) then begin
-        t = dialog_message('Must read in volume file first.', /error)
-        return
-    endif
     widget_control, /hourglass
     widget_control, self.widgets.recon_slice[0], get_value=top_slice
     top_slice = top_slice < (self.tomoStruct.ny-1)
     widget_control, self.widgets.recon_slice[1], get_value=bottom_slice
     bottom_slice = bottom_slice < (self.tomoStruct.ny-1)
 
-    self.set_tomo_params
+    self->set_tomo_params
     
     widget_control, self.widgets.rotation_optimize_range, get_value=range
     widget_control, self.widgets.rotation_optimize_step, get_value=step
-    widget_control, self.widgets.rotation_optimize_center, get_value=center
-    widget_control, self.widgets.rotation_optimize_method, get_value=method
-    npoints = long(range/step) + 1
-    centers = findgen(npoints)*step + (center-range/2.)
-    
-    proj0 = reform((*self.tomoStruct.pvolume)[*,*,0])
-    proj180 = reform((*self.tomoStruct.pvolume)[*,*,self.tomoStruct.nz-1])
-    if (method eq 0) then begin
-      optimize_rotation_center, self.tomoParams, [top_slice, bottom_slice], *self.tomoStruct.pvolume, centers, entropy
-    endif else begin
-      optimize_rotation_mirror, [top_slice, bottom_slice], proj0, proj180, centers, error
-      entropy = error  ; Give variable the same name for plotting
-    endelse
-    t = min(entropy[*,0], min_pos1)
-    t = min(entropy[*,1], min_pos2)
-    center1 = centers[min_pos1]
-    center2 = centers[min_pos2]
-    if (method eq 1) then begin
-      ; It appears that the center is 0.5 pixel larger than the center position used by gridrec
-      center1 = center1 - 0.5
-      center2 = center2 - 0.5
-    endif
+    widget_control, self.widgets.rotation_optimize_center, get_value=centers
+    widget_control, self.widgets.rotation_optimize_method, get_value=index, get_uvalue=uvalue
+    method = uvalue[index]
+
+    self.tomoObj->optimize_center, [top_slice, bottom_slice], centers,  merit, width=range, step=step, method=method
+    self->update_tomo_struct
+    center1 = self.tomoStruct.rotation_center + top_slice*self.tomoStruct.rotation_center_slope
+    center2 = self.tomoStruct.rotation_center + bottom_slice*self.tomoStruct.rotation_center_slope
     widget_control, self.widgets.input_file, get_value=file
     title = file + '   Slice=['+strtrim(string(top_slice),2)+','+strtrim(string(bottom_slice),2)+']'
-    iplot, centers, entropy[*,0], xtitle='Rotation center', ytitle='Image entropy', sym_index=2, $
+    iplot, centers, merit[*,0], xtitle='Rotation center', ytitle='Figure of merit', sym_index=2, $
            view_title=title, id=id, /disable_splash_screen, /no_saveprompt
-    entropy_diff = min(entropy[*,1]) - min(entropy[*,0])
-    iplot, centers, entropy[*,1]-entropy_diff, sym_index=4, $
+    merit_diff = min(merit[*,1]) - min(merit[*,0])
+    iplot, centers, merit[*,1]-merit_diff, sym_index=4, $
            view_title=title, overplot=id
     widget_control, self.widgets.rotation_center[0], set_value=center1
     widget_control, self.widgets.rotation_center[1], set_value=center2
     center = (center1 + center2)/2.
     widget_control, self.widgets.rotation_optimize_center, set_value=center
-    ;measure_rotation_tilt, proj0, proj180, center, vertError
     self->reconstruct, 0
     self->reconstruct, 1
 end
@@ -271,19 +243,8 @@ pro tomo_display::correct_rotation_tilt
   widget_control, self.widgets.rotation_center[0], get_value=top_center
   widget_control, self.widgets.rotation_center[1], get_value=bottom_center
   angle = (top_center-bottom_center) / (bottom_slice - top_slice) / !dtor
-  for i=0, self.tomoStruct.nz-1 do begin
-    proj = (*self.tomoStruct.pvolume)[*,*,i]
-    r = rot(proj, angle, cubic=-0.5)
-    (*self.tomoStruct.pvolume)[0,0,i] = r
-    widget_control, self.widgets.status, $
-      set_value='Correcting projection ' + strtrim(i+1, 2) + '/' + strtrim(self.tomoStruct.nz, 2)
-  endfor
-  widget_control, self.widgets.status, set_value='Optimizing rotation center ...'
-  self.optimize_rotation_center
-  widget_control, self.widgets.input_file, get_value=file
-  widget_control, self.widgets.status, set_value='Saving volume file ...'
-  write_tomo_volume, file, *self.tomoStruct.pvolume
-  widget_control, self.widgets.status, set_value=''
+  self.tomoObj->correct_rotation_tilt, angle
+  self->optimize_rotation_center
 end
 
 
@@ -453,10 +414,9 @@ pro tomo_display::event, event
           widget_control, self.widgets.status, $
             set_value='Reading camera file ' + file + ' ...'
           self.tomoObj->read_camera_file, file
-          self.tomoStruct = self.tomoObj->get_struct()
+          self->update_tomo_struct
           self->update_file_widgets
           self->update_volume_widgets
-          ; Set the rotation center either from the tomo object
           widget_control, self.widgets.dark_current, set_value=self.tomoStruct.dark_current
           widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
           widget_control, self.widgets.rotation_center[1], set_value=self.tomoStruct.rotation_center
@@ -474,7 +434,7 @@ pro tomo_display::event, event
             widget_control, self.widgets.status, $
                             set_value='Reading input file ' + file + ' ...'
             t = self.tomoObj->read_volume(file, /store)
-            self.tomoStruct = self.tomoObj->get_struct()
+            self->update_tomo_struct
             self->update_file_widgets
             self->update_volume_widgets
             ; Set the rotation center either from the tomo object
@@ -516,7 +476,7 @@ pro tomo_display::event, event
             self.tomoObj->preprocess, dark=dark_current, $
                             threshold=threshold, double_threshold=double_threshold, $
                             data_type=data_type, write_output=write_output, netcdf=netcdf
-            self.tomoStruct = self.tomoObj->get_struct()
+            self->update_tomo_struct
             self->update_volume_widgets
             ; Set the rotation center
             widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
@@ -663,9 +623,12 @@ pro tomo_display::event, event
     endcase
 
 end_event:
-    ; If there is a valid array make the visualize base sensitive
-    sensitive = ptr_valid(self.tomoStruct.pvolume)
-    widget_control, self.widgets.visualize_base, sensitive=sensitive
+    ; Set the sensitivity of preprocess, reconstruct, and visualize base widgets based on valid volume and image type
+    valid_volume = ptr_valid(self.tomoStruct.pvolume)
+    image_type = self.tomoStruct.image_type
+    widget_control, self.widgets.visualize_base, sensitive=valid_volume
+    widget_control, self.widgets.preprocess_base, sensitive=(valid_volume and (image_type eq 'RAW'))
+    widget_control, self.widgets.reconstruct_base, sensitive=(valid_volume and (image_type eq 'NORMALIZED'))
 
 end
 
@@ -786,9 +749,10 @@ function tomo_display::init
                                   /float, xsize=10, value=.25)
     self.widgets.rotation_optimize = widget_button(row, value='Optimize center')
     row = widget_base(col, /row, /base_align_bottom)
-    self.widgets.rotation_optimize_method = cw_bgroup(row, ['Entropy', '0-180'], $
+    choices = ['Entropy', '0-180']
+    self.widgets.rotation_optimize_method = cw_bgroup(row, choices, $
       label_left='Optimize center method:', $
-      row=1, set_value=0, /exclusive)
+      row=1, set_value=0, uvalue=choices, /exclusive)
     row = widget_base(col, /row, /base_align_bottom)
     t = widget_label(row, value='Correct rotation tilt:')
     self.widgets.correct_rotation_tilt = widget_button(row, value='Correct rotation tilt')
@@ -1159,7 +1123,6 @@ pro tomo_display__define
         pvolume: ptr_new(), $
         tomoObj: obj_new(), $
         tomoStruct: {tomo}, $
-        tomoParams: {tomo_params}, $
         nx: 0, $
         ny: 0, $
         nz: 0, $
