@@ -332,13 +332,16 @@ pro tomo::optimize_center, slices, center, merit, width=width, step=step, method
   endif
 
   t0 = systime(1)
-  ncenter = fix(2*width/step)
+  ncenter = fix(width/step)
   if (n_elements(center) eq 1) then begin
-    center = center - width + findgen(ncenter)*step
+    center = center - width/2 + findgen(ncenter)*step
   endif
   merit = dblarr(ncenter, 2)
-  if (method eq 'Entropy') then begin
+  max_angle = max(*self.angles)
+  if (method eq 'Entropy' and (max_angle lt 181)) then begin
     self->optimize_center_entropy, slices, center, merit
+  endif else  if (method eq 'Entropy' and (max_angle ge 181)) then begin
+      self->optimize_center_entropy_360, slices, center, merit
   endif else begin
     self->optimize_center_mirror, slices, center, merit
   endelse
@@ -392,6 +395,47 @@ pro tomo::optimize_center_entropy, slices, center, merit
   for i=0, ncenter-1 do begin
     r1 = recon[*,*,i*2]
     r2 = recon[*,*,i*2+1]
+    h1 = histogram(r1, min=mn1, max=mx1, bin=binsize1) > 1
+    h1 = float(h1) / npixels
+    h2 = histogram(r2, min=mn2, max=mx2, bin=binsize2) > 1
+    h2 = float(h2) / npixels
+    merit[i,0] = -total(h1*alog(h1))
+    merit[i,1] = -total(h2*alog(h2))
+  endfor
+end
+
+pro tomo::optimize_center_entropy_360, slices, center, merit
+  ncenter = n_elements(center)
+  s = size(*self.pvolume, /dimensions)
+  tomoParams = self.tomoParams
+  for i=0, ncenter-1 do begin
+    angles = *self.angles
+    cent = round(center[i])
+    input1 = self->convert_360_data((*self.pvolume)[*, slices[0], *], cent, angles)
+    angles = *self.angles
+    input2 = self->convert_360_data((*self.pvolume)[*, slices[1], *], cent, angles)
+    input = [[input1], [input2]]
+    ctr = [cent, cent]
+    tomo_params_update, tomoParams, input, paddedsinogramwidth=0
+    tomo_recon, tomoParams, input, recon, angles=angles, center=ctr
+    if (i eq 0) then begin
+      ; Use the first reconstuction to get min/max of reconstruction for histogram
+      r1 = recon[*,*,0]
+      r2 = recon[*,*,1]
+      mn1 = min(r1)
+      if ((mn1) lt 0) then mn1=2*mn1 else mn1=0.5*mn1
+      mx1 = max(r1)
+      if ((mx1) gt 0) then mx1=2*mx1 else mx1=0.5*mx1
+      binsize1=(mx1-mn1)/1.e4
+      mn2 = min(r2)
+      if ((mn2) lt 0) then mn2=2*mn2 else mn2=0.5*mn2
+      mx2 = max(r2)
+      if ((mx2) gt 0) then mx2=2*mx2 else mx2=0.5*mx2
+      binsize2=(mx2-mn2)/1.e4
+    endif
+    r1 = recon[*,*,0]
+    r2 = recon[*,*,1]
+    npixels = n_elements(r1)
     h1 = histogram(r1, min=mn1, max=mx1, bin=binsize1) > 1
     h1 = float(h1) / npixels
     h2 = histogram(r2, min=mn2, max=mx2, bin=binsize2) > 1
@@ -495,7 +539,6 @@ function tomo::convert_360_data, input, center, angles
   return, output
 end
 
-function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=cog
   ;+
   ; NAME:
   ;   RECONSTRUCT_SLICE
@@ -540,6 +583,7 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
   ;   Written by: Mark Rivers, May 13, 1998
   ;   Many changes over time, see CVS log.
   ;-
+function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=cog
 
   time1 = systime(1)
   input = reform(input)
@@ -758,8 +802,10 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
   ; If this is 360 degree data we need to convert to 180
   if (max(angles) gt 181) then begin
     self->display_status, 'Converting 360 data ...', 1
-    *self.pvolume = self->convert_360_data(*self.pvolume, center[0], angles)
-    center = self.rotation_center + findgen(self.ny)*0
+    ; convert_360_data can only use a single center value. Use the one for the center slice.
+    center_value =  round(center[numSlices/2])
+    *self.pvolume = self->convert_360_data(*self.pvolume, center_value, angles)
+    center = center_value + findgen(self.ny)*0
     tomo_params_update, tomoParams, *self.pvolume, paddedsinogramwidth=0
   endif
   tConvert360 = systime(1)
@@ -836,10 +882,6 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
 end
 
 
-pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
-  xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
-  xmax=xmax, ymax=ymax, zmax=zmax
-  
   ;+
   ; NAME:
   ;   TOMO::WRITE_VOLUME
@@ -910,8 +952,11 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
   ;   24-JUN-2002  MLR  Fixed bug if input volume was 2-D rather than 3-D.
   ;-
   ;-
-  
-  size = size(volume)
+pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
+  xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
+  xmax=xmax, ymax=ymax, zmax=zmax
+
+   size = size(volume)
   ; If this is a 2-D array fake it out by setting third dimension to 1
   if (size[0] eq 2) then size[3]=1
 
@@ -1028,8 +1073,6 @@ pro tomo::write_hdf5_dataset, group_id, dataset_name, data
   h5t_close, datatype_id
 end
 
-function tomo::read_volume, file, store=store, xrange=xrange, yrange=yrange, zrange=zrange
-  
   ;+
   ; NAME:
   ;   TOMO::READ_VOLUME
@@ -1085,7 +1128,8 @@ function tomo::read_volume, file, store=store, xrange=xrange, yrange=yrange, zra
   ;   23-FEB-2000  MLR  Added xrange, yrange, zrange keywords
   ;   11-APR-2001  MLR  Added support for netCDF file format.
   ;-
-  
+ function tomo::read_volume, file, store=store, xrange=xrange, yrange=yrange, zrange=zrange
+ 
   if (n_elements(file) eq 0) then file = dialog_pickfile(/read, /must_exist)
   if file eq "" then return, 0
   t0 = systime(1)
@@ -1448,7 +1492,7 @@ end
 
 pro tomo__define
   tomo = $
-    {tomo, $
+   {tomo, $
     tomoParams: tomo_params_create(), $
     pvolume: ptr_new(), $
     pflats: ptr_new(), $
