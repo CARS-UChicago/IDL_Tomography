@@ -58,8 +58,8 @@ pro tomo::read_camera_file, filename
     flats = [[[flat1]], [[flat2]]]
     status = self.read_setup(self.base_filename + '.setup')
     darks = fix(self.dark_current)
-    self.rotation_start = 0.
-    self.rotation_step = 180./num_projections
+    rotation_start = 0.
+    rotation_step = 180./num_projections
     return
   endif
 
@@ -72,8 +72,8 @@ pro tomo::read_camera_file, filename
     ; For now we assume there are no dark field images
     self.dark_current = h5_getdata(filename, '/process/acquisition/dark_fields/dark_field_value')
     darks = fix(self.dark_current[0])
-    self.rotation_start = h5_getdata(filename, '/process/acquisition/rotation/rotation_start')
-    self.rotation_step = h5_getdata(filename, '/process/acquisition/rotation/rotation_step')
+    rotation_start = h5_getdata(filename, '/process/acquisition/rotation/rotation_start')
+    rotation_step = h5_getdata(filename, '/process/acquisition/rotation/rotation_step')
     self.operator = h5_getdata(filename, '/measurement/sample/experimenter/name')
     self.title = h5_getdata(filename, '/measurement/sample/description_1')
     self.sample = h5_getdata(filename, '/measurement/sample/name')
@@ -84,7 +84,7 @@ pro tomo::read_camera_file, filename
   endif
  
   self.image_type = 'RAW'
-  angles = self.rotation_start + self.rotation_step * findgen(num_projections)
+  angles = rotation_start + rotation_step * findgen(num_projections)
   self.angles = ptr_new(angles, /no_copy)
   self.pvolume = ptr_new(projections, /no_copy)
   self.pflats = ptr_new(flats, /no_copy)
@@ -217,41 +217,40 @@ pro tomo::preprocess, dark=input_dark, $
   white_field=input_white, threshold=threshold, $
   double_threshold=double_threshold, $
   data_type=data_type, $
-  write_output=write_output, netcdf=netcdf 
-  
+  write_output=write_output, netcdf=netcdf
+
+  ; We use a common block just to store info through calls
+  common tomo_recon_common, tomo_recon_shareable_library
+
   tStart = systime(1)
-  if (n_elements(threshold) eq 0) then threshold=1.25
+  if (n_elements(threshold) eq 0) then threshold=0.20
   if (n_elements(double_threshold) eq 0) then double_threshold=1.05
   if (n_elements(data_type) eq 0) then data_type = 'UInt16'
   if (n_elements(setup) eq 0) then setup=self.base_filename + '.setup'
   if (keyword_set(netcdf)) then output_file = self.base_filename + 'norm.nc' $
-                           else output_file = self.base_filename + 'norm.h5'
+  else output_file = self.base_filename + 'norm.h5'
 
-  status = self->read_setup(setup)
-  
-  if (data_type eq 'UInt16') then begin
-    normalized = uintarr(self.nx, self.ny, self.nz, /nozero)
-  endif else begin
-    normalized = fltarr(self.nx, self.ny, self.nz, /nozero)
-  endelse
+  normalized = fltarr(self.nx, self.ny, self.nz, /nozero)
 
-  ; Convert darks and flats to float for efficiency
+  ; Convert darks and flats to float
   darks = float(*self.pdarks)
   flats = float(*self.pflats)
+  if (n_elements(darks) eq 1) then begin
+    darks = fltarr(self.nx, self.ny) + darks
+  endif
   dims = size(darks, /dimensions)
   ndarks = 1
   if (n_elements(dims) eq 3) then ndarks = dims[2]
   dims = size(flats, /dimensions)
   nflats = 1
   if (n_elements(dims) eq 3) then nflats = dims[2]
- 
-  ; Do dark current correction
-  self->display_status, 'Doing corrections on flat fields ...', 1
+
   ; If there is more than one dark field image then average them
   if (ndarks gt 1) then begin
     darks = total(darks, 3) / ndarks
   endif
-  
+
+  self->display_status, 'Doing corrections on flat fields ...', 1
   for i=0, nflats-1 do begin
     data_temp = flats[*,*,i] - darks
     if (min(data_temp) le 0) then data_temp = data_temp > 1
@@ -265,53 +264,67 @@ pro tomo::preprocess, dark=input_dark, $
   endif else begin
     for i=0, nflats-2 do begin
       flats[0,0,i] = remove_tomo_artifacts(flats[*,*,i], image2=flats[*,*,i+1], $
-          /double_correlation, threshold=double_threshold, debug=debug)
+        /double_correlation, threshold=double_threshold, debug=debug)
     endfor
   endelse
   flats = total(flats, 3)/nflats
-
   tFlats = systime(1)
 
-  num_projections = self.nz
-  self.data_offset = 0.
-  self->display_status, 'Doing dark, flat, and zinger correction ...', 1
-  for i=0, num_projections-1 do begin
-    if (data_type eq 'UInt16') then begin
-      data_temp = 10000. * (((*self.pvolume)[*,*,i] - darks) / flats)
-      self.data_scale = 10000.
-    endif else begin
-      self.data_scale = 1.0
-      data_temp = ((*self.pvolume)[*,*,i] - darks) / flats
-    endelse
-    if (min(data_temp) le 0) then data_temp = data_temp > 1
-    data_temp = remove_tomo_artifacts(data_temp, /zingers, threshold=threshold, debug=0)
-    self->display_status, 'Correcting projection ' + strtrim(i+1,2) + '/' + strtrim(num_projections,2), 2
-    normalized[0,0,i] = data_temp
-    if (self.check_abort()) then begin
-      self->display_status, 'Preprocessing aborted', 1
-      return
-    endif
-  endfor
+  params = {preprocess_params, $
+    numPixels: self.nx,           $ ; Number of pixels in sinogram row before padding
+    numSlices: self.ny,           $ ; Number of slices
+    numProjections: self.nz,      $ ; Number of angles
+    numThreads: 24L, $
+    zingerWidth: 3L,     $ ; Scale factor to multiply sinogram when airPixels=0
+    zingerThreshold: float(threshold),     $ ; Scale factor to multiply sinogram when airPixels=0
+    scaleFactor: 10000.,        $ ; Scale factor to multiple reconstruction
+    debug: 2L, $
+    debugFile: bytarr(256) $
+  }
+  params.debugFile = byte('preprocess_debug.txt')
   
+  locate_tomo_recon_shareable_library
+  t = call_external(tomo_recon_shareable_library, 'tomoPreprocessCreateIDL', $
+                    params, darks, flats, *self.pvolume, normalized)
+
+  preprocessComplete = 0L
+  projectionsRemaining = 0L
+  repeat begin
+    t = call_external(tomo_recon_shareable_library, 'tomoPreprocessPollIDL', $
+                      preprocessComplete, $
+                      projectionsRemaining)
+    self->display_status, 'Proprocessing projection: ' $
+      + strtrim(self.nz-projectionsRemaining,2) + '/' + strtrim(self.nz,2), 2
+    wait, 0.1
+  endrep until preprocessComplete
   tNormalize = systime(1)
+
+  if (data_type eq 'UInt16') then begin
+    normalized = fix(normalized)
+  endif
+  tConvertOut = systime(1)
 
   self.image_type = 'NORMALIZED'
   if (keyword_set(write_output)) then begin
     self->display_status, 'Writing volume file ...', 1
     self->write_volume, output_file, normalized, netcdf=netcdf
   endif
+  status = self->write_setup(setup)
+  tWriteFile = systime(1)
+
   ptr_free, self.pvolume
   self.pvolume = ptr_new(normalized, /no_copy)
-  status = self->write_setup(setup)
   tEnd = systime(1)
   self->display_status, 'Preprocessing complete', 1
 
   print, 'Preprocess execution times:'
   print, '                  Flat adjustments:', tFlats - tStart
   print, '  Dark, flat and zinger correction:', tNormalize - tFlats
-  print, '                    Writing output:', tEnd - tNormalize
+  print, '                 Convert to UInt16:', tConvertOut - tNormalize
+  print, '                    Writing output:', tWriteFile - tConvertOut
+  print, '                    Freeing memory:', tEnd - tWriteFile
   print, '                             Total:', tEnd - tStart
- 
+
 end
 
 pro tomo::set_tomo_params, _EXTRA=extra
@@ -1291,10 +1304,6 @@ function tomo::write_setup, file
   printf, lun, 'OPERATOR: ', self.operator
   printf, lun, 'CAMERA: ', self.camera
   printf, lun, 'SAMPLE: ', self.sample
-  if (ptr_valid(self.comments)) then comments = *self.comments
-  for i=0, n_elements(comments)-1 do begin
-    printf, lun, 'COMMENT: ', comments[i]
-  endfor
   printf, lun, 'DARK_CURRENT: ', self.dark_current
   printf, lun, 'CENTER: ', self.rotation_center
   printf, lun, 'ENERGY: ',  self.energy
@@ -1338,8 +1347,6 @@ end
 function tomo::read_setup, file
   ; Clear any existing information
 ;  self->clear_setup
-  ncomments = 0
-  comment = strarr(100)
   line = ''
   openr, lun, file, error=error, /get_lun, width = 1024
   if (error ne 0) then return, 0
@@ -1353,23 +1360,15 @@ function tomo::read_setup, file
       'OPERATOR:'  :  self.operator = value
       'CAMERA:'    :  self.camera = value
       'SAMPLE:'    :  self.sample = value
-      'COMMENT:'   :  begin
-        comment[ncomments] = value
-        ncomments = ncomments + 1
-      end
       'DARK_CURRENT:'  :  self.dark_current = value
       'CENTER:'        :  self.rotation_center = value
       'ENERGY:'        :  self.energy = value
       'X_PIXEL_SIZE:'  :  self.x_pixel_size = value
       'Y_PIXEL_SIZE:'  :  self.y_pixel_size = value
       'Z_PIXEL_SIZE:'  :  self.z_pixel_size = value
+      else:
     endcase
   endwhile
-  if (ncomments gt 0) then begin
-    comment = comment[0:ncomments-1]
-    ptr_free, self.comments
-    self.comments =  ptr_new(comment)
-  endif
   free_lun, lun
   return, 1
 end
@@ -1396,7 +1395,6 @@ end
 ;        operator: " ", $
 ;        camera: " ", $
 ;        sample: " ", $
-;        comments: ptr_new(), $
 ;        image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
 ;        dark_current: 0., $
 ;        center: 0., $
@@ -1431,8 +1429,8 @@ function tomo::get_struct
 end
 
 
-function tomo::init, file=file, status_widget=status_widget, abort_widget=abort_widget, debug_level=debug_level
-  if (n_elements(file) ne 0) then status = self->read_setup(file)
+function tomo::init, settings=settings, status_widget=status_widget, abort_widget=abort_widget, debug_level=debug_level
+  if (n_elements(settings) ne 0) then status = self->read_settings(settings)
   if (n_elements(status_widget) ne 0) then self.status_widget = status_widget
   if (n_elements(abort_widget) ne 0) then self.abort_widget = abort_widget
   if (n_elements(debug_level) ne 0) then self.debug_level = debug_level else self.debug_level=1
@@ -1460,7 +1458,6 @@ pro tomo::set_file_components, input_file
 end
 
 pro tomo::cleanup
-  ptr_free, self.comments
   ptr_free, self.angles
   ptr_free, self.pvolume
   ptr_free, self.pflats
@@ -1472,8 +1469,6 @@ pro tomo::clear_setup
   self.operator=""
   self.camera=""
   self.sample=""
-  ptr_free, self.comments
-  self.comments=ptr_new()
   self.image_type=""
   self.dark_current=0.
   self.rotation_center=0.
@@ -1504,7 +1499,6 @@ pro tomo__define
     operator: " ", $
     camera: " ", $
     sample: " ", $
-    comments: ptr_new(), $
     image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
     dark_current: 0., $
     rotation_center: 0., $
@@ -1518,8 +1512,6 @@ pro tomo__define
     nx:     0L, $
     ny:     0L, $
     nz:     0L, $
-    rotation_start: 0., $
-    rotation_step: 0., $
     angles: ptr_new(), $
     status_widget: 0L, $
     abort_widget: 0L, $
