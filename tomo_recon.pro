@@ -179,7 +179,9 @@ pro tomo_recon, tomoParams, $
     tomo_params_set_dimensions, tomoParams, input
 
     if (n_elements(angles) ne 0) then begin
-        if (n_elements(angles) ne tomoParams.numProjections) then message, 'Incorrect number of angles'
+        if (n_elements(angles) ne tomoParams.numProjections) then begin
+          message, 'Incorrect number of angles=' + strtrim(n_elements(angles),2) + ' numProjections=' + strtrim(tomoParams.numProjections,2)
+        endif
     endif else begin
         ; Assume evenly spaced angles 0 to 180-angle_step degrees
         angles = findgen(tomoParams.numProjections)/(tomoParams.numProjections) * 180.
