@@ -19,10 +19,10 @@ pro tomo_display::set_tomo_params
     paddedSinogramWidth = choices[index]
     widget_control, self.widgets.paddingAverage, get_value=paddingAverage
     widget_control, self.widgets.gridrec_sampl_parameter, get_value=sampl
-    widget_control, self.widgets.numThreads, get_value=numThreads
+    widget_control, self.widgets.reconThreads, get_value=threads
     widget_control, self.widgets.slicesPerChunk, get_value=slicesPerChunk
  
-    self.tomoObj->set_tomo_params, $
+    self.tomoObj->set_recon_params, $
             reconScale = reconScale, $
             paddedSinogramWidth=paddedSinogramWidth, $
             paddingAverage=paddingAverage, $
@@ -30,7 +30,7 @@ pro tomo_display::set_tomo_params
             ringWidth = ringWidth, $
             fluorescence = fluorescence, $
             reconMethod = reconMethod, $
-            numThreads = numThreads, $
+            threads = threads, $
             slicesPerChunk = slicesPerChunk, $
             ;debug = 0, $            ; Make a widget for this!
             ;dbgFile = dbgFile, $    ; Make a widget for this!
@@ -80,7 +80,7 @@ end
 pro tomo_display::reconstruct, islice
     ; This function is called to reconstruct a single slice or to reconstruct all
     ; If islice is defined then we are to reconstruct a single slice
-    if (not ptr_valid(self.tomoStruct.pvolume)) then begin
+    if (not ptr_valid(self.tomoStruct.pVolume)) then begin
         t = dialog_message('Must read in file first.', /error)
         return
     endif
@@ -92,12 +92,12 @@ pro tomo_display::reconstruct, islice
         widget_control, self.widgets.rotation_center[islice], get_value=center
         widget_control, self.widgets.recon_slice[islice], get_value=slice
         slice = slice < (self.tomoStruct.ny-1)
-        angles=*self.tomoStruct.angles
-        r = self.tomoObj->reconstruct_slice((*self.tomoStruct.pvolume)[*, slice, *], $
+        angles=*self.tomoStruct.pAngles
+        r = self.tomoObj->reconstruct_slice((*self.tomoStruct.pVolume)[*, slice, *], $
                                              center=center, sinogram=sinogram, cog=cog)
         ; If reconstruction was with backproject, rotate image so it is the same
         ; orientation as with gridrec
-        if (self.tomoStruct.tomoParams.reconMethod eq self.tomoStruct.tomoParams.reconMethodBackproject) then r = rotate(r, 4)
+        if (self.tomoStruct.reconMethod eq self.tomoStruct.reconMethodBackproject) then r = rotate(r, 4)
         widget_control, self.widgets.auto_intensity, get_value=auto
         if (auto) then begin
             min=min(r, max=max)
@@ -106,13 +106,13 @@ pro tomo_display::reconstruct, islice
             widget_control, self.widgets.display_max, get_value=max
         endelse
         dims = size(r, /dimensions)
-        xdist = findgen(dims[0])*self.tomoStruct.x_pixel_size
+        xdist = findgen(dims[0])*self.tomoStruct.xPixelSize
         ydist = xdist
         ; Change the size of the image before calling image_display
         self->rebin, r, xdist, ydist
         widget_control, self.widgets.input_file, get_value=file
         dims = size(r, /dimensions)
-        xdist = findgen(dims[0])*self.tomoStruct.x_pixel_size
+        xdist = findgen(dims[0])*self.tomoStruct.xPixelSize
 
         title = file + '    Center='+strtrim(string(center),2) + $
                        '     Slice='+strtrim(string(slice),2)
@@ -126,7 +126,7 @@ pro tomo_display::reconstruct, islice
         ; Plot center-of-gravity if desired
         widget_control, self.widgets.plot_cog, get_value=plot_cog
         if (plot_cog and (n_elements(cog) ne 0)) then begin
-            angles = *self.tomoStruct.angles
+            angles = *self.tomoStruct.pAngles
             iplot, angles, cog[*,0], ytitle='Center of gravity', xtitle='Angle (degrees)', $
                    name='Measured', color=[0,0,255], identifier=id, /disable_splash_screen, /no_saveprompt
             iplot, angles, cog[*,1], /overplot,  $
@@ -160,18 +160,18 @@ pro tomo_display::update_tomo_struct
 end
 
 pro tomo_display::update_file_widgets
-  widget_control, self.widgets.input_file, set_value=self.tomoStruct.input_filename
-  widget_control, self.widgets.base_file, set_value=self.tomoStruct.base_filename
+  widget_control, self.widgets.input_file, set_value=self.tomoStruct.inputFilename
+  widget_control, self.widgets.base_file, set_value=self.tomoStruct.baseFilename
   widget_control, self.widgets.directory, set_value=self.tomoStruct.directory
 end
 
 pro tomo_display::update_volume_widgets
-    widget_control, self.widgets.volume_type, set_value=self.tomoStruct.image_type
+    widget_control, self.widgets.volume_type, set_value=self.tomoStruct.imageType
     widget_control, self.widgets.nx, set_value=self.tomoStruct.nx
     widget_control, self.widgets.ny, set_value=self.tomoStruct.ny
     widget_control, self.widgets.nz, set_value=self.tomoStruct.nz
     ; Set the intensity range
-    min = min(*self.tomoStruct.pvolume, max=max)
+    min = min(*self.tomoStruct.pVolume, max=max)
     widget_control, self.widgets.data_min, set_value=min
     widget_control, self.widgets.data_max, set_value=max
     ; Set the slice display range
@@ -189,8 +189,14 @@ pro tomo_display::set_limits
   widget_control, self.widgets.disp_slice, set_value=last_slice/2
   widget_control, self.widgets.disp_slider, set_slider_max=last_slice
   widget_control, self.widgets.disp_slider, set_value=last_slice/2
-  widget_control, self.widgets.recon_slice[0], set_value=self.tomoStruct.ny*0.1
-  widget_control, self.widgets.recon_slice[1], set_value=self.tomoStruct.ny*0.9
+  widget_control, self.widgets.recon_slice[0], set_value=self.tomoStruct.upperSlice
+  widget_control, self.widgets.recon_slice[1], set_value=self.tomoStruct.lowerSlice
+  center1 = self.tomoStruct.rotationCenter + self.tomoStruct.upperSlice*self.tomoStruct.rotationCenterSlope
+  center2 = self.tomoStruct.rotationCenter + self.tomoStruct.lowerSlice*self.tomoStruct.rotationCenterSlope
+  widget_control, self.widgets.rotation_center[0], set_value=center1
+  widget_control, self.widgets.rotation_center[1], set_value=center2
+  center = round((center1 + center2)/2.)
+  widget_control, self.widgets.rotation_optimize_center, set_value=center
   widget_control, self.widgets.filter_size, set_value=self.tomoStruct.nx
 end
 
@@ -212,8 +218,8 @@ pro tomo_display::optimize_rotation_center
 
     self.tomoObj->optimize_center, [top_slice, bottom_slice], centers,  merit, width=range, step=step, method=method
     self->update_tomo_struct
-    center1 = self.tomoStruct.rotation_center + top_slice*self.tomoStruct.rotation_center_slope
-    center2 = self.tomoStruct.rotation_center + bottom_slice*self.tomoStruct.rotation_center_slope
+    center1 = self.tomoStruct.rotationCenter + top_slice*self.tomoStruct.rotationCenterSlope
+    center2 = self.tomoStruct.rotationCenter + bottom_slice*self.tomoStruct.rotationCenterSlope
     widget_control, self.widgets.input_file, get_value=file
     title = file + '   Slice=['+strtrim(string(top_slice),2)+','+strtrim(string(bottom_slice),2)+']'
     iplot, centers, merit[*,0], xtitle='Rotation center', ytitle='Figure of merit', sym_index=2, $
@@ -221,17 +227,14 @@ pro tomo_display::optimize_rotation_center
     merit_diff = min(merit[*,1]) - min(merit[*,0])
     iplot, centers, merit[*,1]-merit_diff, sym_index=4, $
            view_title=title, overplot=id
-    widget_control, self.widgets.rotation_center[0], set_value=center1
-    widget_control, self.widgets.rotation_center[1], set_value=center2
-    center = (center1 + center2)/2.
-    widget_control, self.widgets.rotation_optimize_center, set_value=center
     self->reconstruct, 0
     self->reconstruct, 1
+    self->set_limits
 end
 
 
 pro tomo_display::correct_rotation_tilt
-  if (not ptr_valid(self.tomoStruct.pvolume)) then begin
+  if (not ptr_valid(self.tomoStruct.pVolume)) then begin
     t = dialog_message('Must read in volume file first.', /error)
     return
   endif
@@ -321,35 +324,35 @@ pro tomo_display_event, event
 end
 
 pro tomo_display::display_slice, new_window=new_window
-    if (ptr_valid(self.tomoStruct.pvolume)) then begin
+    if (ptr_valid(self.tomoStruct.pVolume)) then begin
         widget_control, self.widgets.disp_slice, get_value=slice
         widget_control, self.widgets.direction, get_value=direction
         widget_control, self.widgets.input_file, get_value=file
         ; Set the axis dimensions
-        if (self.tomoStruct.image_type eq 'RECONSTRUCTED') then begin
-            xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.x_pixel_size
-            ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.x_pixel_size
-            zdist = findgen(self.tomoStruct.nz)*self.tomoStruct.y_pixel_size
+        if (self.tomoStruct.imageType eq 'RECONSTRUCTED') then begin
+            xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.xPixelSize
+            ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.xPixelSize
+            zdist = findgen(self.tomoStruct.nz)*self.tomoStruct.yPixelSize
         endif else begin
-            xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.x_pixel_size
-            ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.y_pixel_size
-            zdist = *self.tomoStruct.angles
+            xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.xPixelSize
+            ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.yPixelSize
+            zdist = *self.tomoStruct.pAngles
         endelse
         case direction of
             0: begin
                 slice = (slice > 0) < (self.tomoStruct.nx-1)
-                r = (*(self.tomoStruct.pvolume))[slice, *, *]
+                r = (*(self.tomoStruct.pVolume))[slice, *, *]
                 xdist = ydist
                 ydist = zdist
                 end
             1: begin
                 slice = (slice > 0) < (self.tomoStruct.ny-1)
-                r = (*(self.tomoStruct.pvolume))[*, slice, *]
+                r = (*(self.tomoStruct.pVolume))[*, slice, *]
                 ydist = zdist
                 end
             2: begin
                 slice = (slice > 0) < (self.tomoStruct.nz-1)
-                r = (*(self.tomoStruct.pvolume))[*, *, slice]
+                r = (*(self.tomoStruct.pVolume))[*, *, slice]
                 end
         endcase
         axes = ['X', 'Y', 'Z']
@@ -379,10 +382,10 @@ pro tomo_display::display_slice, new_window=new_window
 end
 
 pro tomo_display::volume_render
-    if (ptr_valid(self.tomoStruct.pvolume)) then begin
+    if (ptr_valid(self.tomoStruct.pVolume)) then begin
         widget_control, self.widgets.display_min, get_value=min
         widget_control, self.widgets.display_max, get_value=max
-        v = bytscl(*self.tomoStruct.pvolume, min=min, max=max)
+        v = bytscl(*self.tomoStruct.pVolume, min=min, max=max)
         volume_render, v
     endif else begin
         t = dialog_message('Must read in volume file first.', /error)
@@ -417,10 +420,7 @@ pro tomo_display::event, event
           self->update_tomo_struct
           self->update_file_widgets
           self->update_volume_widgets
-          widget_control, self.widgets.dark_current, set_value=self.tomoStruct.dark_current
-          widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
-          widget_control, self.widgets.rotation_center[1], set_value=self.tomoStruct.rotation_center
-          widget_control, self.widgets.rotation_optimize_center, set_value=self.tomoStruct.rotation_center
+          widget_control, self.widgets.dark_current, set_value=*self.tomoStruct.pDarks[0]
           widget_control, self.widgets.status, $
             set_value='Done reading camera file ' + file
         end
@@ -437,11 +437,7 @@ pro tomo_display::event, event
             self->update_tomo_struct
             self->update_file_widgets
             self->update_volume_widgets
-            ; Set the rotation center either from the tomo object
-            widget_control, self.widgets.dark_current, set_value=self.tomoStruct.dark_current
-            widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
-            widget_control, self.widgets.rotation_center[1], set_value=self.tomoStruct.rotation_center
-            widget_control, self.widgets.rotation_optimize_center, set_value=self.tomoStruct.rotation_center
+            widget_control, self.widgets.dark_current, set_value=*self.tomoStruct.pDarks[0]
             widget_control, self.widgets.status, $
                             set_value='Done reading file ' + file
         end
@@ -461,27 +457,28 @@ pro tomo_display::event, event
         end
 
         self.widgets.preprocess_go: begin
-            widget_control, self.widgets.dark_current, get_value=dark_current
+          widget_control, self.widgets.zingerWidth, get_value=zingerWidth
             widget_control, self.widgets.threshold, get_value=threshold
             widget_control, self.widgets.double_threshold, get_value=double_threshold
-            widget_control, self.widgets.preprocess_data_type, get_value=index, get_uvalue=data_types
+            write_output = widget_info(self.widgets.preprocess_write_output, /droplist_select)
+            widget_control, self.widgets.preprocess_data_type, get_uvalue=data_types
+            index = widget_info(self.widgets.preprocess_write_output, /droplist_select)
             data_type = data_types[index]
-            widget_control, self.widgets.preprocess_write_output, get_value=write_output
-            widget_control, self.widgets.preprocess_file_format, get_value=file_format
-            netcdf = file_format eq 1
+            widget_control, self.widgets.preprocess_file_format, get_uvalue=file_formats
+            index = widget_info(self.widgets.preprocess_file_format, /droplist_select)
+            file_format = file_formats[index]
+            widget_control, self.widgets.preprocess_threads, get_value=threads
+            widget_control, self.widgets.preprocess_scale, get_value=scale
             widget_control, self.widgets.abort, set_uvalue=0
             widget_control, self.widgets.status, set_value=""
             widget_control, /hourglass
             widget_control, self.widgets.status, set_value='Preprocessing ...'
-            self.tomoObj->preprocess, dark=dark_current, $
-                            threshold=threshold, double_threshold=double_threshold, $
-                            data_type=data_type, write_output=write_output, netcdf=netcdf
+            self.tomoObj->set_preprocess_params, zingerWidth=zingerWidth, zingerThreshold=threshold, zingerDoubleThreshold=double_threshold, $
+                                                 scale=scale, threads=threads, $
+                                                 writeDataType=data_type, writeOutput=write_output, writeFormat=file_format
+            self.tomoObj->preprocess
             self->update_tomo_struct
             self->update_volume_widgets
-            ; Set the rotation center
-            widget_control, self.widgets.rotation_center[0], set_value=self.tomoStruct.rotation_center
-            widget_control, self.widgets.rotation_center[1], set_value=self.tomoStruct.rotation_center
-            widget_control, self.widgets.rotation_optimize_center, set_value=self.tomoStruct.rotation_center
             widget_control, self.widgets.status, set_value='Preprocessing complete'
         end
 
@@ -578,7 +575,7 @@ pro tomo_display::event, event
 
         self.widgets.make_movie: begin
             widget_control, self.widgets.disp_slice, get_value=slice
-            if (ptr_valid(self.tomoStruct.pvolume)) then begin
+            if (ptr_valid(self.tomoStruct.pVolume)) then begin
                 widget_control, self.widgets.auto_intensity, get_value=auto
                 if (auto) then begin
                     widget_control, self.widgets.data_min, get_value=min
@@ -608,7 +605,7 @@ pro tomo_display::event, event
                 endcase
                 widget_control, self.widgets.abort, set_uvalue=0
                 widget_control, self.widgets.status, set_value=""
-                make_movie, index=direction+1, scale=scale, *self.tomoStruct.pvolume, $
+                make_movie, index=direction+1, scale=scale, *self.tomoStruct.pVolume, $
                             jpeg_file=jpeg_file, tiff_file=tiff_file, mp4_file=mp4_file, $
                             min=min, max=max, start=start, stop=stop, step=step, wait=wait, $
                             unscaled_tiff=unscaled_tiff, fps=fps, bps=bps, $
@@ -624,8 +621,8 @@ pro tomo_display::event, event
 
 end_event:
     ; Set the sensitivity of preprocess, reconstruct, and visualize base widgets based on valid volume and image type
-    valid_volume = ptr_valid(self.tomoStruct.pvolume)
-    image_type = self.tomoStruct.image_type
+    valid_volume = ptr_valid(self.tomoStruct.pVolume)
+    image_type = self.tomoStruct.imageType
     widget_control, self.widgets.visualize_base, sensitive=valid_volume
     widget_control, self.widgets.preprocess_base, sensitive=(valid_volume and (image_type eq 'RAW'))
     widget_control, self.widgets.reconstruct_base, sensitive=(valid_volume and (image_type eq 'NORMALIZED'))
@@ -700,28 +697,33 @@ function tomo_display::init
     self.widgets.abort = widget_button(row, value='Abort', $
                                        event_pro='tomo_abort_event')
 
+    ; Cannot create this object until the status and abort widgets are created.  Might want to change this.
+    self.tomoObj = obj_new('tomo', abortWidget=self.widgets.abort, statusWidget=self.widgets.status)
+    self->update_tomo_struct
+
 
     ; Preprocessing
     col = widget_base(left_column, /column, /frame)
     self.widgets.preprocess_base = col
     t = widget_label(col, value='Preprocess', font=self.fonts.heading1)
-    row = widget_base(col, /row, /base_align_bottom)
-    self.widgets.dark_current = cw_field(row, /column, title='Dark current', $
-                                      /integer, xsize=10, value=100)
-    col1 = widget_base(row, /column)
-    self.widgets.preprocess_go = widget_button(col1, value=' Preprocess ')
     row = widget_base(col, /row)
+    t = widget_label(row, value='Output:  Save result:')
+    choices=['No', 'Yes']
+    self.widgets.preprocess_write_output = widget_droplist(row, value=choices, $
+      uvalue=choices, /align_center)
+    widget_control, self.widgets.preprocess_write_output, set_droplist_select=0
     choices = ['UInt16', 'Float32']
-    self.widgets.preprocess_data_type = cw_bgroup(row, choices, $
-      label_left='Data type:', $
-      row=1, set_value=0, /exclusive, ypad=0, uvalue=choices)
-    row = widget_base(col, /row)
-    self.widgets.preprocess_write_output = cw_bgroup(row, ['No', 'Yes'], $
-      label_left='Save result:', $
-      row=1, set_value=0, /exclusive, ypad=0)
-    self.widgets.preprocess_file_format = cw_bgroup(row, ['HDF5', 'netCDF'], $
-      label_left='File format:', $
-      row=1, set_value=0, /exclusive, ypad=0)
+    t = widget_label(row, value='  Data type:')
+    self.widgets.preprocess_data_type = widget_droplist(row, value=choices, $
+      uvalue=choices, /align_center)
+    widget_control, self.widgets.preprocess_data_type, set_droplist_select=0
+    choices = ['HDF5', 'netCDF']
+    t = widget_label(row, value='  File format:')
+    self.widgets.preprocess_file_format = widget_droplist(row, value=choices, $
+      uvalue=choices, /align_center)
+    row = widget_base(col, /row, /base_align_bottom)
+    t = widget_label(row, value='Preprocess:')
+    self.widgets.preprocess_go = widget_button(row, value=' Preprocess ')
 
     ; Reconstruction
     col = widget_base(left_column, /column, /frame)
@@ -891,24 +893,30 @@ function tomo_display::init
     t = widget_label(col, value='Preprocessing', font=self.fonts.heading1)
     col1 = col
     row = widget_base(col1, /row)
+    self.widgets.zingerWidth = cw_field(row, title='Zinger width', /float, $
+                                        /row, xsize=10, value=self.tomoStruct.zingerWidth)
+    row = widget_base(col1, /row)
     t = widget_label(row, value='Zinger thresholds')
     self.widgets.threshold = cw_field(row, title='Normal frames', /float, $
-                                        /column, xsize=10, value=1.25)
+                                        /column, xsize=10, value=self.tomoStruct.zingerThreshold)
     self.widgets.double_threshold = cw_field(row, title='Double correlation (flat fields)', /float, $
-                                        /column, xsize=10, value=1.05)
+                                        /column, xsize=10, value=self.tomoStruct.zingerDoubleThreshold)
     row = widget_base(col1, /row)
-    self.widgets.white_average = cw_bgroup(row, ['Interpolate', 'Average'], $
-                                           label_left='Flat field processing:', row=1, $
-                                           set_value=1, /exclusive)
-    self.widgets.white_smooth  = cw_field(row, title='Flat field smoothing', /integer, $
-                                        /column, xsize=10, value=0)
+    self.widgets.dark_current = cw_field(row, /row, title='Dark current', $
+                                        /integer, xsize=10, value=0)
+    row = widget_base(col1, /row)
+    self.widgets.preprocess_scale = cw_field(row, /row, title='Scale factor', $
+                                             xsize=10, value=self.tomoStruct.preprocessScale)
+    row = widget_base(col1, /row)
+    self.widgets.preprocess_threads = cw_field(row, /row, title='Number of threads', $
+                                               /integer, xsize=10, value=self.tomoStruct.preprocessThreads)
     col = widget_base(c1, /column, /frame)
     t = widget_label(col, value='Sinogram', font=self.fonts.heading1)
     col1 = col
     sinogram_base = col1
     row = widget_base(col1, /row)
     self.widgets.airPixels = cw_field(row, title='Air pixels (0=no air correction)', /integer, $
-                                        /column, xsize=10, value=10)
+                                        /column, xsize=10, value=self.tomoStruct.airPixels)
     self.widgets.fluorescence = cw_bgroup(row, ['Absorption', 'Fluorescence'], $
                                             label_top='Data type', row=1, $
                                             set_value=0, /exclusive)
@@ -929,10 +937,10 @@ function tomo_display::init
                                             set_value=0, /exclusive)
     row = widget_base(col, /row)
     self.widgets.recon_scale = cw_field(row, /row, title='Scale factor', $
-                                            /float, xsize=15, value=1e6)
+                                            /float, xsize=15, value=self.tomoStruct.reconScale)
     row = widget_base(col, /row)
     self.widgets.ringWidth = cw_field(row, title='Ring smoothing width (0=None)', /integer, $
-                                        /row, xsize=10, value=9)
+                                        /row, xsize=10, value=self.tomoStruct.ringWidth)
     col1 = widget_base(col, /column, /frame)
     self.widgets.backproject_base = col1
     widget_control, self.widgets.backproject_base, sensitive=0
@@ -975,7 +983,7 @@ function tomo_display::init
     row = widget_base(col1, /row)
     t = widget_label(row, value='Sample Parameter: ')
     self.widgets.gridrec_sampl_parameter = cw_field(row, title='', $
-                                        /row, xsize=10, value=1)    
+                                        /row, xsize=10, value=self.tomoStruct.sampl)    
     row = widget_base(col1, /row)
     t = widget_label(row, value = 'Padded Sinogram Width:')
     choices = ['Auto', 'No Padding', '1024','2048', '4096']
@@ -987,16 +995,16 @@ function tomo_display::init
 
     row = widget_base(col1, /row)
     self.widgets.paddingAverage = cw_field(row, title='Pixels to average for padding (0=pad with 0.0)', /integer, $
-                                        /column, xsize=10, value=10)
+                                        /column, xsize=10, value=self.tomoStruct.paddingAverage)
     row = widget_base(col1, /row)
     t = widget_label(col1, value='tomoRecon', font=self.fonts.heading2)
     row = widget_base(col1, /row)
-    self.widgets.numThreads = cw_field(row, title='Number of of threads', /integer, $
-                                        /row, xsize=10, value=8)
+    self.widgets.reconThreads = cw_field(row, title='Number of of threads', /integer, $
+                                         /row, xsize=10, value=self.tomoStruct.reconThreads)
  ;
     row = widget_base(col1, /row)
     self.widgets.slicesPerChunk = cw_field(row, title='Slices per chunk', /integer, $
-                                        /row, xsize=10, value=128)
+                                        /row, xsize=10, value=self.tomoStruct.slicesPerChunk)
                                        
     ; Make all of the base widgets the same size so they line up nicely
     g = widget_info(c1, /geometry)
@@ -1009,8 +1017,6 @@ function tomo_display::init
 
     widget_control, self.widgets.options_base, /realize, map=0
     widget_control, self.widgets.options_base, set_uvalue=self
-
-    self.tomoObj = obj_new('tomo', abort_widget=self.widgets.abort, status_widget=self.widgets.status)
 
     xmanager, 'tomo_display', self.widgets.base, /no_block
     xmanager, 'tomo_options', self.widgets.options_base, /no_block
@@ -1036,7 +1042,6 @@ pro tomo_display__define
         status: 0L, $
         abort: 0L, $
         preprocess_base: 0L, $
-        dark_current: 0L, $
         preprocess_go: 0L, $
         preprocess_data_type: 0L, $
         preprocess_write_output: 0L, $
@@ -1086,8 +1091,12 @@ pro tomo_display__define
 
         ; These widgets are in the "options" page
         options_base: 0L, $
+        zingerWidth: 0L, $
         threshold: 0L, $
         double_threshold: 0L, $
+        preprocess_scale: 0L, $
+        preprocess_threads: 0L, $
+        dark_current: 0L, $
         recon_method: 0L, $
         recon_scale: 0L, $
         ringWidth: 0L, $
@@ -1108,7 +1117,7 @@ pro tomo_display__define
         sino_padding: 0L, $
         paddingAverage: 0L, $
         gridrec_sampl_parameter: 0L, $
-        numThreads: 0L, $
+        reconThreads: 0L, $
         slicesPerChunk: 0L $
     }
 
@@ -1120,13 +1129,8 @@ pro tomo_display__define
 
     tomo_display = {tomo_display, $
         widgets: widgets, $
-        pvolume: ptr_new(), $
         tomoObj: obj_new(), $
         tomoStruct: {tomo}, $
-        nx: 0, $
-        ny: 0, $
-        nz: 0, $
-        image_type: '', $
         image_display: obj_new(), $
         fonts: fonts $
     }
