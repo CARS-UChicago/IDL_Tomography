@@ -39,27 +39,29 @@ pro tomo::read_camera_file, filename
 
   t0 = systime(1)
   self->set_file_components, filename
-  ptr_free, self.pvolume
+  ptr_free, self.pVolume
 
   ; See if the file is netCDF
   if (ncdf_is_ncdf(filename)) then begin
-    self.base_filename = filename.remove(-4)
-    file = self.base_filename + '1.nc'
+    self.baseFilename = filename.remove(-4)
+    file = self.baseFilename + '1.nc'
     self->display_status, 'Reading ' + file
     flat1       = read_nd_netcdf(file)
-    file = self.base_filename + '3.nc'
+    file = self.baseFilename + '3.nc'
     self->display_status, 'Reading ' + file
     flat2       = read_nd_netcdf(file)
-    file = self.base_filename + '2.nc'
+    file = self.baseFilename + '2.nc'
     self->display_status, 'Reading ' + file
     projections = read_nd_netcdf(file)
     dims = size(projections, /dimensions)
     num_projections = dims[2]
     flats = [[[flat1]], [[flat2]]]
-    status = self.read_setup(self.base_filename + '.setup')
-    darks = fix(self.dark_current)
+    status = self.read_setup(self.baseFilename + '.setup')
+    ; pDarks is set in read_setup
     rotation_start = 0.
     rotation_step = 180./num_projections
+    self.rotationCenter = dims[0]/2.
+    self.rotationCenterSlope = 0.
     return
   endif
 
@@ -70,27 +72,24 @@ pro tomo::read_camera_file, filename
     dims = size(projections, /dimensions)
     num_projections = dims[2]
     ; For now we assume there are no dark field images
-    self.dark_current = h5_getdata(filename, '/process/acquisition/dark_fields/dark_field_value')
-    darks = fix(self.dark_current[0])
-    rotation_start = h5_getdata(filename, '/process/acquisition/rotation/rotation_start')
-    rotation_step = h5_getdata(filename, '/process/acquisition/rotation/rotation_step')
-    self.operator = h5_getdata(filename, '/measurement/sample/experimenter/name')
-    self.title = h5_getdata(filename, '/measurement/sample/description_1')
-    self.sample = h5_getdata(filename, '/measurement/sample/name')
-    self.camera = h5_getdata(filename, '/measurement/instrument/detector/model')
-    self.x_pixel_size = h5_getdata(filename, '/measurement/instrument/detection_system/objective/resolution')
-    self.y_pixel_size = self.x_pixel_size
-    self.z_pixel_size = self.x_pixel_size
+    dark_current = h5_getdata(filename, '/process/acquisition/dark_fields/dark_field_value')
+    darks = fix(dark_current[0])
+    rotation_start = (h5_getdata(filename, '/process/acquisition/rotation/rotation_start'))[0]
+    rotation_step = (h5_getdata(filename, '/process/acquisition/rotation/rotation_step'))[0]
+    camera = h5_getdata(filename, '/measurement/instrument/detector/model')
+    self.xPixelSize = h5_getdata(filename, '/measurement/instrument/detection_system/objective/resolution')
+    self.yPixelSize = self.xPixelSize
+    self.zPixelSize = self.xPixelSize
+    self->read_sample_config, self.baseFilename + '.config'
+    (*(self.pSampleConfig))['Camera'] = camera
   endif
  
-  self.image_type = 'RAW'
-  angles = rotation_start + rotation_step * findgen(num_projections)
-  self.angles = ptr_new(angles, /no_copy)
-  self.pvolume = ptr_new(projections, /no_copy)
-  self.pflats = ptr_new(flats, /no_copy)
-  self.pdarks = ptr_new(darks, /no_copy)
-  self.rotation_center = dims[0]/2.
-  self.rotation_center_slope = 0.
+  self.imageType = 'RAW'
+  angles = float(rotation_start + rotation_step * findgen(num_projections))
+  self.pAngles = ptr_new(angles, /no_copy)
+  self.pVolume = ptr_new(projections, /no_copy)
+  self.pFlats = ptr_new(flats, /no_copy)
+  self.pDarks = ptr_new(darks, /no_copy)
   self.nx = dims[0]
   self.ny = dims[1]
   self.nz = dims[2]
@@ -105,18 +104,18 @@ function tomo::find_attribute, attributes, name
   message, 'Could not find attribute ' + name
 end
 
-pro tomo::display_status, message, debug_level
-  if (n_elements(debug_level) eq 0) then debug_level = 0
-  if (widget_info(self.status_widget, /valid_id)) then begin
-    widget_control, self.status_widget, set_value=message
+pro tomo::display_status, message, debugLevel
+  if (n_elements(debugLevel) eq 0) then debugLevel = 0
+  if (widget_info(self.statusWidget, /valid_id)) then begin
+    widget_control, self.statusWidget, set_value=message
   endif
-  if (self.debug_level ge debug_level) then print, systime() + ' ' + message
+  if (self.debugLevel ge debugLevel) then print, systime() + ' ' + message
 end
 
 function tomo::check_abort
-  if (widget_info(self.abort_widget, /valid_id)) then begin
-    event = widget_event(/nowait, self.abort_widget)
-    widget_control, self.abort_widget, get_uvalue=abort
+  if (widget_info(self.abortWidget, /valid_id)) then begin
+    event = widget_event(/nowait, self.abortWidget)
+    widget_control, self.abortWidget, get_uvalue=abort
     return, abort
   endif
 end
@@ -213,28 +212,17 @@ end
 ;     The volume file can be read back in to IDL with function READ_TOMO_VOLUME
 ;
 
-pro tomo::preprocess, dark=input_dark, $
-  white_field=input_white, threshold=threshold, $
-  double_threshold=double_threshold, $
-  data_type=data_type, $
-  write_output=write_output, netcdf=netcdf
-
-  ; We use a common block just to store info through calls
-  common tomo_recon_common, tomo_recon_shareable_library
+pro tomo::preprocess
 
   tStart = systime(1)
-  if (n_elements(threshold) eq 0) then threshold=0.20
-  if (n_elements(double_threshold) eq 0) then double_threshold=1.05
-  if (n_elements(data_type) eq 0) then data_type = 'UInt16'
-  if (n_elements(setup) eq 0) then setup=self.base_filename + '.setup'
-  if (keyword_set(netcdf)) then output_file = self.base_filename + 'norm.nc' $
-  else output_file = self.base_filename + 'norm.h5'
+  if (self.preprocessWriteFormat eq 'netCDF') then output_file = self.baseFilename + 'norm.nc' $
+  else output_file = self.baseFilename + 'norm.h5'
 
   normalized = fltarr(self.nx, self.ny, self.nz, /nozero)
 
   ; Convert darks and flats to float
-  darks = float(*self.pdarks)
-  flats = float(*self.pflats)
+  darks = float(*self.pDarks)
+  flats = float(*self.pFlats)
   if (n_elements(darks) eq 1) then begin
     darks = fltarr(self.nx, self.ny) + darks
   endif
@@ -271,26 +259,25 @@ pro tomo::preprocess, dark=input_dark, $
   tFlats = systime(1)
 
   params = {preprocess_params, $
-    numPixels: self.nx,           $ ; Number of pixels in sinogram row before padding
-    numSlices: self.ny,           $ ; Number of slices
-    numProjections: self.nz,      $ ; Number of angles
-    numThreads: 24L, $
-    zingerWidth: 3L,     $ ; Scale factor to multiply sinogram when airPixels=0
-    zingerThreshold: float(threshold),     $ ; Scale factor to multiply sinogram when airPixels=0
-    scaleFactor: 10000.,        $ ; Scale factor to multiple reconstruction
-    debug: 2L, $
-    debugFile: bytarr(256) $
+    numPixels:        self.nx, $
+    numSlices:        self.ny, $
+    numProjections:   self.nz, $
+    numThreads:       self.preprocessThreads, $
+    zingerWidth:      self.zingerWidth, $
+    zingerThreshold:  self.zingerThreshold, $
+    scaleFactor:      self.preprocessScale, $
+    debug:            self.debug, $
+    debugFile:        bytarr(256) $
   }
-  params.debugFile = byte('preprocess_debug.txt')
-  
-  locate_tomo_recon_shareable_library
-  t = call_external(tomo_recon_shareable_library, 'tomoPreprocessCreateIDL', $
-                    params, darks, flats, *self.pvolume, normalized)
+  params.debugFile = [byte(self.debugFile), 0B]
+
+  t = call_external(self.tomoReconShareableLibrary, 'tomoPreprocessCreateIDL', $
+                    params, darks, flats, *self.pVolume, normalized)
 
   preprocessComplete = 0L
   projectionsRemaining = 0L
   repeat begin
-    t = call_external(tomo_recon_shareable_library, 'tomoPreprocessPollIDL', $
+    t = call_external(self.tomoReconShareableLibrary, 'tomoPreprocessPollIDL', $
                       preprocessComplete, $
                       projectionsRemaining)
     self->display_status, 'Proprocessing projection: ' $
@@ -299,21 +286,21 @@ pro tomo::preprocess, dark=input_dark, $
   endrep until preprocessComplete
   tNormalize = systime(1)
 
-  if (data_type eq 'UInt16') then begin
-    normalized = fix(normalized)
-  endif
   tConvertOut = systime(1)
-
-  self.image_type = 'NORMALIZED'
-  if (keyword_set(write_output)) then begin
+  self.imageType = 'NORMALIZED'
+  if (self.preprocessWriteOutput) then begin
+    if (self.prepreprocessWriteType eq 'UInt16') then begin
+      normalized = fix(normalized)
+    endif
+    tConvertOut = systime(1)
     self->display_status, 'Writing volume file ...', 1
     self->write_volume, output_file, normalized, netcdf=netcdf
   endif
-  status = self->write_setup(setup)
+  self->write_sample_config
   tWriteFile = systime(1)
 
-  ptr_free, self.pvolume
-  self.pvolume = ptr_new(normalized, /no_copy)
+  ptr_free, self.pVolume
+  self.pVolume = ptr_new(normalized, /no_copy)
   tEnd = systime(1)
   self->display_status, 'Preprocessing complete', 1
 
@@ -325,14 +312,6 @@ pro tomo::preprocess, dark=input_dark, $
   print, '                    Freeing memory:', tEnd - tWriteFile
   print, '                             Total:', tEnd - tStart
 
-end
-
-pro tomo::set_tomo_params, _EXTRA=extra
-  dimensions = [self.nx, self.ny, self.nz]
-  ; Can't pass self.tomoParams because it will be a copy
-  tp = self.tomoParams
-  tomo_params_update, tp, dimensions=dimensions, _EXTRA=extra
-  self.tomoParams = tp
 end
 
 pro tomo::optimize_center, slices, center, merit, width=width, step=step, method=method
@@ -350,7 +329,7 @@ pro tomo::optimize_center, slices, center, merit, width=width, step=step, method
     center = center - width/2 + findgen(ncenter)*step
   endif
   merit = dblarr(ncenter, 2)
-  max_angle = max(*self.angles)
+  max_angle = max(*self.pAngles)
   if (method eq 'Entropy' and (max_angle lt 181)) then begin
     self->optimize_center_entropy, slices, center, merit
   endif else  if (method eq 'Entropy' and (max_angle ge 181)) then begin
@@ -376,17 +355,16 @@ end
 
 pro tomo::optimize_center_entropy, slices, center, merit
   ncenter = n_elements(center)
-  s = size(*self.pvolume, /dimensions)
+  s = size(*self.pVolume, /dimensions)
   input = fltarr(s[0], ncenter*2, s[2])
   ctr = fltarr(ncenter*2)
   for i=0, ncenter-1 do begin
     ctr[i*2] = center[i]
     ctr[i*2+1] = center[i]
-    input[*, i*2, *] = (*self.pvolume)[*, slices[0], *]
-    input[*, i*2+1, *] = (*self.pvolume)[*, slices[1], *]
+    input[*, i*2, *] = (*self.pVolume)[*, slices[0], *]
+    input[*, i*2+1, *] = (*self.pVolume)[*, slices[1], *]
   endfor
-  self.tomoParams.numSlices = ncenter*2
-  tomo_recon, self.tomoParams, input, recon, angles=*self.angles, center=ctr
+  self->tomo_recon, input, recon, angles=*self.pAngles, center=ctr
 
   ; Use the slice in center of range to get min/max of reconstruction for histogram
   r1 = recon[*,*,ncenter]
@@ -419,18 +397,16 @@ end
 
 pro tomo::optimize_center_entropy_360, slices, center, merit
   ncenter = n_elements(center)
-  s = size(*self.pvolume, /dimensions)
-  tomoParams = self.tomoParams
+  s = size(*self.pVolume, /dimensions)
   for i=0, ncenter-1 do begin
-    angles = *self.angles
+    angles = *self.pAngles
     cent = round(center[i])
-    input1 = self->convert_360_data((*self.pvolume)[*, slices[0], *], cent, angles)
-    angles = *self.angles
-    input2 = self->convert_360_data((*self.pvolume)[*, slices[1], *], cent, angles)
+    input1 = self->convert_360_data((*self.pVolume)[*, slices[0], *], cent, angles)
+    angles = *self.pAngles
+    input2 = self->convert_360_data((*self.pVolume)[*, slices[1], *], cent, angles)
     input = [[input1], [input2]]
     ctr = [cent, cent]
-    tomo_params_update, tomoParams, input, paddedsinogramwidth=0
-    tomo_recon, tomoParams, input, recon, angles=angles, center=ctr
+    self->tomo_recon, input, recon, center=ctr, angles=angles
     if (i eq 0) then begin
       ; Use the first reconstuction to get min/max of reconstruction for histogram
       r1 = recon[*,*,0]
@@ -461,23 +437,23 @@ end
 pro tomo::optimize_center_mirror, slices, center, merit
   ; Determines rotation center from 2 images that are close to 180 degrees apart
   numShift = n_elements(center)
-  if (max(*self.angles) gt 181) then begin
+  if (max(*self.pAngles) gt 181) then begin
     stripWidth = 101
     mid_center = center[numShift/2]
     overlap = min([mid_center, self.nx-1 - mid_center])
     xmin = mid_center - overlap
     xmax = mid_center + overlap
-    proj180 = float((*self.pvolume)[xmin:xmax, *, self.nz/2])
+    proj180 = float((*self.pVolume)[xmin:xmax, *, self.nz/2])
     shft = round((center - mid_center) * 2)
     shft = (shft < overlap) > (-overlap)
   endif else begin
     stripWidth = 11
     xmin = 0
     xmax = self.nx-1
-    proj180 = float((*self.pvolume)[xmin:xmax, *, self.nz-1])
+    proj180 = float((*self.pVolume)[xmin:xmax, *, self.nz-1])
     shft = round((center - self.nx/2) * 2)
   endelse
-  proj0 = float((*self.pvolume)[xmin:xmax, *, 0])
+  proj0 = float((*self.pVolume)[xmin:xmax, *, 0])
   dims = size(proj0, /dimensions)
   nx = dims[0]
   max_shift = max(abs(shft))
@@ -501,20 +477,22 @@ pro tomo::set_rotation, slice1, center1, slice2, center2
   center = float([center1, center2])
   ; Do a linear fit of slice number and rotation center
   coeffs = poly_fit(slices, center, 1)
-  self.rotation_center = coeffs[0]
-  self.rotation_center_slope = coeffs[1]
-  print, 'Rotation center, slope =', self.rotation_center, self.rotation_center_slope
+  self.rotationCenter = coeffs[0]
+  self.rotationCenterSlope = coeffs[1]
+  self.upperSlice = slice1
+  self.lowerSlice = slice2
+  print, 'Rotation center, slope =', self.rotationCenter, self.rotationCenterSlope
 end
 
 pro tomo::correct_rotation_tilt, angle
-  if (not ptr_valid(self.pvolume)) then begin
+  if (not ptr_valid(self.pVolume)) then begin
     t = dialog_message('Must read in volume file first.', /error)
     return
   endif
   for i=0, self.nz-1 do begin
-    proj = (*self.pvolume)[*,*,i]
+    proj = (*self.pVolume)[*,*,i]
     r = rot(proj, angle, cubic=-0.5)
-    (*self.pvolume)[0,0,i] = r
+    (*self.pVolume)[0,0,i] = r
     self->display_status, 'Correcting projection ' + strtrim(i+1, 2) + '/' + strtrim(self.nz, 2)
   endfor
 end
@@ -550,6 +528,104 @@ function tomo::convert_360_data, input, center, angles
   endelse
   angles = angles[0:nz/2-1]
   return, output
+end
+
+pro tomo::tomo_recon, $
+  input, $
+  output, $
+  create = create, $
+  center=center, $
+  angles=angles, $
+  wait=wait
+
+  t0 = systime(1)
+  dims = long(size(input, /dimensions))
+  numPixels = dims[0]
+  if (n_elements(dims) eq 2) then begin
+    numSlices      = 1L
+    numProjections = dims[1]
+  endif else if (n_elements(dims) eq 3) then begin
+    numSlices      = dims[1]
+    numProjections = dims[2]
+  endif
+  
+  if (n_elements(create) eq 0) then create = 1
+  if (n_elements(angles) eq 0) then angles = *self.pAngles
+  if (n_elements(center) eq 0) then begin
+    centerArr = fltarr(numSlices) + (numPixels)/2.
+  endif else if (n_elements(center) eq 1) then begin
+    centerArr = fltarr(numSlices) + float(center)
+  endif else  begin
+    if (n_elements(center) lt numSlices) then $
+      message, 'Center size ='+ string(n_elements(center)) + ' must be '+ string(numSlices)
+    centerArr = float(center)
+  endelse
+  if (n_elements(wait) eq 0) then wait = 1
+
+  tp = {tomo_params,                                $
+    ; Sinogram parameters
+    numPixels:            numPixels,                $ ; Number of pixels in sinogram row before padding
+    numProjections:       numProjections,           $ ; Number of angles
+    numSlices:            numSlices,                $ ; Number of slices
+    sinoScale:            self.preprocessScale,     $ ; Scale factor to multiply sinogram when airPixels=0;
+    reconScale:           self.reconScale,          $ ; Scale factor to multiple reconstruction
+    reconOffset:          self.reconOffset,         $ ; Offset factor to multiple reconstruction
+    paddedSinogramWidth:  self.paddedSinogramWidth, $ ; Number of pixels in sinogram after padding
+    paddingAverage:       self.paddingAverage,      $ ; Number of pixels to average on each side of sinogram to compute padding. 0 pixels pads with 0.0
+    airPixels:            self.airPixels,           $ ; Number of pixels of air to average at each end of sinogram row
+    ringWidth:            self.ringWidth,           $ ; Number of pixels to smooth by when removing ring artifacts
+    fluorescence:         self.fluorescence,        $ ; 0=absorption data, 1=fluorescence
+    ; tomoRecon parameters
+    numThreads:           self.reconThreads,        $
+    debug:                self.debug,               $
+    debugFile:            bytarr(256),              $ ; Set below
+    ; gridRec/tomoRecon parameters
+    geom:                 self.geom,                $ ; 0 if array of angles provided; 1,2 if uniform in half,full circle
+    pswfParam:            self.pswfParam,           $ ; PSWF parameter
+    sampl:                self.sampl,               $ ; "Oversampling" ratio
+    maxPixSize:           self.maxPixSize,          $ ; Max pixel size for reconstruction
+    ROI:                  self.ROI,                 $ ; Region of interest (ROI) relative size
+    X0:                   self.X0,                  $ ; (X0,Y0)=Offset of ROI from rotation axis
+    Y0:                   self.Y0,                  $ ; in units of center-to-edge distance.
+    ltbl:                 self.ltbl,                $ ; No. elements in convolvent lookup tables
+    GR_filterName:        bytarr(16)                $ ; Name of filter function - set below
+  }
+  tp.debugFile = [byte(self.debugFile), 0B]
+  tp.GR_filterName = [byte(self.GR_filterName), 0B]
+  tp.paddedSinogramWidth = self->getPaddedSinogramWidth(numPixels)
+
+  output = 0 ; Deallocate any existing array
+  output = fltarr(numPixels, numPixels, numSlices, /nozero)
+
+  ; Make sure input is a float array
+  tname = size(input, /tname)
+  if (tname ne 'FLOAT') then begin
+    input = float(input)
+  endif
+  t1 = systime(1)
+
+  if (create) then begin
+    t = call_external(self.tomoReconShareableLibrary, 'tomoReconCreateIDL', tp, angles)
+  endif
+  t = call_external(self.tomoReconShareableLibrary, 'tomoReconRunIDL', $
+    numSlices, $
+    centerArr, $
+    input, $
+    output)
+
+  if (wait) then begin
+    reconComplete = 0L
+    slicesRemaining = 0L
+    repeat begin
+      t = call_external(self.tomoReconShareableLibrary, 'tomoReconPollIDL', reconComplete, slicesRemaining)
+      self->display_status, 'Reconstructing slice: ' + strtrim(numSlices-slicesRemaining,2) + '/' + strtrim(numSlices,2), 2
+      wait, .01
+    endrep until (reconComplete)
+    t2 = systime(1)
+    print, 'tomo_recon: time to convert to float:', t1-t0
+    print, '                 time to reconstruct:', t2-t1
+    print, '                          total time:', t2-t0
+  endif
 end
 
   ;+
@@ -606,20 +682,18 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
   endif
   nx = dims[0]
   nz = dims[1]
-  angles = *self.angles
-  tomoParams = self.tomoParams
+  angles = *self.pAngles
   
   ; If this is 360 degree data we need to convert to 180
   if (max(angles) gt 181) then begin
     input = self->convert_360_data(input, center, angles)
-    tomo_params_update, tomoParams, input, paddedsinogramwidth=0
   endif
 
-  if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
-    tomo_recon, tomoParams, input, r, center=center, angles=angles
+  if (self.reconMethod eq self.reconMethodTomoRecon) then begin
+    self->tomo_recon, input, r, center=center, angles=angles
   endif
 
-  if (tomoParams.reconMethod eq tomoParams.reconMethodGridrec) then begin
+  if (self.reconMethod eq self.reconMethodGridrec) then begin
     t1 = input
     t2 = input
     s1 = sinogram(tomoParams, t1, angles, cog=cog)
@@ -627,16 +701,16 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
     s2 = sinogram(tomoParams, t2, angles, cog=cog)
     time3 = systime(1)
 
-    if (tomoParams.ringWidth eq 0) then begin
+    if (self.ringWidth eq 0) then begin
       g1 = s1
       g2 = s2
     endif else begin
-      g1 = remove_tomo_artifacts(s1, /rings, width=tomoParams.ringWidth)
-      g2 = remove_tomo_artifacts(s2, /rings, width=tomoParams.ringWidth)
+      g1 = remove_tomo_artifacts(s1, /rings, width=self.ringWidth)
+      g2 = remove_tomo_artifacts(s2, /rings, width=self.ringWidth)
     endelse
 
     ; pad sinogram
-    pad = tomoParams.paddedSinogramWidth
+    pad = self->getPaddedSinogramWidth(nx)
     if (pad ne 0) then begin
       size = size(g1)
       if (size[1] gt pad) then begin
@@ -664,8 +738,11 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
     endif
 
     ; Scale results
-    if ((tomoParams.reconScale ne 0.) and (tomoParams.reconScale ne 1.0)) then begin
-      r = r * tomoParams.reconScale
+    if ((self.reconScale ne 0.) and (self.reconScale ne 1.0)) then begin
+      r = r * self.reconScale
+    endif
+    if (self.reconOffset ne 0.) then begin
+      r = r + self.reconOffset
     endif
 
     time5 = systime(1)
@@ -674,26 +751,29 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
     print, 'Time to reconstruct:      ', time5-time4
   endif
 
-  if (tomoParams.reconMethod eq tomoParams.reconMethodBackproject) then begin
+  if (self.reconMethod eq self.reconMethodBackproject) then begin
     s1 = sinogram(tomoParams, t1, angles, cog=cog)
     cent = -1
     time3 = systime(1)
-    if (tomoParams.ringWidth eq 0) then begin
+    if (self.ringWidth eq 0) then begin
       g1 = s1
     endif else begin
-      g1 = remove_tomo_artifacts(s1, /rings, width=tomoParams.ringWidth)
+      g1 = remove_tomo_artifacts(s1, /rings, width=self.ringWidth)
     endelse
 
     time4 = systime(1)
-    ss1 = tomo_filter(g1, filter_size=tomoParams.BP_filterSize, filter_name=string(tomoParams.BP_filterName))
+    ss1 = tomo_filter(g1, filter_size=self.BP_filterSize, filter_name=self.BP_filterName)
     singram = ss1
     time5 = systime(1)
     if (center ge (nx-1)/2) then ctr = center else ctr = center + 2*abs(round(center - (nx-1)/2))
     r = backproject(tomoParams, ss1, angles, center=ctr)
     time6 = systime(1)
     ; Scale results
-    if ((tomoParams.reconScale ne 0.) and (tomoParams.reconScale ne 1.0)) then begin
-      r = r * tomoParams.reconScale
+    if ((self.reconScale ne 0.) and (self.reconScale ne 1.0)) then begin
+      r = r * self.reconScale
+    endif
+    if (self.reconOffset ne 0.) then begin
+      r = r + self.reconOffset
     endif
     print, 'Backproject: center= ', center
     print, 'Time to compute sinogram: ', time3-time2
@@ -749,7 +829,7 @@ end
 ;       attenuation values are per-pixel, and are typically 0.001, this leads to
 ;       integers in the range of 10,000.  If there are highly attenuating pixels the
 ;       scale factor may need to be decreased to 1-5e5 to avoid integer overflow.
-;       The inverse of the SCALE is stored as the attribute volume:data_scale
+;       The inverse of the SCALE is stored as the attribute volume:preprocessScale
 ;       in the netCDF file.
 ;;
 ; RESTRICTIONS:
@@ -796,55 +876,53 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
 
   tStart = systime(1)
   self->display_status, 'Initializing reconstruction ...', 1
-  if (keyword_set(netcdf)) then output_file = self.base_filename + 'recon.nc' $
-                           else output_file = self.base_filename + 'recon.h5'
+  if (keyword_set(netcdf)) then output_file = self.baseFilename + 'recon.nc' $
+                           else output_file = self.baseFilename + 'recon.h5'
   ; Set write_output keyword by default
   if (n_elements(write_output) eq 0) then write_output=1
   
-  if (n_elements(debug) ne 0) then self.debug_level = debug
+  if (n_elements(debug) ne 0) then self.debugLevel = debug
 
-  angles = *self.angles
-  tomoParams = self.tomoParams
-  dims = size(*self.pvolume, /dimensions)
+  angles = *self.pAngles
+  dims = size(*self.pVolume, /dimensions)
   numPixels = dims[0]
   numSlices = dims[1]
   numProjections = dims[2]
-  self.data_scale = 1./tomoParams.reconScale
-  center = self.rotation_center + findgen(self.ny)*self.rotation_center_slope
+  center = self.rotationCenter + findgen(self.ny)*self.rotationCenterSlope
 
   ; If this is 360 degree data we need to convert to 180
   if (max(angles) gt 181) then begin
     self->display_status, 'Converting 360 data ...', 1
     ; convert_360_data can only use a single center value. Use the one for the center slice.
     center_value =  round(center[numSlices/2])
-    *self.pvolume = self->convert_360_data(*self.pvolume, center_value, angles)
+    *self.pVolume = self->convert_360_data(*self.pVolume, center_value, angles)
     center = center_value + findgen(self.ny)*0
-    tomo_params_update, tomoParams, *self.pvolume, paddedsinogramwidth=0
   endif
   tConvert360 = systime(1)
-  if (size(*self.pvolume, /tname) ne 'FLOAT') then begin
+  if (size(*self.pVolume, /tname) ne 'FLOAT') then begin
     self->display_status, 'Converting to float ...', 1
-    *self.pvolume = float(*self.pvolume)
+    *self.pVolume = float(*self.pVolume)
   endif
   tConvertFloat = systime(1)
   recon = fltarr(numPixels, numPixels, numSlices, /nozero)
+  
+  if (data_type eq 'UInt16') then begin
+    self.reconOffset = 32767. 
+  endif else begin
+    self.reconOffset = 0.
+  endelse
+
   self->display_status, 'Beginning reconstruction ...', 1
-  if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
+  if (self.reconMethod eq self.reconMethodTomoRecon) then begin
     ; Reconstruct volume
-    tomo_recon, tomoParams, *self.pvolume, recon, angles=angles, wait=0, create=1, center=center
-    repeat begin
-      tomo_recon_poll, reconComplete, slicesRemaining
-      wait, 0.1
-      self->display_status, 'Reconstructing slice: ' $
-        + strtrim(numSlices-slicesRemaining,2) + '/' + strtrim(numSlices,2), 2
-    endrep until reconComplete
+    self->tomo_recon, *self.pVolume, recon, angles=angles, center=center
   endif else begin
     nrows = self.ny
     ; This procedure reconstructs all of the slices for a tomography data set
     ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
     for i=0, nrows-1, 2 do begin
       self->display_status, 'Reconstructing slice ' + strtrim(i,2) + '/' + strtrim(nrows-1,2), 2
-      r = reconstruct_slice((*self.pvolume)[*,[i,(i+1)<self.ny],*], r2, center=center[i])
+      r = reconstruct_slice((*self.pVolume)[*,[i,(i+1)<self.ny],*], r2, center=center[i])
       if (i eq 0) then begin
         ncols = n_elements(r[*,0])
         recon = intarr(ncols, ncols, nrows, /nozero)
@@ -860,20 +938,20 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
     endfor
   endelse
   
-  ptr_free, self.pvolume
+  ptr_free, self.pVolume
   tReconDone = systime(1)
-  status = self->write_setup(self.base_filename + '.setup')
+  self->write_sample_config
   
   self->display_status, 'Converting to output data type ...', 1
   if (data_type eq 'Int16') then begin
     recon = fix(recon)
   endif
   if (data_type eq 'UInt16') then begin
-    recon = uint(recon + 32767.)
+    recon = uint(recon)
   endif
   tConvertInt = systime(1)
 
-  self.image_type = 'RECONSTRUCTED'
+  self.imageType = 'RECONSTRUCTED'
   dims = size(recon, /dimensions)
   self.nx = dims[0]
   self.ny = dims[1]
@@ -883,7 +961,7 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
     self->display_status, 'Writing reconstructed file ...', 1
     self->write_volume, output_file, recon, netcdf=netcdf
   endif
-  self.pvolume = ptr_new(recon, /no_copy)
+  self.pVolume = ptr_new(recon, /no_copy)
   tEnd = systime(1)
   print, '     Convert 360 to 180:', tConvert360 - tStart
   print, ' Convert input to float:', tConvertFloat - tConvert360
@@ -1010,17 +1088,17 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
       ncdf_attput, file_id, /GLOBAL, 'camera', str
       if (self.sample ne '') then str=self.sample else str=' '
       ncdf_attput, file_id, /GLOBAL, 'sample', str
-      if (self.image_type ne '') then str=self.image_type else str=' '
-      ncdf_attput, file_id, /GLOBAL, 'image_type', str
+      if (self.imageType ne '') then str=self.imageType else str=' '
+      ncdf_attput, file_id, /GLOBAL, 'imageType', str
       ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
       ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
-      ncdf_attput, file_id, /GLOBAL, 'center', self.rotation_center
-      ncdf_attput, file_id, /GLOBAL, 'x_pixel_size', self.x_pixel_size
-      ncdf_attput, file_id, /GLOBAL, 'y_pixel_size', self.y_pixel_size
-      ncdf_attput, file_id, /GLOBAL, 'z_pixel_size', self.z_pixel_size
-      if (ptr_valid(self.angles)) then $
-        ncdf_attput, file_id, /GLOBAL, 'angles', *(self.angles)
-      if (self.data_scale ne 0) then scale=self.data_scale else scale=1.0
+      ncdf_attput, file_id, /GLOBAL, 'center', self.rotationCenter
+      ncdf_attput, file_id, /GLOBAL, 'xPixelSize', self.xPixelSize
+      ncdf_attput, file_id, /GLOBAL, 'yPixelSize', self.yPixelSize
+      ncdf_attput, file_id, /GLOBAL, 'zPixelSize', self.zPixelSize
+      if (ptr_valid(self.pAngles)) then $
+        ncdf_attput, file_id, /GLOBAL, 'angles', *(self.pAngles)
+      if (self.preprocessScale ne 0) then scale=self.preprocessScale else scale=1.0
       ncdf_attput, file_id, vol_id,  'scale_factor',  scale
       ; Put the file into data mode.
       ncdf_control, file_id, /endef
@@ -1056,15 +1134,21 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
     self->write_hdf5_dataset, group_id, 'data', volume
     h5g_close, group_id
     group_id = h5g_create(file_id, 'process')
-    self->write_hdf5_dataset, group_id, 'image_type', self.image_type
-    self->write_hdf5_dataset, group_id, 'angles', *self.angles
-    self->write_hdf5_dataset, group_id, 'x_pixel_size', self.x_pixel_size
-    self->write_hdf5_dataset, group_id, 'y_pixel_size', self.y_pixel_size
-    self->write_hdf5_dataset, group_id, 'z_pixel_size', self.z_pixel_size
-    self->write_hdf5_dataset, group_id, 'rotation_center', self.rotation_center
-    self->write_hdf5_dataset, group_id, 'rotation_center_slope', self.rotation_center_slope
-    self->write_hdf5_dataset, group_id, 'data_scale', self.data_scale
-    self->write_hdf5_dataset, group_id, 'data_offset', self.data_offset
+    self->write_hdf5_dataset, group_id, 'imageType', self.imageType
+    self->write_hdf5_dataset, group_id, 'angles', *self.pAngles
+    self->write_hdf5_dataset, group_id, 'xPixelSize', self.xPixelSize
+    self->write_hdf5_dataset, group_id, 'yPixelSize', self.yPixelSize
+    self->write_hdf5_dataset, group_id, 'zPixelSize', self.zPixelSize
+    self->write_hdf5_dataset, group_id, 'rotationCenter', self.rotationCenter
+    self->write_hdf5_dataset, group_id, 'rotationCenterSlope', self.rotationCenterSlope
+    self->write_hdf5_dataset, group_id, 'preprocessScale', self.preprocessScale
+    if (self.imageType eq 'NORMALIZED') then begin
+      self->write_hdf5_dataset, group_id, 'dataOffset', self.preprocessOffset
+      self->write_hdf5_dataset, group_id, 'dataScale', self.preprocessScale
+    endif else if (self.imageType eq 'RECONSTRUCTED') then begin
+      self->write_hdf5_dataset, group_id, 'dataOffset', self.reconOffset
+      self->write_hdf5_dataset, group_id, 'dataScale', self.reconScale      
+    endif
     h5g_close, group_id
     h5f_close, file_id
   endelse
@@ -1149,7 +1233,7 @@ end
   self->set_file_components, file
   
   if (keyword_set(store)) then begin
-    ptr_free, self.pvolume
+    ptr_free, self.pVolume
   endif
 
   if (ncdf_is_ncdf(file)) then begin
@@ -1165,16 +1249,16 @@ end
         'operator':     self.operator =     strtrim(value,2)
         'camera':       self.camera =       strtrim(value,2)
         'sample':       self.sample =       strtrim(value,2)
-        'image_type':   self.image_type =   strtrim(value,2)
+        'imageType':   self.imageType =   strtrim(value,2)
         'energy':       self.energy =       value
         'dark_current': self.dark_current = value
-        'center':       self.rotation_center = value
-        'x_pixel_size': self.x_pixel_size = value
-        'y_pixel_size': self.y_pixel_size = value
-        'z_pixel_size': self.z_pixel_size = value
+        'center':       self.rotationCenter = value
+        'xPixelSize': self.xPixelSize = value
+        'yPixelSize': self.yPixelSize = value
+        'zPixelSize': self.zPixelSize = value
         'angles':       begin
-          ptr_free, self.angles
-          self.angles = ptr_new(value)
+          ptr_free, self.pAngles
+          self.pAngles = ptr_new(value)
         end
         else:
       endcase
@@ -1220,7 +1304,7 @@ end
       name = ncdf_attname(file_id, vol_id, i)
       ncdf_attget, file_id, vol_id, name, value
       case name of
-        'scale_factor': self.data_scale = value
+        'scale_factor': self.preprocessScale = value
       endcase
     endfor
     ; Close the netCDF file
@@ -1228,23 +1312,21 @@ end
 
   endif else begin
     ; File must be HDF5
-    volume                     = h5_getdata(file, '/exchange/data')
-    self.image_type            = h5_getdata(file, '/process/image_type')
-    angles                     = h5_getdata(file, '/process/angles')
-    self.angles = ptr_new(angles)
-    self.x_pixel_size          = h5_getdata(file, '/process/x_pixel_size')
-    self.y_pixel_size          = h5_getdata(file, '/process/y_pixel_size')
-    self.x_pixel_size          = h5_getdata(file, '/process/z_pixel_size')
-    self.rotation_center       = h5_getdata(file, '/process/rotation_center')
-    self.rotation_center_slope = h5_getdata(file, '/process/rotation_center_slope')
-    self.data_scale            = h5_getdata(file, '/process/data_scale')
-    self.data_offset           = h5_getdata(file, '/process/data_offset')
+    volume                   = h5_getdata(file, '/exchange/data')
+    self.imageType           = h5_getdata(file, '/process/imageType')
+    angles                   = h5_getdata(file, '/process/angles')
+    self.pAngles             = ptr_new(angles)
+    self.xPixelSize          = h5_getdata(file, '/process/xPixelSize')
+    self.yPixelSize          = h5_getdata(file, '/process/yPixelSize')
+    self.xPixelSize          = h5_getdata(file, '/process/zPixelSize')
+    self.rotationCenter      = h5_getdata(file, '/process/rotationCenter')
+    self.rotationCenterSlope = h5_getdata(file, '/process/rotationCenterSlope')
   endelse
 
   print, 'Time to read file=', systime(1)-t0
   if (keyword_set(store)) then begin
     dims = size(volume, /dimensions)
-    self.pvolume = ptr_new(volume, /no_copy)
+    self.pVolume = ptr_new(volume, /no_copy)
     self.nx = dims[0]
     self.ny = dims[1]
     self.nz = dims[2]
@@ -1255,63 +1337,16 @@ end
 end
 
 function tomo::get_angles
-  if (ptr_valid(self.angles)) then begin
-    return, *self.angles
+  if (ptr_valid(self.pAngles)) then begin
+    return, *self.pAngles
   endif else begin
     return, 0
   endelse
 end
 
 pro tomo::set_angles, angles
-  ptr_free, self.angles
-  self.angles = ptr_new(angles)
-end
-
-
-;+
-; NAME:
-;   TOMO::WRITE_SETUP
-;
-; PURPOSE:
-;   This function writes the setup information for a tomography data set to an
-;   ASCII file.
-;
-; CATEGORY:
-;   Tomography
-;
-; CALLING SEQUENCE:
-;   result = TOMO->WRITE_SETUP(File)
-;
-; INPUTS:
-;   File:
-;       The name of the output file.
-;
-; OUTPUTS:
-;   This function returns 0 if it was unable to write the file, 1 if it was
-;   successful.
-;
-; EXAMPLE:
-;       IDL>  status = TOMO->WRITE_SETUP('Sample1.setup')
-;
-; MODIFICATION HISTORY:
-;   Written by: Mark Rivers, Aug. 2001?
-;-
-
-function tomo::write_setup, file
-  openw, lun, file, error=error, /get_lun, width=1024
-  if (error ne 0) then return, 0
-  printf, lun, 'TITLE: ', self.title
-  printf, lun, 'OPERATOR: ', self.operator
-  printf, lun, 'CAMERA: ', self.camera
-  printf, lun, 'SAMPLE: ', self.sample
-  printf, lun, 'DARK_CURRENT: ', self.dark_current
-  printf, lun, 'CENTER: ', self.rotation_center
-  printf, lun, 'ENERGY: ',  self.energy
-  printf, lun, 'X_PIXEL_SIZE: ', self.x_pixel_size
-  printf, lun, 'Y_PIXEL_SIZE: ', self.y_pixel_size
-  printf, lun, 'Z_PIXEL_SIZE: ', self.z_pixel_size
-  free_lun, lun
-  return, 1
+  ptr_free, self.pAngles
+  self.pAngles = ptr_new(angles)
 end
 
 
@@ -1345,81 +1380,60 @@ end
 ;-
 
 function tomo::read_setup, file
-  ; Clear any existing information
-;  self->clear_setup
   line = ''
   openr, lun, file, error=error, /get_lun, width = 1024
   if (error ne 0) then return, 0
+  sampleConfig = orderedhash()
   while (not eof(lun)) do begin
     readf, lun, line
     pos = strpos(line, ' ')
     tag = strupcase(strmid(line, 0, pos))
     value = strtrim(strmid(line, pos, 1000), 2)
     case tag of
-      'TITLE:'     :  self.title = value
-      'OPERATOR:'  :  self.operator = value
-      'CAMERA:'    :  self.camera = value
-      'SAMPLE:'    :  self.sample = value
-      'DARK_CURRENT:'  :  self.dark_current = value
-      'CENTER:'        :  self.rotation_center = value
-      'ENERGY:'        :  self.energy = value
-      'X_PIXEL_SIZE:'  :  self.x_pixel_size = value
-      'Y_PIXEL_SIZE:'  :  self.y_pixel_size = value
-      'Z_PIXEL_SIZE:'  :  self.z_pixel_size = value
+      'TITLE:'         :  sampleConfig['SampleDescription1'] = value
+      'OPERATOR:'      :  sampleConfig['UserName'] = value
+      'CAMERA:'        :  sampleConfig['Camera'] = value
+      'SAMPLE:'        :  sampleConfig['SampleName'] = value
+      'DARK_CURRENT:'  :  begin
+                            sampleConfig['DarkFieldValue'] = value
+                            self.pDarks = ptrNew(value)
+                          end
+      'CENTER:'        :  self.rotationCenter = value
+      'ENERGY:'        :  sampleConfig['Energy'] = value
+      'X_PIXEL_SIZE:'  :  begin
+                            sampleConfig['ImagePixelSize'] = value
+                            self.xPixelSize = value
+                          end
+      'Y_PIXEL_SIZE:'  :  self.yPixelSize = value
+      'Z_PIXEL_SIZE:'  :  self.zPixelSize = value
       else:
     endcase
   endwhile
+  self.pSampleConfig = ptr_new(sampleConfig)
   free_lun, lun
   return, 1
 end
 
-;+
-; NAME:
-;   TOMO::GET_SETUP
-;
-; PURPOSE:
-;   This function returns the setup information for a tomography data set
-;
-; CATEGORY:
-;   Tomography
-;
-; CALLING SEQUENCE:
-;   setup = TOMO->GET_SETUP()
-;
-; OUTPUTS:
-;   This function returns a structure of type {TOMO} containing the information
-;   about the tomography dataset.  The current definition of the {TOMO}
-;   structure is:
-;       {tomo, $
-;        title: " ", $
-;        operator: " ", $
-;        camera: " ", $
-;        sample: " ", $
-;        image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
-;        dark_current: 0., $
-;        center: 0., $
-;        energy: 0., $
-;        x_pixel_size: 0., $
-;        y_pixel_size: 0., $
-;        z_pixel_size: 0., $
-;        data_scale: 0., $
-;        nx:     0L, $
-;        ny:     0L, $
-;        nz:     0L, $
-;        angles: ptr_new() $
-;    }
-;   This definition is subject to change in the future, but the above fields
-;   will not change, new fields may be added.
-;
-; EXAMPLE:
-;       IDL>  tomo = obj_new('TOMO')
-;       IDL>  status = TOMO->READ_SETUP('Sample1.setup')
-;       IDL>  setup = TOMO->GET_SETUP()
-;
-; MODIFICATION HISTORY:
-;   Written by: Mark Rivers, Nov. 18, 2001
-;-
+pro tomo::write_sample_config
+  (*self.pSampleConfig)['RotationCenter'] = self.rotationCenter
+  (*self.pSampleConfig)['RotationSlope']   = self.rotationCenterSlope
+  (*self.pSampleConfig)['UpperSlice'] = self.upperSlice
+  (*self.pSampleConfig)['LowerSlice'] = self.lowerSlice
+  openw, lun, /get_lun, self.baseFilename + '.config'
+  printf, lun, /implied_print, *self.pSampleConfig
+  close, lun
+end
 
+pro tomo::read_sample_config, file
+  config = json_parse(file)
+  if (config.haskey('RotationCenter')) then self.rotationCenter = config['RotationCenter'] else self.rotationCenter = self.nx/2
+  if (config.haskey('RotationSlope')) then self.rotationCenterSlope = config['RotationSlope'] else self.rotationCenterSlope = 0.
+  if (config.haskey('UpperSlice')) then self.upperSlice = config['UpperSlice'] else self.upperSlice = self.ny*0.1
+  if (config.haskey('LowerSlice')) then self.lowerSlice = config['LowerSlice'] else self.lowerSlice = self.ny*0.9
+  self.pSampleConfig = ptr_new(config, /no_copy)
+end
+
+;+
 function tomo::get_struct
   t = {tomo}
   for i=0, n_tags(t)-1 do begin
@@ -1428,20 +1442,10 @@ function tomo::get_struct
   return, t
 end
 
-
-function tomo::init, settings=settings, status_widget=status_widget, abort_widget=abort_widget, debug_level=debug_level
-  if (n_elements(settings) ne 0) then status = self->read_settings(settings)
-  if (n_elements(status_widget) ne 0) then self.status_widget = status_widget
-  if (n_elements(abort_widget) ne 0) then self.abort_widget = abort_widget
-  if (n_elements(debug_level) ne 0) then self.debug_level = debug_level else self.debug_level=1
-  self.tomoParams = tomo_params_create()
-  return, 1
-end
-
 pro tomo::set_file_components, input_file
   path = file_dirname(input_file)
   file = file_basename(input_file)
-  self.input_filename = input_file
+  self.inputFilename = input_file
   self.directory = path
   ; Construct the base file name
   base_file = file
@@ -1454,67 +1458,260 @@ pro tomo::set_file_components, input_file
   ; Remove the string "recon"
   pos = base_file.LastIndexOf('recon', /fold_case)
   if (pos ge 0) then base_file = base_file.remove(pos)
-  self.base_filename = base_file
+  self.baseFilename = base_file
 end
 
 pro tomo::cleanup
-  ptr_free, self.angles
-  ptr_free, self.pvolume
-  ptr_free, self.pflats
-  ptr_free, self.pdarks
+  ptr_free, self.pAngles
+  ptr_free, self.pVolume
+  ptr_free, self.pFlats
+  ptr_free, self.pDarks
 end
 
-pro tomo::clear_setup
-  self.title=""
-  self.operator=""
-  self.camera=""
-  self.sample=""
-  self.image_type=""
-  self.dark_current=0.
-  self.rotation_center=0.
-  self.energy=0.
-  self.x_pixel_size=0.
-  self.y_pixel_size=0.
-  self.z_pixel_size=0.
-  self.data_scale=0.
-  self.nx=0L
-  self.ny=0L
-  self.nz=0L
-  ptr_free, self.angles
-  self.angles=ptr_new()
+function tomo::getPaddedSinogramWidth, numPixels
+  if (self.paddedSinogramWidth eq 0) then begin
+    ; Use the next largest power of 2 by default
+    paddedSinogramWidth = 128
+    repeat begin
+      paddedSinogramWidth=paddedSinogramWidth * 2
+    endrep until (paddedSinogramWidth ge numPixels)
+  endif else if (paddedSinogramWidth eq 1) then begin
+    paddedSinogramWidth = numPixels
+  endif
+  return, paddedSinogramWidth
 end
 
+pro tomo::set_recon_params, $
+  sinoScale = sinoScale, $
+  reconScale = reconScale, $
+  reconOffset = reconOffset, $
+  paddedSinogramWidth=paddedSinogramWidth, $
+  paddingAverage=paddingAverage, $
+  airPixels = airPixels, $
+  ringWidth = ringWidth, $
+  fluorescence = fluorescence, $
+  reconMethod = reconMethod, $
+  threads = threads, $
+  slicesPerChunk = slicesPerChunk, $
+  debug = debug, $
+  dbgFile = dbgFile, $
+  geom=geom, $
+  pswfParam=pswfParam, $
+  sampl=sampl, $
+  maxPixSize=maxPixSize, $
+  ROI=ROI, $
+  X0=X0, $
+  Y0=Y0, $
+  ltbl=ltbl, $
+  GR_filterName=GR_filterName, $
+  BP_method = BP_method, $
+  BP_filterName = BP_filterName, $
+  BP_filterSize = BP_filterSize, $
+  RiemannInterpolation = RiemannInterpolation, $
+  RadonInterpolation = RadonInterpolation
+
+  if (n_elements(sinoScale)            ne 0) then self.sinoScale = sinoScale
+  if (n_elements(reconScale)           ne 0) then self.reconScale = reconScale
+  if (n_elements(reconOffset)          ne 0) then self.reconOffset = reconOffset
+  if (n_elements(paddedSinogramWidth)  ne 0) then self.paddedSinogramWidth = paddedSinogramWidth
+  if (n_elements(paddingAverage)       ne 0) then self.paddingAverage = paddingAverage
+  if (n_elements(airPixels)            ne 0) then self.airPixels = airPixels
+  if (n_elements(ringWidth)            ne 0) then self.ringWidth = ringWidth
+  if (n_elements(fluorescence)         ne 0) then self.fluorescence = fluorescence
+  if (n_elements(threads)              ne 0) then self.reconThreads = threads
+  if (n_elements(debug)                ne 0) then self.debug = debug
+  if (n_elements(dbgFile)              ne 0) then self.debugFile = dbgFile
+  if (n_elements(geom)                 ne 0) then self.geom = geom
+  if (n_elements(pswfParam)            ne 0) then self.pswfParam = pswfParam
+  if (n_elements(sampl)                ne 0) then self.sampl = sampl
+  if (n_elements(maxPixSize)           ne 0) then self.maxPixSize = maxPixSize
+  if (n_elements(ROI)                  ne 0) then self.ROI = ROI
+  if (n_elements(X0)                   ne 0) then self.X0 = X0
+  if (n_elements(Y0)                   ne 0) then self.Y0 = Y0
+  if (n_elements(ltbl)                 ne 0) then self.ltbl = ltbl
+  if (n_elements(GR_filterName)        ne 0) then self.GR_filterName = GR_filterName
+  if (n_elements(reconMethod)          ne 0) then self.reconMethod = reconMethod
+  if (n_elements(slicesPerChunk)       ne 0) then self.slicesPerChunk = slicesPerChunk
+  if (n_elements(BP_method)            ne 0) then self.BP_method = BP_method
+  if (n_elements(BP_filterName)        ne 0) then self.BP_filterName = BP_filterName
+  if (n_elements(BP_filterSize)        ne 0) then self.BP_filterSize = BP_filterSize
+  if (n_elements(RiemannInterpolation) ne 0) then self.RiemannInterpolation = RiemannInterpolation
+  if (n_elements(RadonInterpolation)   ne 0) then self.RadonInterpolation = RadonInterpolation
+end
+
+pro tomo::set_preprocess_params, $
+  zingerWidth = zingerWidth, $
+  zingerThreshold = zingerThreshold, $
+  zingerDoubleThreshold = zingerDoubleThreshold, $
+  writeOutput = writeOutput, $
+  writeDataType = writeDataType, $
+  writeFormat = writeFormat, $
+  scale = scale, $
+  threads = threads
+  
+  if (n_elements(zingerWidth) ne 0)           then self.zingerWidth = zingerWidth
+  if (n_elements(zingerThreshold) ne 0)       then self.zingerThreshold = zingerThreshold
+  if (n_elements(zingerDoubleThreshold) ne 0) then self.zingerDoubleThreshold = zingerThreshold
+  if (n_elements(writeOutput) ne 0)           then self.preprocessWriteOutput = writeOutput
+  if (n_elements(writeDataType) ne 0)         then self.preprocessWriteDataType = writeDataType
+  if (n_elements(writeFormat) ne 0)           then self.preprocessWriteFormat = writeFormat
+  if (n_elements(scale) ne 0)                 then self.preprocessScale = scale
+  if (n_elements(threads) ne 0)               then self.preprocessThreads = threads
+end
+  
+function tomo::init, settings=settings, statusWidget=statusWidget, abortWidget=abortWidget, debugLevel=debugLevel
+  if (n_elements(settings)      ne 0) then status = self->read_settings(settings)
+  if (n_elements(statusWidget)  ne 0) then self.statusWidget = statusWidget
+  if (n_elements(abortWidget)   ne 0) then self.abortWidget = abortWidget
+  if (n_elements(debugLevel)    ne 0) then self.debugLevel = debugLevel else self.debugLevel=1
+  self.zingerWidth                  = 3
+  self.zingerThreshold              = 0.1
+  self.zingerDoubleThreshold        = 1.05
+  self.preprocessScale              = 10000. 
+  self.preprocessOffset             = 0.
+  self.preprocessThreads            = 8;
+  self.preprocessWriteOutput        = 0 ; 0=don't write, 1=write
+  self.preprocessWriteFormat        = "HDF5"
+  self.preprocessWriteDataType      = "UInt16"
+  self.reconMethod                  = 0 ; 0=tomoRecon, 1=Gridrec, 2=Backproject
+  self.reconMethodTomoRecon         = 0
+  self.reconMethodGridrec           = 1
+  self.reconMethodBackproject       = 2
+  self.slicesPerChunk               = 256
+  self.reconWriteOutput             = 1 ; 0=don't write, 1=write
+  self.reconWriteFormat             = "HDF5"
+  self.reconWriteDataType           = "UInt16"
+  ; Sinogram parameters
+  self.reconScale                   = 1.e6 ; Reconstruction scale
+  self.reconOffset                  = 0.0 ; Reconstruction offset
+  self.paddedSinogramWidth          = 0 ; Number of pixels in sinogram after padding
+                                        ; There are 2 "special" values of paddedSinogramWidth
+                                        ; 0 = automatically set the width to power of 2 that is >= actual width
+                                        ; 1 = No padding, set the width to the actual width
+  self.paddingAverage               = 10 ; Number of pixels to average on each side of sinogram to compute padding. 0 pixels pads with 0.0
+  self.airPixels                    = 10 ; Number of pixels of air to average at each end of sinogram row
+  self.ringWidth                    = 9 ; Number of pixels to smooth by when removing ring artifacts
+  self.fluorescence                 = 0 ; 0=absorption data, 1=fluorescence
+  ; tomoRecon parameters
+  self.reconThreads                 = 8
+  self.debug                        = 2
+  self.debugFile                    = "tomoRecon_debug.txt"
+  ; gridRec/tomoRecon parameters
+  self.geom                         = 0 ; 0 if array of angles provided;
+    ; 1,2 if uniform in half,full circle
+  self.pswfParam                    = 6.0 ; PSWF parameter
+  self.sampl                        = 1.0 ; "Oversampling" ratio
+  self.maxPixSize                   = 1.0 ; Max pixel size for reconstruction
+  self.ROI                          = 1.0 ; Region of interest (ROI) relative size
+  self.X0                           = 0.0 ; (X0,Y0)=Offset of ROI from rotation axis
+  self.Y0                           = 0.0 ; in units of center-to-edge distance.
+  self.ltbl                         = 512 ; No. elements in convolvent lookup tables
+  self.GR_filterName                = "shepp" ; Name of filter function
+  self.BP_Method                    = 0 ; 0=Riemann, 1=Radon
+  self.BP_MethodRiemann             = 0
+  self.BP_MethodRadon               = 1L
+  self.BP_filterName                = "SHEPP_LOGAN"
+  self.BP_filterSize                = 0 ; Length of filter
+  self.RiemannInterpolation         = 0 ; 0=none, 1=bilinear, 2=cubic
+  self.RiemannInterpolationNone     = 0
+  self.RiemannInterpolationBilinear = 1
+  self.RiemannInterpolationCubic    = 2
+  self.RadonInterpolation           = 0 ; 0=none, 1=linear
+  self.RadonInterpolationNone       = 0
+  self.RadonInterpolationLinear     = 1
+  self.tomoReconShareableLibrary    = getenv('TOMO_RECON_SHARE')
+  if (self.tomoReconShareableLibrary eq "") then begin
+    file = 'tomoRecon_' + !version.os + '_' + !version.arch
+    if (!version.os eq 'Win32') then file=file+'.dll' else file=file+'.so'
+    self.tomoReconShareableLibrary = file_which(file)
+  endif
+  if (self.tomoReconShareableLibrary eq '') then message, 'tomoRecon shareable library not defined'
+  return, 1
+end
 
 pro tomo__define
-  tomo = $
-   {tomo, $
-    tomoParams: tomo_params_create(), $
-    pvolume: ptr_new(), $
-    pflats: ptr_new(), $
-    pdarks: ptr_new(), $
-    input_filename: " ", $
-    base_filename: " ", $
-    directory: " ", $
-    title: " ", $
-    operator: " ", $
-    camera: " ", $
-    sample: " ", $
-    image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
-    dark_current: 0., $
-    rotation_center: 0., $
-    rotation_center_slope: 0., $
-    energy: 0., $
-    x_pixel_size: 0., $
-    y_pixel_size: 0., $
-    z_pixel_size: 0., $
-    data_scale: 0., $
-    data_offset: 0., $
-    nx:     0L, $
-    ny:     0L, $
-    nz:     0L, $
-    angles: ptr_new(), $
-    status_widget: 0L, $
-    abort_widget: 0L, $
-    debug_level: 0L $
+  tomo =                              $
+   {tomo,                             $
+    ; Information about current dataset
+    pVolume:               ptr_new(), $
+    pFlats:                ptr_new(), $
+    pDarks:                ptr_new(), $
+    pAngles:               ptr_new(), $
+    pSampleConfig:         ptr_new(), $
+    nx:                           0L, $
+    ny:                           0L, $
+    nz:                           0L, $
+    xPixelSize:                   0., $
+    yPixelSize:                   0., $
+    zPixelSize:                   0., $
+    imageType:                    "", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
+    inputFilename:                "", $
+    baseFilename:                 "", $
+    directory:                    "", $
+    ; Proprocessing parameters
+    zingerWidth:                  0L, $
+    zingerThreshold:              0., $
+    zingerDoubleThreshold:        0., $
+    preprocessScale:              0., $
+    preprocessOffset:             0., $
+    preprocessThreads:            0L, $
+    preprocessWriteOutput:        0L, $ 0: don't write, 1: write
+    preprocessWriteFormat:        "", $ 'netCDF' or 'HDF5'
+    preprocessWriteDataType:      "", $ 'UInt16' or 'Float32'
+    ; Rotation center parameters
+    upperSlice:                   0L, $
+    lowerSlice:                   0L, $
+    rotationCenter:               0., $
+    rotationCenterSlope:          0., $
+    ; Reconstruction parameters
+    ; Reconstruction method
+    reconMethod:                  0L, $ ; 0=tomoRecon, 1=Gridrec, 2=Backproject
+    reconMethodTomoRecon:         0L, $
+    reconMethodGridrec:           0L, $
+    reconMethodBackproject:       0L, $
+    slicesPerChunk:               0L, $
+    reconWriteOutput:             0L, $ 0: don't write, 1: write
+    reconWriteFormat:             "", $ 'netCDF' or 'HDF5'
+    reconWriteDataType:           "", $ 'UInt16', 'Int16' or 'Float32'
+    tomoReconShareableLibrary:    "", $
+    ; tomoRecon parameters
+    reconScale:                   0., $ ; Scale factor for reconstruction
+    reconOffset:                  0., $ ; Offset factor for reconstruction
+    paddedSinogramWidth:          0L, $ ; Number of pixels in sinogram after padding
+    paddingAverage:               0L, $ ; Number of pixels to average on each side of sinogram to compute padding. 0 pixels pads with 0.0
+    airPixels:                    0L, $ ; Number of pixels of air to average at each end of sinogram row
+    ringWidth:                    0L, $ ; Number of pixels to smooth by when removing ring artifacts
+    fluorescence:                 0L, $ ; 0=absorption data, 1=fluorescence
+    ; tomoRecon parameters
+    reconThreads:                 0L, $
+    debug:                        0L, $
+    debugFile:                    "", $
+    ; gridRec/tomoRecon parameters
+    geom:                         0L, $ ; 0 if array of angles provided; 1,2 if uniform in half,full circle
+    pswfParam:                    0., $ ; PSWF parameter
+    sampl:                        0., $ ; "Oversampling" ratio
+    maxPixSize:                   0., $ ; Max pixel size for reconstruction
+    ROI:                          0., $ ; Region of interest (ROI) relative size
+    X0:                           0., $ ; (X0,Y0)=Offset of ROI from rotation axis
+    Y0:                           0., $ ; in units of center-to-edge distance.
+    ltbl:                         0L, $ ; No. elements in convolvent lookup tables
+    GR_filterName:                "", $ ; Name of filter function
+    ; Backproject parameters
+    BP_Method:                    0L, $ ; 0=Riemann, 1=Radon
+    BP_MethodRiemann:             0L, $
+    BP_MethodRadon:               0L, $
+    BP_filterName:                "", $ ; Name of filter function - initialized to "SHEPP_LOGAN" above
+    BP_filterSize:                0L, $ ; Length of filter
+    RiemannInterpolation:         0L, $ ; 0=none, 1=bilinear, 2=cubic
+    RiemannInterpolationNone:     0L, $
+    RiemannInterpolationBilinear: 0L, $
+    RiemannInterpolationCubic:    0L, $
+    RadonInterpolation:           0L, $ ; 0=none, 1=linear
+    RadonInterpolationNone:       0L, $
+    RadonInterpolationLinear:     0L, $
+    ; Status and debugging parameters
+    statusWidget:                 0L, $
+    abortWidget:                  0L, $
+    debugLevel:                   0L  $
   }
 end
