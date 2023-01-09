@@ -80,7 +80,7 @@ pro tomo::read_camera_file, filename
     self.xPixelSize = h5_getdata(filename, '/measurement/instrument/detection_system/objective/resolution')
     self.yPixelSize = self.xPixelSize
     self.zPixelSize = self.xPixelSize
-    self->read_sample_config, self.baseFilename + '.config'
+    self->read_sample_config
     (*(self.pSampleConfig))['Camera'] = camera
   endif
  
@@ -258,6 +258,7 @@ pro tomo::preprocess
   flats = total(flats, 3)/nflats
   tFlats = systime(1)
 
+  self->display_status, 'Dark, flat, zinger correction ...', 1
   params = {preprocess_params, $
     numPixels:        self.nx, $
     numSlices:        self.ny, $
@@ -286,14 +287,15 @@ pro tomo::preprocess
   endrep until preprocessComplete
   tNormalize = systime(1)
 
+if (self.preprocessDataType eq 'UInt16') then begin
+    self->display_status, 'Converting to UInt16 ...', 1
+    normalized = fix(normalized)
+  endif
   tConvertOut = systime(1)
+
   self.imageType = 'NORMALIZED'
   if (self.preprocessWriteOutput) then begin
-    if (self.prepreprocessWriteType eq 'UInt16') then begin
-      normalized = fix(normalized)
-    endif
-    tConvertOut = systime(1)
-    self->display_status, 'Writing volume file ...', 1
+    self->display_status, 'Writing normalized file ...', 1
     self->write_volume, output_file, normalized, netcdf=netcdf
   endif
   self->write_sample_config
@@ -481,7 +483,6 @@ pro tomo::set_rotation, slice1, center1, slice2, center2
   self.rotationCenterSlope = coeffs[1]
   self.upperSlice = slice1
   self.lowerSlice = slice2
-  print, 'Rotation center, slope =', self.rotationCenter, self.rotationCenterSlope
 end
 
 pro tomo::correct_rotation_tilt, angle
@@ -871,8 +872,7 @@ end
 ;   11-APR-2002 MLR  Fixed bug introduced on 02-APR with center
 ;-
 
-pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
-                              write_output=write_output, netcdf=netcdf
+pro tomo::reconstruct_volume
 
   tStart = systime(1)
   self->display_status, 'Initializing reconstruction ...', 1
@@ -906,7 +906,7 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
   tConvertFloat = systime(1)
   recon = fltarr(numPixels, numPixels, numSlices, /nozero)
   
-  if (data_type eq 'UInt16') then begin
+  if (self.reconDataType eq 'UInt16') then begin
     self.reconOffset = 32767. 
   endif else begin
     self.reconOffset = 0.
@@ -943,10 +943,10 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
   self->write_sample_config
   
   self->display_status, 'Converting to output data type ...', 1
-  if (data_type eq 'Int16') then begin
+  if (self.reconDataType eq 'Int16') then begin
     recon = fix(recon)
   endif
-  if (data_type eq 'UInt16') then begin
+  if (self.reconDataType eq 'UInt16') then begin
     recon = uint(recon)
   endif
   tConvertInt = systime(1)
@@ -959,14 +959,14 @@ pro tomo::reconstruct_volume, data_type=data_type, debug=debug, $
 
   if (write_output) then begin
     self->display_status, 'Writing reconstructed file ...', 1
-    self->write_volume, output_file, recon, netcdf=netcdf
+    self->write_volume, output_file, recon, netcdf=(self.reconWriteFormat eq 'netCDF')
   endif
   self.pVolume = ptr_new(recon, /no_copy)
   tEnd = systime(1)
   print, '     Convert 360 to 180:', tConvert360 - tStart
   print, ' Convert input to float:', tConvertFloat - tConvert360
   print, '            Reconstruct:', tReconDone-tConvertFloat
-  print, 'Convert output to ' + data_type + ':', tConvertInt - tReconDone
+  print, 'Convert output to ' + self.reconDataType + ':', tConvertInt - tReconDone
   print, '             Write file:', tEnd-tConvertInt
   print, '             Total time:', tEnd-tStart
   self->display_status, 'Reconstruction complete.', 1
@@ -1319,9 +1319,9 @@ end
     self.xPixelSize          = h5_getdata(file, '/process/xPixelSize')
     self.yPixelSize          = h5_getdata(file, '/process/yPixelSize')
     self.xPixelSize          = h5_getdata(file, '/process/zPixelSize')
-    self.rotationCenter      = h5_getdata(file, '/process/rotationCenter')
-    self.rotationCenterSlope = h5_getdata(file, '/process/rotationCenterSlope')
   endelse
+
+  self->read_sample_config
 
   print, 'Time to read file=', systime(1)-t0
   if (keyword_set(store)) then begin
@@ -1425,6 +1425,7 @@ pro tomo::write_sample_config
 end
 
 pro tomo::read_sample_config, file
+  if (n_elements(file) eq 0) then file = self.baseFilename + '.config'
   config = json_parse(file)
   if (config.haskey('RotationCenter')) then self.rotationCenter = config['RotationCenter'] else self.rotationCenter = self.nx/2
   if (config.haskey('RotationSlope')) then self.rotationCenterSlope = config['RotationSlope'] else self.rotationCenterSlope = 0.
@@ -1482,6 +1483,9 @@ function tomo::getPaddedSinogramWidth, numPixels
 end
 
 pro tomo::set_recon_params, $
+  dataType = dataType, $
+  writeOutput = writeOutput, $
+  writeFormat = writeFormat, $
   sinoScale = sinoScale, $
   reconScale = reconScale, $
   reconOffset = reconOffset, $
@@ -1510,6 +1514,9 @@ pro tomo::set_recon_params, $
   RiemannInterpolation = RiemannInterpolation, $
   RadonInterpolation = RadonInterpolation
 
+  if (n_elements(dataType)             ne 0) then self.reconDataType = dataType
+  if (n_elements(writeOutput)          ne 0) then self.reconWriteOutput = writeOutput
+  if (n_elements(writeFormat)          ne 0) then self.reconWriteFormat = writeFormat
   if (n_elements(sinoScale)            ne 0) then self.sinoScale = sinoScale
   if (n_elements(reconScale)           ne 0) then self.reconScale = reconScale
   if (n_elements(reconOffset)          ne 0) then self.reconOffset = reconOffset
@@ -1531,7 +1538,7 @@ pro tomo::set_recon_params, $
   if (n_elements(ltbl)                 ne 0) then self.ltbl = ltbl
   if (n_elements(GR_filterName)        ne 0) then self.GR_filterName = GR_filterName
   if (n_elements(reconMethod)          ne 0) then self.reconMethod = reconMethod
-  if (n_elements(slicesPerChunk)       ne 0) then self.slicesPerChunk = slicesPerChunk
+  if (n_elements(slicesPerChunk)       ne 0) then self.reconSlicesPerChunk = slicesPerChunk
   if (n_elements(BP_method)            ne 0) then self.BP_method = BP_method
   if (n_elements(BP_filterName)        ne 0) then self.BP_filterName = BP_filterName
   if (n_elements(BP_filterSize)        ne 0) then self.BP_filterSize = BP_filterSize
@@ -1543,24 +1550,73 @@ pro tomo::set_preprocess_params, $
   zingerWidth = zingerWidth, $
   zingerThreshold = zingerThreshold, $
   zingerDoubleThreshold = zingerDoubleThreshold, $
+  dataType = dataType, $
   writeOutput = writeOutput, $
-  writeDataType = writeDataType, $
   writeFormat = writeFormat, $
   scale = scale, $
   threads = threads
   
-  if (n_elements(zingerWidth) ne 0)           then self.zingerWidth = zingerWidth
-  if (n_elements(zingerThreshold) ne 0)       then self.zingerThreshold = zingerThreshold
+  if (n_elements(zingerWidth)           ne 0) then self.zingerWidth = zingerWidth
+  if (n_elements(zingerThreshold)       ne 0) then self.zingerThreshold = zingerThreshold
   if (n_elements(zingerDoubleThreshold) ne 0) then self.zingerDoubleThreshold = zingerThreshold
-  if (n_elements(writeOutput) ne 0)           then self.preprocessWriteOutput = writeOutput
-  if (n_elements(writeDataType) ne 0)         then self.preprocessWriteDataType = writeDataType
-  if (n_elements(writeFormat) ne 0)           then self.preprocessWriteFormat = writeFormat
-  if (n_elements(scale) ne 0)                 then self.preprocessScale = scale
-  if (n_elements(threads) ne 0)               then self.preprocessThreads = threads
+  if (n_elements(dataType)              ne 0) then self.preprocessDataType = dataType
+  if (n_elements(writeOutput)           ne 0) then self.preprocessWriteOutput = writeOutput
+  if (n_elements(writeFormat)           ne 0) then self.preprocessWriteFormat = writeFormat
+  if (n_elements(scale)                 ne 0) then self.preprocessScale = scale
+  if (n_elements(threads)               ne 0) then self.preprocessThreads = threads
 end
-  
-function tomo::init, settings=settings, statusWidget=statusWidget, abortWidget=abortWidget, debugLevel=debugLevel
-  if (n_elements(settings)      ne 0) then status = self->read_settings(settings)
+
+function tomo::get_saved_fields
+  fields = ['zingerWidth', 'zingerThreshold', 'zingerDoubleThreshold',                                                                          $
+            'preprocessScale', 'preprocessOffset', 'preprocessThreads', 'preprocessDataType', 'preprocessWriteOutput', 'preprocessWriteFormat', $
+            'reconMethod', 'reconSlicesPerChunk', 'reconDataType', 'reconWriteOutput', 'reconWriteFormat',                                      $
+            'reconScale', 'reconOffset', 'reconThreads',                                                                                        $
+            'paddedSinogramWidth', 'paddingAverage', 'airPixels', 'ringWidth', 'fluorescence',                                                  $
+            'debug', 'debugFile',                                                                                                               $
+            'geom', 'pswfParam', 'sampl', 'maxPixSize', 'ROI', 'X0', 'Y0', 'ltbl', 'GR_filterName',                                             $
+            'BP_Method', 'BP_filterName', 'BP_filterSize', 'RiemannInterpolation', 'RadonInterpolation'                                         $
+           ]
+  return, fields
+end
+
+function tomo::find_saved_field, field
+  myFieldNames = tag_names(self)
+  index = where(field.toUpper() eq myFieldNames)
+  return, index[0]
+end
+
+function tomo::get_settings
+  settings = orderedhash()
+  savedFields = self->get_saved_fields()
+  for i=0, n_elements(savedFields)-1 do begin
+    field = savedFields[i]
+    index = self->find_saved_field(field)
+    if (index lt 0) then continue
+    settings[field] = self.(index)
+  endfor
+  return, settings
+end
+
+pro tomo::save_settings, file
+  settings = self->get_settings()
+  openw, lun, /get_lun, file
+  printf, lun, /implied_print, settings
+  close, lun
+end
+
+pro tomo::restore_settings, file
+  settings = json_parse(file)
+  keys = settings.keys()
+  values = settings.values()
+  for i=0, n_elements(keys)-1 do begin
+    key = keys[i]
+    value = values[i]
+    index = self->find_saved_field(key)
+    if (index ge 0) then self.(index) = value
+  endfor
+end
+
+function tomo::init, settingsFile=settingsFile, statusWidget=statusWidget, abortWidget=abortWidget, debugLevel=debugLevel
   if (n_elements(statusWidget)  ne 0) then self.statusWidget = statusWidget
   if (n_elements(abortWidget)   ne 0) then self.abortWidget = abortWidget
   if (n_elements(debugLevel)    ne 0) then self.debugLevel = debugLevel else self.debugLevel=1
@@ -1570,17 +1626,17 @@ function tomo::init, settings=settings, statusWidget=statusWidget, abortWidget=a
   self.preprocessScale              = 10000. 
   self.preprocessOffset             = 0.
   self.preprocessThreads            = 8;
+  self.preprocessDataType           = "Float32"
   self.preprocessWriteOutput        = 0 ; 0=don't write, 1=write
   self.preprocessWriteFormat        = "HDF5"
-  self.preprocessWriteDataType      = "UInt16"
   self.reconMethod                  = 0 ; 0=tomoRecon, 1=Gridrec, 2=Backproject
   self.reconMethodTomoRecon         = 0
   self.reconMethodGridrec           = 1
   self.reconMethodBackproject       = 2
-  self.slicesPerChunk               = 256
+  self.reconSlicesPerChunk          = 256
+  self.reconDataType                = "Int16"
   self.reconWriteOutput             = 1 ; 0=don't write, 1=write
   self.reconWriteFormat             = "HDF5"
-  self.reconWriteDataType           = "UInt16"
   ; Sinogram parameters
   self.reconScale                   = 1.e6 ; Reconstruction scale
   self.reconOffset                  = 0.0 ; Reconstruction offset
@@ -1626,6 +1682,7 @@ function tomo::init, settings=settings, statusWidget=statusWidget, abortWidget=a
     self.tomoReconShareableLibrary = file_which(file)
   endif
   if (self.tomoReconShareableLibrary eq '') then message, 'tomoRecon shareable library not defined'
+  if (n_elements(settingsFile) ne 0) then self->restore_settings, settings
   return, 1
 end
 
@@ -1655,9 +1712,9 @@ pro tomo__define
     preprocessScale:              0., $
     preprocessOffset:             0., $
     preprocessThreads:            0L, $
+    preprocessDataType:           "", $ 'UInt16' or 'Float32'
     preprocessWriteOutput:        0L, $ 0: don't write, 1: write
     preprocessWriteFormat:        "", $ 'netCDF' or 'HDF5'
-    preprocessWriteDataType:      "", $ 'UInt16' or 'Float32'
     ; Rotation center parameters
     upperSlice:                   0L, $
     lowerSlice:                   0L, $
@@ -1669,10 +1726,10 @@ pro tomo__define
     reconMethodTomoRecon:         0L, $
     reconMethodGridrec:           0L, $
     reconMethodBackproject:       0L, $
-    slicesPerChunk:               0L, $
+    reconSlicesPerChunk:          0L, $
+    reconDataType:                "", $ 'UInt16', 'Int16' or 'Float32'
     reconWriteOutput:             0L, $ 0: don't write, 1: write
     reconWriteFormat:             "", $ 'netCDF' or 'HDF5'
-    reconWriteDataType:           "", $ 'UInt16', 'Int16' or 'Float32'
     tomoReconShareableLibrary:    "", $
     ; tomoRecon parameters
     reconScale:                   0., $ ; Scale factor for reconstruction
