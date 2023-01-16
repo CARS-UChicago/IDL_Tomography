@@ -1,27 +1,146 @@
 ;+
 ; NAME:
-;  TOMO::PREPROCESS
+;  TOMO::READ_DATA_FILE
 ;
 ; PURPOSE:
-;   This procedure reads a tomography data set from individual Princeton
-;   Instruments .SPE files.  It writes a 3-D volume file to disk.
+;   This procedure reads a tomography data set from 2 types of data files:
+;     netCDF files.  There are 3 files
+;       base_1.nc contains flat fields collected at the beginning
+;       base_2.nc contains the projections
+;       base_3.nc contains the flat fields collected at the end
+;     HDF5 files.  There is a single file that contains the flat fields and the projections
 ;
 ; CATEGORY:
 ;   Tomography
 ;
 ; CALLING SEQUENCE:
-;   TOMO->PREPROCESS, Base_file, First, Last
+;   TOMO->READ_DATA_FILE, Filename, Projections, Flats, Darks, Angles
 ;
 ; INPUTS:
-;   Base_file:
-;       The base file name for the data set.  The actual file name are assumed
+;   Filename:
+;       For netCDF this can be the name of any of the 3 files
+;       For HDF5 this is the name of the file
 ;       to be of the form Base_file + strtrim(file_number,2) + '.SPE'.
-;   First:
-;       The number of the first file, typically 1.
-;   Last:
-;       The number of the last file
 ;
-; KEYWORD PARAMETERS:
+; OUTPUTS:
+;   Projections:
+;       A 3-D array of the projection data, [NCOLS, NROWS, NANGLES]
+;
+;   Flats:
+;       A 3-D array of flat field data, [NCOLS, NROWS, NFLATS]
+;
+;   Darks:
+;       A 3-D array of dark field data, [NCOLS, NROWS, NDARKS]
+;
+;   Angles:
+;       A 1-D array of the projection angles
+;
+pro tomo::read_camera_file, filename
+
+  t0 = systime(1)
+  self->set_file_components, filename
+  ptr_free, self.pVolume
+
+  ; See if the file is netCDF
+  if (ncdf_is_ncdf(filename)) then begin
+    self.baseFilename = filename.remove(-4)
+    file = self.baseFilename + '1.nc'
+    self->display_status, 'Reading ' + file
+    flat1       = read_nd_netcdf(file)
+    file = self.baseFilename + '3.nc'
+    self->display_status, 'Reading ' + file
+    flat2       = read_nd_netcdf(file)
+    file = self.baseFilename + '2.nc'
+    self->display_status, 'Reading ' + file
+    projections = read_nd_netcdf(file)
+    dims = size(projections, /dimensions)
+    num_projections = dims[2]
+    flats = [[[flat1]], [[flat2]]]
+    status = self.read_setup(self.baseFilename + '.setup')
+    ; pDarks is set in read_setup
+    rotation_start = 0.
+    rotation_step = 180./num_projections
+    self.rotationCenter = dims[0]/2.
+    self.rotationCenterSlope = 0.
+    return
+  endif
+
+  ; See if the file is HDF5
+  if (h5f_is_hdf5(filename)) then begin
+    flats = h5_getdata(filename, '/exchange/data_white')
+    projections = h5_getdata(filename, '/exchange/data')
+    dims = size(projections, /dimensions)
+    num_projections = dims[2]
+    ; For now we assume there are no dark field images
+    dark_current = h5_getdata(filename, '/process/acquisition/dark_fields/dark_field_value')
+    darks = fix(dark_current[0])
+    rotation_start = (h5_getdata(filename, '/process/acquisition/rotation/rotation_start'))[0]
+    rotation_step = (h5_getdata(filename, '/process/acquisition/rotation/rotation_step'))[0]
+    camera = h5_getdata(filename, '/measurement/instrument/detector/model')
+    self.xPixelSize = h5_getdata(filename, '/measurement/instrument/detection_system/objective/resolution')
+    self.yPixelSize = self.xPixelSize
+    self.zPixelSize = self.xPixelSize
+    self->read_sample_config
+    (*(self.pSampleConfig))['Camera'] = camera
+  endif
+ 
+  self.imageType = 'RAW'
+  angles = float(rotation_start + rotation_step * findgen(num_projections))
+  self.pAngles = ptr_new(angles, /no_copy)
+  self.pVolume = ptr_new(projections, /no_copy)
+  self.pFlats = ptr_new(flats, /no_copy)
+  self.pDarks = ptr_new(darks, /no_copy)
+  self.nx = dims[0]
+  self.ny = dims[1]
+  self.nz = dims[2]
+
+  print, 'Time to read camera file=', systime(1)-t0
+end
+
+function tomo::find_attribute, attributes, name
+  for i=0, n_elements(attributes) do begin
+    if (attributes[i].name eq name) then return, i
+  endfor
+  message, 'Could not find attribute ' + name
+end
+
+pro tomo::display_status, message, debugLevel
+  if (n_elements(debugLevel) eq 0) then debugLevel = 0
+  if (widget_info(self.statusWidget, /valid_id)) then begin
+    widget_control, self.statusWidget, set_value=message
+  endif
+  if (self.debugLevel ge debugLevel) then print, systime() + ' ' + message
+end
+
+function tomo::check_abort
+  if (widget_info(self.abortWidget, /valid_id)) then begin
+    event = widget_event(/nowait, self.abortWidget)
+    widget_control, self.abortWidget, get_uvalue=abort
+    return, abort
+  endif
+end
+
+;+
+; NAME:
+;  TOMO::PREPROCESS
+;
+; PURPOSE:
+;   This procedure reads a tomography data set from netCDF or HDF5 raw data files.
+;   It corrects the flat fields for dark current and zingers, and averages them together.
+;   It then corrects each projection for dark current, flat field, and zingers.
+;   It optionally saves the normalized data to an HDF5 file.
+;
+; CATEGORY:
+;   Tomography
+;
+; CALLING SEQUENCE:
+;   TOMO->PREPROCESS, Filename
+;
+; INPUTS:
+;   Filename
+;       The name of the raw data file.  For netCDF input this can be the name of any of the 3 files.
+;
+;; KEYWORD PARAMETERS:
 ;   THRESHOLD:
 ;       The threshold for zinger removal in normal frames.  See documentation
 ;       for REMOVE_TOMO_ARTIFACTS for details.  Default=1.25
@@ -34,8 +153,10 @@
 ;       every frame.  If this is a 2-D array then it must have the same
 ;       dimensions as each frame in the data set.  In this case the specified
 ;       2-D dark current will be substracted from each frame in the data set.
-;       Note that if the data set contains dark current frames (frame type =
-;       DARK_FIELD) then this keyword is normally not used.
+;       With netCDF files the dark current scalar value is taken from the .setup file.
+;       With HDF5 files the dark current scalar value is in the HDF5 file, or there are
+;       actual dark current frames in the file.
+;       This keyword is thus normally not used.
 ;   FIRST_ROW:
 ;       The starting row (slice) to be processed.  The default is 0.  This
 ;       keyword, together with LAST_ROW below are provided for processing
@@ -46,616 +167,622 @@
 ;   LAST_ROW:
 ;       The ending row (slice) to be processed.  The defaults is the last row
 ;       in each image.  See comments under FIRST_ROW above.
-;   WHITE_FIELD:
-;       The white field value, either a scaler or a 2-D array.  If this is a
+;  FLAT_FIELD:
+;       The flat field value, either a scaler or a 2-D array.  If this is a
 ;       scaler value then each pixel in each data frame is normalized by this
 ;       constant value.  If this is a 2-D array then it must have the same
 ;       dimensions as each frame in the data set.  In this case then each data
 ;       frame in the data set is normalized by the specified 2-D array.
-;       Note that if the data set contains white field frames (frame type =
-;       FLAT_FIELD), which is typically the case, then this keyword is
-;       normally not used.
-;   WHITE_AVERAGE:
-;       Set this flag to 1 to process the flat fields by averaging all of them
-;       together.  The default (WHITE_AVERAGE=0) is to interpolate flat fields in time.
-;       NOTE: The default value for this flag is 0 for backward compatibility.
-;       However, in general setting WHITE_AVERAGE=1 greatly reduces ring artifacts
-;       compared with the default interpolation method, so it's use is strongly
-;       recommended.
-;   WHITE_SMOOTH:
-;       The size of the smoothing kernal for smoothing the white fields.  Set this
-;       value to 2 or more to smooth the white fields before normalization.
-;       Since white fields generally do not have much high frequency content,
-;       smoothing can be used to reduce noise in the normalization.
-;       Default=0 (no smoothing).
+;       Note that if the data set contains flat field frames which is typically the case, 
+;       then this keyword is normally not used.
 ;   OUTPUT:
-;       The name of the output file.  The default is Base_file + '.volume'
-;   STATUS_WIDGET:
-;       The widget ID of a text widget used to display the status of the
-;       preprocessing operation.  If this is a valid widget ID then
-;       informational messages will be written to this widget.
-;   ABORT_WIDGET
-;       The widget ID of a widget used to abort the preprocessing operation.
-;       If this is a valid widget ID then the "uvalue" of this widget will be
-;       checked periodically.  If it is 1 then this routine will clean up and
-;       return immediately.
-;   DEBUG:
-;       A debugging flag.  Allowed values are:
+;       The name of the output file.  The default is Base_file + 'volume.h5'
+;   DEBUG:  A debugging flag.  Allowed values are:
 ;           0: No informational output
 ;           1: Prints each input filename as it is read, and prints limited
 ;              information on processing steps
 ;           2: Prints detailed information on processing steps
-;    FLIP_DATA
-;        Rotates image data 90 degrees
-;
 ; OUTPUTS:
 ;   This function returns a 3-dimensional signed 16-bit integer volume array
-;   of size [NCOLS, NROWS, NANGLES].  The data is the ratio of the input image
+;   of size [NCOLS, NROWS, NPROJECTIONS].  The data is the ratio of the input image
 ;   to the flat field, multiplied by 10,000.  The ratio of the data to the
 ;   flat field should be in the range 0 to 1 (with occasional values slightly
 ;   greater than 1).  Multiplying by 10000 should give sufficient resolution,
 ;   since even values with 99% absorption will be stored with a precision of
 ;   1%.
 ;
-; RESTRICTIONS:
-;   - There must not be any missing files between the numbers specified by the
-;     First and Last parameters.
-;   - The input files must follow the naming convention Base_file +
-;     strtrim(number,2) + '.SPE', where number varies from First to Last.
-;   - By storing the normalized data as 16-bit integers, there is a
-;     possibility of loss of some information when using a true 16-bit camera.
-;
 ; PROCEDURE:
 ;   This function performs the following steps:
-;   - Reads each frame in the data set into a large 3-D data buffer.  Stores
-;     a flag for each frame indicating if the frame is a dark current, a
-;     white field or normal data.
+;   - Reads the raw data into a 3-D array usually of type UINT (unsigned 16-bit integer)
 ;     Stores the rotation angle at which each frame was collected.
 ;   - Subtracts the dark current from each data frame and white field frame,
-;     using dark current images in the data set if present, or the input dark
-;     current if present.
-;     If the data set contains multiple dark current frames, then the
-;     correction is done as follows:
-;         - Use the first dark current for all frames collected before the
-;           first dark current
-;         - Use the last dark current for all frames collected after the last
-;           dark current
-;         - Use the average of the closest preceeding and following dark
-;           currents for all frames collected between two dark currents.
+;     using dark current scalar value or images in the data set or passed as argument
 ;   - Removes zingers from white field frames using REMOVE_TOMO_ARTIFACTS with
 ;     /DOUBLE_CORRELATION if possible, or /ZINGERS if not.
 ;   - Divides each data frame by the white field, using white field images in
-;     the data set, or the input white field if present.  If the
-;     data set contains multiple white field frames, and WHITE_AVERAGE=0,
-;     then the correction is done as follows:
-;         - Use the first white field for all frames collected before the
-;           first white field
-;         - Use the last white field for all frames collected after the last
-;           white field
-;         - Use the weighted average of the closest preceeding and following white
-;           fields for all frames collected between two white fields.
-;     If WHITE_AVERAGE=1 then all of the white fields in the data are averaged
-;     before normalizing.  This is recommended.
+;     the data set, or the input white field if present.
 ;     The ratio of each frame to the white field is multiplied by 10,000 to be
 ;     able to use 16 bit integers, rather than floats to store the results,
 ;     saving a factor of 2 in memory, which is important for these large 3-D
 ;     data sets.
-;   - Sorts the rotation angle array, to determine the order in which the
-;     normalized data frames should be written back out to disk in the volume
-;     file.
 ;   - Corrects for zingers in the white-field normalized data frames, using
 ;     REMOVE_TOMO_ARTIFACTS, /ZINGERS.
-;   - Writes the normalized data frames to a single disk file.  The default
-;     file name is Base_file + '.volume'.  This file is in little-endian binary
-;     format, with the following data:
-;       - NCOLS (long integer, number of columns in each frame)
-;       - NROWS (long integer, number of rows in each frame)
-;       - NANGLES (long integer, number of frames)
-;       - DATA (short integer array [NCOLS, NROWS, NANGLES]
-;       The volume file can be read back in to IDL with function
-;       READ_TOMO_VOLUME
+;   - Optionally writes the normalized data frames to a single disk file.  The default
+;     file name is Base_file + 'volume.h5'.  
+;     The volume file can be read back in to IDL with function READ_TOMO_VOLUME
 ;
-; EXAMPLE:
-;   The following example will read files Mydata1.SPE through Mydata370.SPE,
-;   using a constant dark current of 50 counts at each pixel.  This data set
-;   is assumed to have white field frames in it.  The output file will be
-;   Mydata.volume
-;       IDL>  READ_TOMO_DATA, 'Mydata', 1, 370, dark=50
-;       ; Now read the volume file back into IDL
-;       IDL> vol = READ_TOMO_VOLUME('Mydata.volume')
-;       ; Play the volume data as a movie, rotating the sample
-;       IDL> window, 0
-;       IDL> make_movie, vol, min=3000, max=12000
-;
-; MODIFICATION HISTORY:
-;   Written by: Mark Rivers, March 27, 1999.
-;   3-APR-1999 MLR  Changed white field normalization to use weighted average
-;                   of white fields before and after, rather than simple
-;                   average
-;   4-APR-1999 MLR  Changed the default value of threshold from 1.20 to 1.05
-;                   Switched to double correlation method of zinger removal
-;                   for white field images when possible.
-;   18-MAY-1999 MLR Added missing keyword DOUBLE_THRESHOLD to procedure line
-;   07-JUL-1999 MLR Changed zinger removal for data frames so it is done after
-;                   whitefield correction.  This makes the identification of
-;                   zingers (versus high-frequency structure in the whitefield)
-;                   much more robust.
-;   13-SEP-1999 MLR Changed the dark current correction to use a loop, so that
-;                   two large arrays are not required at the same time.
-;   08-DEC-1999 MLR Added FIRST_ROW and LAST_ROW keywords for handling very
-;                   large data sets.
-;                   Added OUTPUT keyword
-;   02-MAR-2000 MLR Added DEBUG keyword to calls to REMOVE_TOMO_ARTIFACTS
-;                   large data sets.
-;   02-MAR-2000 MLR Changed the default value of THRESHOLD from 1.05 to 1.25
-;                   because the lower threshold was causing significant
-;                   blurring of sharp edges.  Changed the default value of
-;                   DOUBLE_THRESHOLD from 1.02 to 1.05, since it was finding
-;                   many more zingers than physically plausible.
-;   02-MAR-2000 MLR Added SWAP_IF_BIG_ENDIAN keyword when opening output file.
-;   22-JAN-2001 MLR Added some default debugging when writing output file
-;   11-APR-2001 MLR Changed the name of this routine from READ_TOMO_DATA to
-;                   TOMO::PREPROCESS when it was incorporated in the TOMO class
-;                   library.
-;                   This routine now updates the .SETUP file with the dark current
-;                   that was specified when running this procedure.
-;                   The output file is now written with TOMO::WRITE_VOLUME rather
-;                   than being incrementally written as the data are processed.  This
-;                   requires more memory, but is necessary to allow use of netCDF
-;                   and other file formats.
-;   1-NOV-2001 MLR  Added BUFF_ANGLES keyword
-;   20-NOV-2001 MLR  Added ABORT_WIDGET and STATUS_WIDGET keywords
-;   25-APR-2002 MLR  Added support for reading 3-D .SPE files, created when doing
-;                    fast scanning
-;   18-DEC-2005 MLR  Added white_average and white_smooth keywords.
-;                    Renamed WHITE keyword to WHITE_FIELD
-;                    Setting white_average greatly reduces ring artifacts in many cases.
-;-
-;   24-JUN-2010 DTC Changed read_data_file to be able to process .nc files in addition to .SPE files
-;                   Changed preprocess to be able to concatenate multiple 3-D fast and OTF scan files into a single data set
-;                   After dark field subtraction, added check against dividing by zero (replace all zeroes with ones?)
-;   16-JUL-2011 DTC Added widget to transpose image data in the case that the camera is rotated 90 degrees
 
-pro tomo::read_data_file, base_file, file_type, file_number, data, type, angle, debug, $
-  status_widget, flip_data
-  cd, current = current
-  file = base_file + strtrim(file_number, 2) + file_type
-  str = 'Reading ' + file
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (file_type eq '.SPE') then read_princeton, file, data, header=header, comment=comment
-  if (file_type eq '.nc') then data = read_nd_netcdf(file, attributes=attributes)
-  if (file_type ne '.SPE' AND file_type ne '.nc') then message, 'No files found'
+pro tomo::preprocess
+
+  tStart = systime(1)
+  if (self.preprocessWriteFormat eq 'netCDF') then output_file = self.baseFilename + 'norm.nc' $
+  else output_file = self.baseFilename + 'norm.h5'
+
+  normalized = fltarr(self.nx, self.ny, self.nz, /nozero)
+
+  ; Convert darks and flats to float
+  darks = float(*self.pDarks)
+  flats = float(*self.pFlats)
+  if (n_elements(darks) eq 1) then begin
+    darks = fltarr(self.nx, self.ny) + darks
+  endif
+  dims = size(darks, /dimensions)
+  ndarks = 1
+  if (n_elements(dims) eq 3) then ndarks = dims[2]
+  dims = size(flats, /dimensions)
+  nflats = 1
+  if (n_elements(dims) eq 3) then nflats = dims[2]
+
+  ; If there is more than one dark field image then average them
+  if (ndarks gt 1) then begin
+    darks = total(darks, 3) / ndarks
+  endif
+
+  self->display_status, 'Doing corrections on flat fields ...', 1
+  for i=0, nflats-1 do begin
+    data_temp = flats[*,*,i] - darks
+    if (min(data_temp) le 0) then data_temp = data_temp > 1
+    flats[0,0,i] = data_temp
+  endfor
+
+  ; Remove zingers from flat fields.  If there is more than 1 flat field
+  ; do it with double correlation, else do it with spatial filter
+  if (nflats eq 1) then begin
+    flats = remove_tomo_artifacts(flats, /zingers, threshold=threshold, debug=debug)
+  endif else begin
+    for i=0, nflats-2 do begin
+      flats[0,0,i] = remove_tomo_artifacts(flats[*,*,i], image2=flats[*,*,i+1], $
+        /double_correlation, threshold=double_threshold, debug=debug)
+    endfor
+  endelse
+  flats = total(flats, 3)/nflats
+  tFlats = systime(1)
+
+  self->display_status, 'Dark, flat, zinger correction ...', 1
+  params = {preprocess_params, $
+    numPixels:        self.nx, $
+    numSlices:        self.ny, $
+    numProjections:   self.nz, $
+    numThreads:       self.preprocessThreads, $
+    zingerWidth:      self.zingerWidth, $
+    zingerThreshold:  self.zingerThreshold, $
+    scaleFactor:      self.preprocessScale, $
+    debug:            self.debug, $
+    debugFile:        bytarr(256) $
+  }
+  params.debugFile = [byte(self.debugFile), 0B]
+
+  t = call_external(self.tomoReconShareableLibrary, 'tomoPreprocessCreateIDL', $
+                    params, darks, flats, *self.pVolume, normalized)
+
+  preprocessComplete = 0L
+  projectionsRemaining = 0L
+  repeat begin
+    t = call_external(self.tomoReconShareableLibrary, 'tomoPreprocessPollIDL', $
+                      preprocessComplete, $
+                      projectionsRemaining)
+    self->display_status, 'Proprocessing projection: ' $
+      + strtrim(self.nz-projectionsRemaining,2) + '/' + strtrim(self.nz,2), 2
+    wait, 0.1
+  endrep until preprocessComplete
+  tNormalize = systime(1)
+
+if (self.preprocessDataType eq 'UInt16') then begin
+    self->display_status, 'Converting to UInt16 ...', 1
+    normalized = fix(normalized)
+  endif
+  tConvertOut = systime(1)
+
+  self.imageType = 'NORMALIZED'
+  if (self.preprocessWriteOutput) then begin
+    self->display_status, 'Writing normalized file ...', 1
+    self->write_volume, output_file, normalized, netcdf=netcdf
+  endif
+  self->write_sample_config
+  tWriteFile = systime(1)
+
+  ptr_free, self.pVolume
+  self.pVolume = ptr_new(normalized, /no_copy)
+  tEnd = systime(1)
+  self->display_status, 'Preprocessing complete', 1
+
+  print, 'Preprocess execution times:'
+  print, '                  Flat adjustments:', tFlats - tStart
+  print, '  Dark, flat and zinger correction:', tNormalize - tFlats
+  print, '                 Convert to UInt16:', tConvertOut - tNormalize
+  print, '                    Writing output:', tWriteFile - tConvertOut
+  print, '                    Freeing memory:', tEnd - tWriteFile
+  print, '                             Total:', tEnd - tStart
+
+end
+
+pro tomo::optimize_center, slices, center, merit, width=width, step=step, method=method
+  ; This routine calculates an array of image figure of merit as the rotation center is varied
+
+  if (n_elements(method) eq 0) then method = 'Entropy'
+  if (n_elements(width) eq 0) then width = 10
+  if (n_elements(step) eq 0) then begin
+    if (method eq 'Entropy') then step = 0.25 else step = 0.5
+  endif
+
+  t0 = systime(1)
+  ncenter = fix(width/step)
+  if (n_elements(center) eq 1) then begin
+    center = center - width/2 + findgen(ncenter)*step
+  endif
+  merit = dblarr(ncenter, 2)
+  max_angle = max(*self.pAngles)
+  if (method eq 'Entropy' and (max_angle lt 181)) then begin
+    self->optimize_center_entropy, slices, center, merit
+  endif else  if (method eq 'Entropy' and (max_angle ge 181)) then begin
+      self->optimize_center_entropy_360, slices, center, merit
+  endif else begin
+    self->optimize_center_mirror, slices, center, merit
+  endelse
+
+  ; Finds the minumum in the figure of merit for each slice
+  t = min(merit[*,0], min_pos1)
+  t = min(merit[*,1], min_pos2)
+  center1 = center[min_pos1]
+  center2 = center[min_pos2]
+  if (method eq '0-180') then begin
+    ; It appears that the center is 0.5 pixel larger than the center position used by gridrec
+    center1 = center1 - 0.5
+    center2 = center2 - 0.5
+  endif
+  self->set_rotation, slices[0], center1, slices[1], center2
+  t1 = systime(1)
+  print, 'optimize_center, time=', t1-t0
+end
+
+pro tomo::optimize_center_entropy, slices, center, merit
+  ncenter = n_elements(center)
+  s = size(*self.pVolume, /dimensions)
+  input = fltarr(s[0], ncenter*2, s[2])
+  ctr = fltarr(ncenter*2)
+  for i=0, ncenter-1 do begin
+    ctr[i*2] = center[i]
+    ctr[i*2+1] = center[i]
+    input[*, i*2, *] = (*self.pVolume)[*, slices[0], *]
+    input[*, i*2+1, *] = (*self.pVolume)[*, slices[1], *]
+  endfor
+  self->tomo_recon, input, recon, angles=*self.pAngles, center=ctr
+
+  ; Use the slice in center of range to get min/max of reconstruction for histogram
+  r1 = recon[*,*,ncenter]
+  r2 = recon[*,*,ncenter+1]
+
+  mn1 = min(r1)
+  if ((mn1) lt 0) then mn1=2*mn1 else mn1=0.5*mn1
+  mx1 = max(r1)
+  if ((mx1) gt 0) then mx1=2*mx1 else mx1=0.5*mx1
+  binsize1=(mx1-mn1)/1.e4
+
+  mn2 = min(r2)
+  if ((mn2) lt 0) then mn2=2*mn2 else mn2=0.5*mn2
+  mx2 = max(r2)
+  if ((mx2) gt 0) then mx2=2*mx2 else mx2=0.5*mx2
+  binsize2=(mx2-mn2)/1.e4
+
+  npixels = n_elements(r1)
+  for i=0, ncenter-1 do begin
+    r1 = recon[*,*,i*2]
+    r2 = recon[*,*,i*2+1]
+    h1 = histogram(r1, min=mn1, max=mx1, bin=binsize1) > 1
+    h1 = float(h1) / npixels
+    h2 = histogram(r2, min=mn2, max=mx2, bin=binsize2) > 1
+    h2 = float(h2) / npixels
+    merit[i,0] = -total(h1*alog(h1))
+    merit[i,1] = -total(h2*alog(h2))
+  endfor
+end
+
+pro tomo::optimize_center_entropy_360, slices, center, merit
+  ncenter = n_elements(center)
+  s = size(*self.pVolume, /dimensions)
+  for i=0, ncenter-1 do begin
+    angles = *self.pAngles
+    cent = round(center[i])
+    input1 = self->convert_360_data((*self.pVolume)[*, slices[0], *], cent, angles)
+    angles = *self.pAngles
+    input2 = self->convert_360_data((*self.pVolume)[*, slices[1], *], cent, angles)
+    input = [[input1], [input2]]
+    ctr = [cent, cent]
+    self->tomo_recon, input, recon, center=ctr, angles=angles
+    if (i eq 0) then begin
+      ; Use the first reconstuction to get min/max of reconstruction for histogram
+      r1 = recon[*,*,0]
+      r2 = recon[*,*,1]
+      mn1 = min(r1)
+      if ((mn1) lt 0) then mn1=2*mn1 else mn1=0.5*mn1
+      mx1 = max(r1)
+      if ((mx1) gt 0) then mx1=2*mx1 else mx1=0.5*mx1
+      binsize1=(mx1-mn1)/1.e4
+      mn2 = min(r2)
+      if ((mn2) lt 0) then mn2=2*mn2 else mn2=0.5*mn2
+      mx2 = max(r2)
+      if ((mx2) gt 0) then mx2=2*mx2 else mx2=0.5*mx2
+      binsize2=(mx2-mn2)/1.e4
+    endif
+    r1 = recon[*,*,0]
+    r2 = recon[*,*,1]
+    npixels = n_elements(r1)
+    h1 = histogram(r1, min=mn1, max=mx1, bin=binsize1) > 1
+    h1 = float(h1) / npixels
+    h2 = histogram(r2, min=mn2, max=mx2, bin=binsize2) > 1
+    h2 = float(h2) / npixels
+    merit[i,0] = -total(h1*alog(h1))
+    merit[i,1] = -total(h2*alog(h2))
+  endfor
+end
+
+pro tomo::optimize_center_mirror, slices, center, merit
+  ; Determines rotation center from 2 images that are close to 180 degrees apart
+  numShift = n_elements(center)
+  if (max(*self.pAngles) gt 181) then begin
+    stripWidth = 101
+    mid_center = center[numShift/2]
+    overlap = min([mid_center, self.nx-1 - mid_center])
+    xmin = mid_center - overlap
+    xmax = mid_center + overlap
+    proj180 = float((*self.pVolume)[xmin:xmax, *, self.nz/2])
+    shft = round((center - mid_center) * 2)
+    shft = (shft < overlap) > (-overlap)
+  endif else begin
+    stripWidth = 11
+    xmin = 0
+    xmax = self.nx-1
+    proj180 = float((*self.pVolume)[xmin:xmax, *, self.nz-1])
+    shft = round((center - self.nx/2) * 2)
+  endelse
+  proj0 = float((*self.pVolume)[xmin:xmax, *, 0])
+  dims = size(proj0, /dimensions)
+  nx = dims[0]
+  max_shift = max(abs(shft))
+  for j=0, 1 do begin
+    ymin = slices[j] - stripWidth[0]/2 > 0
+    ymax = slices[j] + stripWidth[0]/2 < (self.ny-1)
+    p0 = reform(proj0[*, ymin:ymax])
+    p180 = reform(proj180[*, ymin:ymax])
+    p180 = rotate(p180, 5)
+    for i=0, numShift-1 do begin
+      diff = p0 - shift(p180, shft[i], 0)
+      diff = diff[max_shift:nx-max_shift-1, *]
+      d = diff^2
+      merit[i, j] = total(d)
+    endfor
+  endfor
+end
+
+pro tomo::set_rotation, slice1, center1, slice2, center2
+  slices = float([slice1, slice2])
+  center = float([center1, center2])
+  ; Do a linear fit of slice number and rotation center
+  coeffs = poly_fit(slices, center, 1)
+  self.rotationCenter = coeffs[0]
+  self.rotationCenterSlope = coeffs[1]
+  self.upperSlice = slice1
+  self.lowerSlice = slice2
+end
+
+pro tomo::correct_rotation_tilt, angle
+  if (not ptr_valid(self.pVolume)) then begin
+    t = dialog_message('Must read in volume file first.', /error)
+    return
+  endif
+  for i=0, self.nz-1 do begin
+    proj = (*self.pVolume)[*,*,i]
+    r = rot(proj, angle, cubic=-0.5)
+    (*self.pVolume)[0,0,i] = r
+    self->display_status, 'Correcting projection ' + strtrim(i+1, 2) + '/' + strtrim(self.nz, 2)
+  endfor
+end
+
+function tomo::convert_360_data, input, center, angles
+  ; This procedure converts 360 degree data to 180
+  ; It can accept a single slice or 3-D data
+  dims = size(input, /dimensions)
+  if (n_elements(dims) eq 2) then begin
+    input = reform(input, dims[0], 1, dims[1])
+  endif
+  dims = size(input, /dimensions)
+  nx = dims[0]
+  ny = dims[1]
+  nz = dims[2]
+  datatype = size(input, /type)
+  if (center gt nx/2) then begin
+    nxtotal = 2*center
+  endif else begin
+    nxtotal = 2*(nx - center)
+  endelse
+  output = make_array(nxtotal, ny, nz/2, type=datatype, /nozero)
+  if (center gt nx/2) then begin
+    output[0,0,0] = input[0:center-1, *, 0:nz/2-1]
+    for i=0, nz/2-1 do begin
+      output[center, 0, i] = rotate(input[0:center-1, *, i+nz/2], 5)
+    endfor
+  endif else begin
+    output[nxtotal/2,0,0] = input[center:nx-1, *, 0:nz/2-1]
+    for i=0, nz/2-1 do begin
+      output[0, 0, i] = rotate(input[center:nx-1, *, i+nz/2], 5)
+    endfor
+  endelse
+  angles = angles[0:nz/2-1]
+  return, output
+end
+
+pro tomo::tomo_recon, $
+  input, $
+  output, $
+  create = create, $
+  center=center, $
+  angles=angles, $
+  wait=wait
+
+  t0 = systime(1)
+  dims = long(size(input, /dimensions))
+  numPixels = dims[0]
+  if (n_elements(dims) eq 2) then begin
+    numSlices      = 1L
+    numProjections = dims[1]
+  endif else if (n_elements(dims) eq 3) then begin
+    numSlices      = dims[1]
+    numProjections = dims[2]
+  endif
   
-  ndims = size(data, /n_dimensions)
-  if (ndims eq 2) then begin; slow scan data
-    if flip_data then data = transpose(data)
-    if (file_type eq '.SPE') then begin
-      angle=float(strmid(comment[0], 6))
-      type=strmid(comment[1], 5)
-    endif else if (file_type eq '.nc') then begin  ; .nc is actually always fast-scan
-      i = self->find_attribute(attributes, 'Attr_Comment1')
-      start_angle = float(strmid( (*(attributes.pvalue)[i])[0], 12))
-      i = self->find_attribute(attributes, 'Attr_Comment2')
-      angle_step = float(strmid( (*(attributes.pvalue)[i])[0], 11))
-      i = self->find_attribute(attributes, 'Attr_Comment3')
-      flat_fields = strmid( (*(attributes.pvalue)[i])[0], 12)
-      ang = double(start_angle)
-      if (flat_fields ne '') then begin
-        type = 'FLAT_FIELD'
-        angle = ang
+  if (n_elements(create) eq 0) then create = 1
+  if (n_elements(angles) eq 0) then angles = *self.pAngles
+  if (n_elements(center) eq 0) then begin
+    centerArr = fltarr(numSlices) + (numPixels)/2.
+  endif else if (n_elements(center) eq 1) then begin
+    centerArr = fltarr(numSlices) + float(center)
+  endif else  begin
+    if (n_elements(center) lt numSlices) then $
+      message, 'Center size ='+ string(n_elements(center)) + ' must be '+ string(numSlices)
+    centerArr = float(center)
+  endelse
+  if (n_elements(wait) eq 0) then wait = 1
+
+  tp = {tomo_params,                                $
+    ; Sinogram parameters
+    numPixels:            numPixels,                $ ; Number of pixels in sinogram row before padding
+    numProjections:       numProjections,           $ ; Number of angles
+    numSlices:            numSlices,                $ ; Number of slices
+    sinoScale:            self.preprocessScale,     $ ; Scale factor to multiply sinogram when airPixels=0;
+    reconScale:           self.reconScale,          $ ; Scale factor to multiple reconstruction
+    reconOffset:          self.reconOffset,         $ ; Offset factor to multiple reconstruction
+    paddedSinogramWidth:  self.paddedSinogramWidth, $ ; Number of pixels in sinogram after padding
+    paddingAverage:       self.paddingAverage,      $ ; Number of pixels to average on each side of sinogram to compute padding. 0 pixels pads with 0.0
+    airPixels:            self.airPixels,           $ ; Number of pixels of air to average at each end of sinogram row
+    ringWidth:            self.ringWidth,           $ ; Number of pixels to smooth by when removing ring artifacts
+    fluorescence:         self.fluorescence,        $ ; 0=absorption data, 1=fluorescence
+    ; tomoRecon parameters
+    numThreads:           self.reconThreads,        $
+    debug:                self.debug,               $
+    debugFile:            bytarr(256),              $ ; Set below
+    ; gridRec/tomoRecon parameters
+    geom:                 self.geom,                $ ; 0 if array of angles provided; 1,2 if uniform in half,full circle
+    pswfParam:            self.pswfParam,           $ ; PSWF parameter
+    sampl:                self.sampl,               $ ; "Oversampling" ratio
+    maxPixSize:           self.maxPixSize,          $ ; Max pixel size for reconstruction
+    ROI:                  self.ROI,                 $ ; Region of interest (ROI) relative size
+    X0:                   self.X0,                  $ ; (X0,Y0)=Offset of ROI from rotation axis
+    Y0:                   self.Y0,                  $ ; in units of center-to-edge distance.
+    ltbl:                 self.ltbl,                $ ; No. elements in convolvent lookup tables
+    GR_filterName:        bytarr(16)                $ ; Name of filter function - set below
+  }
+  tp.debugFile = [byte(self.debugFile), 0B]
+  tp.GR_filterName = [byte(self.GR_filterName), 0B]
+  tp.paddedSinogramWidth = self->getPaddedSinogramWidth(numPixels)
+
+  output = 0 ; Deallocate any existing array
+  output = fltarr(numPixels, numPixels, numSlices, /nozero)
+
+  ; Make sure input is a float array
+  tname = size(input, /tname)
+  if (tname ne 'FLOAT') then begin
+    input = float(input)
+  endif
+  t1 = systime(1)
+
+  if (create) then begin
+    t = call_external(self.tomoReconShareableLibrary, 'tomoReconCreateIDL', tp, angles)
+  endif
+  t = call_external(self.tomoReconShareableLibrary, 'tomoReconRunIDL', $
+    numSlices, $
+    centerArr, $
+    input, $
+    output)
+
+  if (wait) then begin
+    reconComplete = 0L
+    slicesRemaining = 0L
+    repeat begin
+      t = call_external(self.tomoReconShareableLibrary, 'tomoReconPollIDL', reconComplete, slicesRemaining)
+      self->display_status, 'Reconstructing slice: ' + strtrim(numSlices-slicesRemaining,2) + '/' + strtrim(numSlices,2), 2
+      wait, .01
+    endrep until (reconComplete)
+    t2 = systime(1)
+    print, 'tomo_recon: time to convert to float:', t1-t0
+    print, '                 time to reconstruct:', t2-t1
+    print, '                          total time:', t2-t0
+  endif
+end
+
+  ;+
+  ; NAME:
+  ;   RECONSTRUCT_SLICE
+  ;
+  ; PURPOSE:
+  ;   Reconstructs a single slice in a tomography volume array.
+  ;
+  ; CATEGORY:
+  ;   Tomography data processing
+  ;
+  ; CALLING SEQUENCE:
+  ;   Result = RECONSTRUCT_SLICE(tomoParams, Slice, Volume)
+  ;
+  ; INPUTS:
+  ;   tomoParams: A tomo_params structure
+  ;   Slice:      The number of the slice to be reconstructed.
+  ;   Volume:     The 3-D volume array from which the slice is extracted
+  ;
+  ; KEYWORD PARAMETERS:
+  ;   ANGLES:
+  ;       An array of angles (in degrees) at which each projection was collected.
+  ;       If this keyword is not specified then the routine assumes that the data was
+  ;       collected in evenly spaced increments of 180/n_angles.
+  ;   CENTER:
+  ;       The rotation centers.  If this keyword is not specified then the
+  ;       center is assumed to be the center pixel of the image
+  ;
+  ; OUTPUTS:
+  ;   This function returns the reconstructed slice.  It is a floating point
+  ;   array of dimensions NX x NX.
+  ;
+  ; PROCEDURE:
+  ;   Does the following:  extracts the slice, computes the sinogram with
+  ;   centering and optional center tweaking, removes ring artifacts, filters
+  ;   with a Shepp-Logan filter and backprojects.  It also prints the time
+  ;   required for each step at the end.
+  ;
+  ; EXAMPLE:
+  ;   r = reconstruct_slice(tomoParams, 264, volume)
+  ;
+  ; MODIFICATION HISTORY:
+  ;   Written by: Mark Rivers, May 13, 1998
+  ;   Many changes over time, see CVS log.
+  ;-
+function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=cog
+
+  time1 = systime(1)
+  input = reform(input)
+  dims = size(input, /dimensions)
+  if (n_elements(dims) ne 2) then begin
+    message, 'tomo::reconstruct_slice, input must be 2-D'
+  endif
+  nx = dims[0]
+  nz = dims[1]
+  angles = *self.pAngles
+  
+  ; If this is 360 degree data we need to convert to 180
+  if (max(angles) gt 181) then begin
+    input = self->convert_360_data(input, center, angles)
+  endif
+
+  if (self.reconMethod eq self.reconMethodTomoRecon) then begin
+    self->tomo_recon, input, r, center=center, angles=angles
+  endif
+
+  if (self.reconMethod eq self.reconMethodGridrec) then begin
+    t1 = input
+    t2 = input
+    s1 = sinogram(tomoParams, t1, angles, cog=cog)
+    singram = s1
+    s2 = sinogram(tomoParams, t2, angles, cog=cog)
+    time3 = systime(1)
+
+    if (self.ringWidth eq 0) then begin
+      g1 = s1
+      g2 = s2
+    endif else begin
+      g1 = remove_tomo_artifacts(s1, /rings, width=self.ringWidth)
+      g2 = remove_tomo_artifacts(s2, /rings, width=self.ringWidth)
+    endelse
+
+    ; pad sinogram
+    pad = self->getPaddedSinogramWidth(nx)
+    if (pad ne 0) then begin
+      size = size(g1)
+      if (size[1] gt pad) then begin
+        t = dialog_message('Padded sinogram too small, proceed without padding')
+        pad = 0
       endif else begin
-        type = 'NORMAL'
-        angle = ang
+        data_temp1 = temporary(g1)
+        data_temp2 = temporary(g2)
+        g1 = fltarr(pad-1, size[2])
+        g2 = fltarr(pad-1, size[2])
+        p = (pad - size[1] -1)/2
+        g1[p:p+size[1]-1, *] = data_temp1
+        g2[p:p+size[1]-1, *] = data_temp2
+        center = center + p
       endelse
     endif
-    str = str + ' angle=' + string(angle, format='(f6.2)') + ' type=' + type
-    if (widget_info(status_widget, /valid_id)) then $
-      widget_control, status_widget, set_value=str
-    if (debug ne 0) then print, str
-  endif else if (ndims eq 3) then begin ; fast or otf scan data
-    if flip_data then data = transpose(data, [1,0,2])
-    dims = size(data, /dimensions)
-    n_views = dims[2]
-    type = strarr(n_views)
-    angle = fltarr(n_views)
-    if (file_type eq '.SPE') then begin
-      start_angle = float(strmid(comment[0], 12))
-      angle_step = float(strmid(comment[1], 11))
-      flat_fields = strmid(comment[2], 12)
-      flat_fields_2 = string(comment[3])
-      flat_fields_3 = string(comment[4])
-      flat_fields = flat_fields + flat_fields_2+flat_fields_3
-      if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
-      ang = double(start_angle)
-      for i=0, n_views-1 do begin
-        angle[i] = ang
-        if (max(i eq flat_fields)) then begin
-          type[i] = 'FLAT_FIELD'
-        endif else begin
-          type[i] = 'NORMAL'
-          ang = ang + angle_step
-        endelse
-      endfor
-    endif else if (file_type eq '.nc') then begin
-      i = self->find_attribute(attributes, 'Attr_Comment1')
-      start_angle = float(strmid( (*(attributes.pvalue)[i])[0], 12))
-      i = self->find_attribute(attributes, 'Attr_Comment2')
-      angle_step = float(strmid( (*(attributes.pvalue)[i])[0], 11))
-      i = self->find_attribute(attributes, 'Attr_Comment3')
-      flat_fields = strmid( (*(attributes.pvalue)[i])[0], 12)
-      i = self->find_attribute(attributes, 'uniqueId')
-      UIDS = fix(*(attributes.pvalue)[i])
-      if(flat_fields ne '') then flat_fields = fix(strsplit(flat_fields, /extract)) else flat_fields = -1
-      ang = double(start_angle)
-      index = UIDS[0]
-      FFS = 0
-      for i = 0, n_views-1 do begin
-        if (max(i eq flat_fields)) then begin
-          type[i] = 'FLAT_FIELD'
-          angle[i] = ang
-          FFS = FFS+1
-        endif else begin
-          type[i] = 'NORMAL'
-          ang = ang + angle_step*(UIDS[i]-index-FFS)
-          angle[i] = ang
-          index = UIDS[i]
-          FFS = 0
-        endelse
-      endfor
+
+    time4 = systime(1)
+    gridrec, tomoParams, g1, g2, angles, r, unused, center=center
+
+    ; crop results if sinogram was padded
+    if (pad ne 0 AND size[1] le pad) then begin
+      r = r[p:p+size[1] - 1,p:p+size[1] - 1]
+      center = center - p
     endif
-    
+
+    ; Scale results
+    if ((self.reconScale ne 0.) and (self.reconScale ne 1.0)) then begin
+      r = r * self.reconScale
+    endif
+    if (self.reconOffset ne 0.) then begin
+      r = r + self.reconOffset
+    endif
+
+    time5 = systime(1)
+    print, 'Gridrec: center= ', center
+    print, 'Time to compute sinogram: ', time3-time2
+    print, 'Time to reconstruct:      ', time5-time4
   endif
-end
 
-
-function tomo::find_attribute, attributes, name
-  for i=0, n_elements(attributes) do begin
-    if (attributes[i].name eq name) then return, i
-  endfor
-  message, 'Could not find attribute ' + name
-end
-
-pro tomo::preprocess, base_file, file_type, start, stop, dark=input_dark, $
-  white_field=input_white, threshold=threshold, $
-  double_threshold=double_threshold, debug=debug, $
-  first_row=first_row, last_row=last_row, output=output, $
-  setup=setup, $
-  white_smooth=white_smooth, white_average=white_average, $
-  status_widget=status_widget, abort_widget=abort_widget, $
-  flip_data = flip_data
-  
-  tstart = systime(1)
-  nfiles = stop - start + 1
-  if (n_elements(debug) eq 0) then debug=1
-  if (n_elements(threshold) eq 0) then threshold=1.25
-  if (n_elements(double_threshold) eq 0) then double_threshold=1.05
-  if (n_elements(output) eq 0) then output=base_file + '.volume'
-  if (n_elements(setup) eq 0) then setup=base_file + '.setup'
-  if (n_elements(white_smooth) eq 0) then white_smooth=0
-  if (n_elements(white_average) eq 0) then white_average=0
-  if (n_elements(status_widget) eq 0) then status_widget = -1L
-  if (n_elements(abort_widget) eq 0) then abort_widget = -1L
-  
-  status = self->read_setup(setup)
-  
-  ; Read one file to get the dimensions
-  self->read_data_file, base_file, file_type, 1, data, type, angle, debug, status_widget, flip_data
-  ndims = size(data, /n_dimensions)
-  dims = size(data, /dimensions)
-  ncols = dims[0]
-  nrows = dims[1]
-  if (ndims eq 2) then begin ; slow scan data
-    nframes = nfiles
-    ystart = 0
-    ystop = nrows-1
-    if (n_elements(first_row) ne 0) then ystart = first_row
-    if (n_elements(last_row) ne 0) then ystop = last_row
-    ; The subset flag is for efficiency below
-    if ((ystart eq 0) and (ystop eq nrows-1)) then subset=0 else subset=1
-    nrows = ystop - ystart + 1
-    if (debug ge 2) then print, 'ncols= ', ncols, ' nrows=', nrows
-    
-    data_buff = uintarr(ncols, nrows, nframes, /nozero)
-    angles = fltarr(nframes)
-    image_type = strarr(nframes)
-    for i=0, nframes-1 do begin
-      self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-        status_widget, flip_data
-      if (subset) then begin
-        data_buff[0,0,i]=data[*,ystart:ystop]
-      endif  else begin
-        data_buff[0,0,i]=data
-      endelse
-      angles[i]=angle
-      image_type[i]=type
-      if (widget_info(abort_widget, /valid_id)) then begin
-        event = widget_event(/nowait, abort_widget)
-        widget_control, abort_widget, get_uvalue=abort
-        if (abort) then begin
-          if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, $
-            set_value='Preprocessing aborted'
-          return
-        endif
-      endif
-    endfor
-  endif else if (ndims eq 3) then begin ; fast and otf scan data
-    if (nfiles eq 1) then begin
-      nframes = dims[2]
-      data_buff = temporary(data)
-      data_buff = uint(data_buff)
-      image_type = type
-      angles = angle
+  if (self.reconMethod eq self.reconMethodBackproject) then begin
+    s1 = sinogram(tomoParams, t1, angles, cog=cog)
+    cent = -1
+    time3 = systime(1)
+    if (self.ringWidth eq 0) then begin
+      g1 = s1
     endif else begin
-      ; We have to read the data twice; once to figure out how many frames there are, and a second time
-      ; to put into the array
-      nframes = 0
-      for i=0, nfiles-1 do begin
-        self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-          status_widget, flip_data
-        dims = size(data, /dimensions)
-        n_dims = size(data, /n_dimensions)
-        if (n_dims eq 2) then nf=1 else nf=dims[2]
-        nframes = nframes + nf
-      endfor
-      data_buff = uintarr(ncols, nrows, nframes, /nozero)
-      image_type = strarr(nframes)
-      angles = fltarr(nframes,/nozero)
-      current_frame = 0
-      for i=0, nfiles-1 do begin
-        self->read_data_file, base_file, file_type, start+i, data, type, angle, debug, $
-          status_widget, flip_data
-        dims = size(data, /dimensions)
-        n_dims = size(data, /n_dimensions)
-        data_buff[0, 0, current_frame] = data
-        data = 0
-        angles[current_frame] = angle
-        image_type[current_frame] = type
-        if (n_dims eq 2) then nf=1 else nf=dims[2]
-        current_frame = current_frame + nf
-        
-        if (widget_info(abort_widget, /valid_id)) then begin ; check for abort from user
-          event = widget_event(/nowait, abort_widget)
-          widget_control, abort_widget, get_uvalue=abort
-          if (abort) then begin
-            if (widget_info(status_widget, /valid_id)) then $
-              widget_control, status_widget, set_value='Preprocessing aborted'
-            return
-          endif
-        endif
-      endfor
+      g1 = remove_tomo_artifacts(s1, /rings, width=self.ringWidth)
     endelse
+
+    time4 = systime(1)
+    ss1 = tomo_filter(g1, filter_size=self.BP_filterSize, filter_name=self.BP_filterName)
+    singram = ss1
+    time5 = systime(1)
+    if (center ge (nx-1)/2) then ctr = center else ctr = center + 2*abs(round(center - (nx-1)/2))
+    r = backproject(tomoParams, ss1, angles, center=ctr)
+    time6 = systime(1)
+    ; Scale results
+    if ((self.reconScale ne 0.) and (self.reconScale ne 1.0)) then begin
+      r = r * self.reconScale
+    endif
+    if (self.reconOffset ne 0.) then begin
+      r = r + self.reconOffset
+    endif
+    print, 'Backproject: center= ', center
+    print, 'Time to compute sinogram: ', time3-time2
+    print, 'Time to filter sinogram:  ', time5-time4
+    print, 'Time to backproject:      ', time6-time5
   endif
-  
-  tread = systime(1)
-  ; Do dark current correction
-  str = 'Doing dark current correction ...'
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  darks = where(image_type eq 'DARK_FIELD', ndarks)
-  if (debug ge 2) then print, 'ndarks= ', ndarks, 'darks=', darks
-  if (n_elements(input_dark) ne 0) then begin
-    dark = input_dark
-    s = size(dark)  ; Input dark current
-    if (debug ge 2) then print, 'input_dark= ', input_dark, $
-      'size(input_dark)=', s
-    case s[0] of
-      0: begin ; Constant dark current
-        for i=0, nframes-1 do begin
-          data_temp =data_buff[*,*,i] - dark
-          zeros = where(data_temp le 0, count)
-          if (count gt 0) then data_temp[zeros] = 1
-          data_buff[0,0,i] = data_temp
-        endfor
-        self.dark_current = dark
-      end
-      2: begin  ; Dark current array
-        if (s[1] ne ncols) or (s[2] ne nrows) then $
-          message, 'Wrong dims on dark'
-        if (max(dark) ge 16.* max(data_buff[*,*,0])) then $
-          message, 'Wrong data type on dark'
-        for i=0, nframes-1 do begin
-          data_temp =data_buff[*,*,i] - dark
-          zeros = where(data_temp le 0, count)
-          if (count gt 0) then data_temp[zeros] = 1
-          data_buff[0,0,i] = data_temp
-        endfor
-      end
-      else: message, 'Wrong dims on dark'
-    endcase
-  endif else if (ndarks gt 0) then begin
-    ; File contains one or more dark current images
-    ; Files up to the first dark current use the first dark current
-    dark = data_buff[*, *, darks[0]]
-    for i=0, darks[0]-1 do data_buff[0,0,i]=data_buff[*,*,i] - dark
-    ; Files after the last dark current use the last dark current
-    for i=darks[ndarks-1]+1, nframes-1 do $
-      data_buff[0,0,i]=data_buff[*,*,i] - dark
-    ; Files in between the first dark and the last dark use the average of
-    ; the dark current before and after
-    nseries = ndarks-1
-    for j=0, nseries-1 do begin
-      dark = (data_buff[*,*,darks[j]] + data_buff[*,*,darks[j+1]]) / 2
-      for i=darks[j]+1, darks[j+1]-1 do $
-        data_buff[0,0,i]=data_buff[*,*,i] - dark
-    endfor
-  endif else begin
-    message, 'Must specify dark keyword since no dark frames in data files'
-  endelse
-  tdark = systime(1)
 
-  ; Do flat field current correction and zinger removal on flat field frames
-  str = 'Doing flat field correction ...'
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  whites = where(image_type eq 'FLAT_FIELD', nwhites)
-  if (debug ge 2) then print, 'nwhites= ', nwhites, 'whites=', whites
-  if (n_elements(input_white) ne 0) then begin
-    white = input_white
-    s = size(white)  ; Input white field
-    case s[0] of
-      0: data_buff[0,0,0] = 10000 * (data_buff/float(white))  ; Constant
-      2: begin  ; White field array
-        if (s[1] ne ncols) or (s[2] ne nrows) then $
-          message, 'Wrong dims on white'
-        for i=0, nframes-1 do $
-          data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/float(white))
-      end
-      else: message, 'Wrong dims on white'
-    endcase
-  endif else if (nwhites gt 0) then begin
-    ; File contains one or more white field images
-    ; Extract the white fields into their own array
-    white_data = fltarr(ncols, nrows, nwhites)
-    for i=0, nwhites-1 do white_data[0,0,i] = data_buff[*,*,whites[i]]
-    ; Remove zingers from white fields.  If there is more than 1 white field
-    ; do it with double correlation, else do it with spatial filter
-    if (nwhites eq 1) then begin
-      if (debug ge 1) then print, 'Single white field, correcting zingers with spatial'
-      white_data[0,0,0] = remove_tomo_artifacts(white_data[*,*,0], /zingers, threshold=threshold, $
-        debug=debug)
-    endif else begin
-      if (debug ge 1) then print, 'Multiple white fields, correcting zingers with double correlation'
-      for i=0, nwhites-2 do begin
-        white_data[0,0,i] = remove_tomo_artifacts(white_data[*,*,i],   $
-          image2=white_data[*,*,i+1], $
-          /double_correlation, threshold=double_threshold, $
-          debug=debug)
-      endfor
-    endelse
-    ; If we are smoothing white fields ...
-    if (white_smooth gt 1) then begin
-      if (debug ge 1) then print, 'Smoothing flat fields, smooth width=', white_smooth
-      for i=0, nwhites-1 do begin
-        white_data[0,0,i] = smooth(white_data[*,*,i], white_smooth)
-      endfor
-    endif
-    ; If we are averaging white fields ...
-    if keyword_set(white_average) then begin
-      if (debug ge 1) then print, 'Averaging flat fields'
-      white = total(white_data, 3)/nwhites
-      if (debug ge 1) then print, 'Doing flat field correction'
-      for i=0, nframes-1 do begin
-        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-        if (widget_info(abort_widget, /valid_id)) then begin
-          event = widget_event(/nowait, abort_widget)
-          widget_control, abort_widget, get_uvalue=abort
-          if (abort) then begin
-            if (widget_info(status_widget, /valid_id)) then $
-              widget_control, status_widget, $
-              set_value='Preprocessing aborted'
-            return
-          endif
-        endif
-      endfor
-    endif else begin
-      if (debug ge 1) then print, 'Interpolating flat fields'
-      ; We are interpolating white fields
-      ; Files up to the first white field use the first white field
-      white = white_data[*,*,0]
-      for i=0, whites[0]-1 do $
-        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-      ; Files after the last white field use the last white field
-      white = white_data[*,*,[nwhites-1]]
-      for i=whites[nwhites-1]+1, nframes-1 do $
-        data_buff[0,0,i] = 10000 * (data_buff[*,*,i]/white)
-      ; Files in between the first white field and the last white field use the
-      ; weighted average of the white field before and after
-      nseries = nwhites-1
-      if (debug ge 1) then print, 'Doing flat field correction'
-      for j=0, nseries-1 do begin
-        white1 = white_data[*,*,j]
-        white2 = white_data[*,*,j+1]
-        nf = whites[j+1] - whites[j] - 1
-        for i=0, nf-1 do begin
-          k = i + whites[j]+1
-          ratio = float(i)/float(nf-1)
-          white = white1*(1.0-ratio) + white2*ratio
-          data_buff[0,0,k] = 10000 * (data_buff[*,*,k]/white)
-        endfor
-        if (widget_info(abort_widget, /valid_id)) then begin
-          event = widget_event(/nowait, abort_widget)
-          widget_control, abort_widget, get_uvalue=abort
-          if (abort) then begin
-            if (widget_info(status_widget, /valid_id)) then $
-              widget_control, status_widget, $
-              set_value='Preprocessing aborted'
-            return
-          endif
-        endif
-      endfor
-    endelse  ; Interpolate
-  endif else begin
-    message, 'Must specify white keyword since no white frames in data files'
-  endelse
-  
-  tflat = systime(1)
-
-  ; Now we have normalized data.
-  ; Correct for zingers now that flat field normalization is done
-  ; Write out to disk file, sorted by angle, arranged by slice
-  str = 'Doing zinger correction and data reformatting ...'
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  data_images = where(image_type eq 'NORMAL', nangles)
-  angles = angles[data_images]
-  sorted_indices = sort(angles)
-  angles = angles[sorted_indices]
-  ptr_free, self.angles
-  self.angles = ptr_new(angles)
-  data_images = data_images[sorted_indices]
-  ncols = long(ncols)
-  nrows = long(nrows)
-  nangles = long(nangles)
-  vol = intarr(ncols, nrows, nangles)
-  for i=0, nangles-1 do begin
-    proj = reform(data_buff[*,*,data_images[i]])
-    negatives = where(proj lt 0, count)
-    if (count gt 0) then proj(negatives) = 2^15-1
-    proj = remove_tomo_artifacts(proj, /zingers, threshold=threshold, $
-      debug=debug)
-    str = 'Copying projection ' + strtrim(i+1,2) + '/' + $
-      strtrim(nangles,2)
-    if (widget_info(status_widget, /valid_id)) then $
-      widget_control, status_widget, set_value=str
-    if (debug ne 0) then print, str
-    vol[0,0,i] = proj
-    if (widget_info(abort_widget, /valid_id)) then begin
-      event = widget_event(/nowait, abort_widget)
-      widget_control, abort_widget, get_uvalue=abort
-      if (abort) then begin
-        if (widget_info(status_widget, /valid_id)) then $
-          widget_control, status_widget, $
-          set_value='Preprocessing aborted'
-        return
-      endif
-    endif
-  endfor
-  treformat = systime(1)
-
-  str = 'Writing volume file ...'
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value=str
-  if (debug ne 0) then print, str
-  write_tomo_volume, output, vol, /corrected
-  status = self->write_setup(setup)
-  tend = systime(1)
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value='Preprocessing complete.'
-
-  print, 'preprocess execution times:'
-  print, '        Reading input file:', tread - tstart
-  print, '              Dark current:', tdark - tread
-  print, '                Flat field:', tflat - tdark
-  print, '     Dezinger and reformat:', treformat - tflat
-  print, '            Writing output:', tend - treformat
-  print, '                     Total:', tend - tstart
-    
-  
+  return, r
 end
 
 
@@ -703,21 +830,9 @@ end
 ;       attenuation values are per-pixel, and are typically 0.001, this leads to
 ;       integers in the range of 10,000.  If there are highly attenuating pixels the
 ;       scale factor may need to be decreased to 1-5e5 to avoid integer overflow.
-;       The inverse of the SCALE is stored as the attribute volume:scale_factor
+;       The inverse of the SCALE is stored as the attribute volume:preprocessScale
 ;       in the netCDF file.
-;   STATUS_WIDGET:
-;       The widget ID of a text widget used to display the status of the
-;       preprocessing operation.  If this is a valid widget ID then
-;       informational messages will be written to this widget.
-;   ABORT_WIDGET
-;       The widget ID of a widget used to abort the preprocessing operation.
-;       If this is a valid widget ID then the "uvalue" of this widget will be
-;       checked periodically.  If it is 1 then this routine will clean up and
-;       return immediately.
-;
-; OUTPUTS:
-;   This procedure writes its results to a file base_file+'_recon.volume'
-;
+;;
 ; RESTRICTIONS:
 ;   This procedure assumes a naming convention for the input and output files.
 ;   The output is stored as 16 bit integers to save memory and disk space.
@@ -754,53 +869,60 @@ end
 ;                    value which was used for the reconstruction.
 ;   12-APR-2001 MLR  Added SCALE and angles keywords since we need to process them
 ;                    here.
-;   22-NOV-2001 MLR  Added STATUS_WIDGET and ABORT_WIDGET keywords
-;   02-APR-2002 MLR  Fixed bugs with STATUS_WIDGET and ABORT_WIDGET
 ;   11-APR-2002 MLR  Fixed bug introduced on 02-APR with center
 ;-
 
-pro tomo::reconstruct_volume, tomoParams, base_file, center=center, $
-  angles=angles, abort_widget=abort_widget, $
-  status_widget=status_widget
+pro tomo::reconstruct_volume
+
+  tStart = systime(1)
+  self->display_status, 'Initializing reconstruction ...', 1
+  if (keyword_set(netcdf)) then output_file = self.baseFilename + 'recon.nc' $
+                           else output_file = self.baseFilename + 'recon.h5'
+  ; Set write_output keyword by default
+  if (n_elements(write_output) eq 0) then write_output=1
   
-  if (n_elements(status_widget) eq 0) then status_widget = -1L
-  if (n_elements(abort_widget) eq 0) then abort_widget = -1L
-  status = self->read_setup(base_file+'.setup')
-  if (n_elements(angles) ne 0) then self.angles = ptr_new(angles)
-  if (n_elements(scale) eq 0) then scale=1.e6
-  self.scale_factor = 1./tomoParams.reconScale
-  input_file = base_file + '.volume'
-  output_file = base_file + 'recon.volume'
-  center_offset = tomoParams.numPixels/2.
-  center_slope = 0.
-  if (n_elements(center) ge 1) then center_offset=center[0]
-  if (n_elements(center) eq 2) then center_slope = (center[1]-center[0])/float(tomoParams.numSlices)
-  cent = center_offset + findgen(tomoParams.numSlices)*center_slope
-  ; Use the center in the middle slice as the value written to the .setup file
-  self.center = cent[tomoParams.numSlices/2]
+  if (n_elements(debug) ne 0) then self.debugLevel = debug
+
+  angles = *self.pAngles
+  dims = size(*self.pVolume, /dimensions)
+  numPixels = dims[0]
+  numSlices = dims[1]
+  numProjections = dims[2]
+  center = self.rotationCenter + findgen(self.ny)*self.rotationCenterSlope
+
+  ; If this is 360 degree data we need to convert to 180
+  if (max(angles) gt 181) then begin
+    self->display_status, 'Converting 360 data ...', 1
+    ; convert_360_data can only use a single center value. Use the one for the center slice.
+    center_value =  round(center[numSlices/2])
+    *self.pVolume = self->convert_360_data(*self.pVolume, center_value, angles)
+    center = center_value + findgen(self.ny)*0
+  endif
+  tConvert360 = systime(1)
+  if (size(*self.pVolume, /tname) ne 'FLOAT') then begin
+    self->display_status, 'Converting to float ...', 1
+    *self.pVolume = float(*self.pVolume)
+  endif
+  tConvertFloat = systime(1)
+  recon = fltarr(numPixels, numPixels, numSlices, /nozero)
   
-  if (tomoParams.reconMethod eq tomoParams.reconMethodTomoRecon) then begin
-    tomo_recon_netcdf, tomoParams, input_file, output_file, $
-      angles=angles, center=cent, status_widget=status_widget, abort_widget=abort_widget
+  if (self.reconDataType eq 'UInt16') then begin
+    self.reconOffset = 32767. 
   endif else begin
-    t0 = systime(1)
-    str = 'Reading volume file ...'
-    if (widget_info(status_widget, /valid_id)) then $
-      widget_control, status_widget, set_value=str
-    print, str
-    vol = self->read_volume(input_file)
-    t1 = systime(1)
-    
+    self.reconOffset = 0.
+  endelse
+
+  self->display_status, 'Beginning reconstruction ...', 1
+  if (self.reconMethod eq self.reconMethodTomoRecon) then begin
+    ; Reconstruct volume
+    self->tomo_recon, *self.pVolume, recon, angles=angles, center=center
+  endif else begin
+    nrows = self.ny
     ; This procedure reconstructs all of the slices for a tomography data set
-    nrows = n_elements(vol[0,*,0])
     ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
     for i=0, nrows-1, 2 do begin
-      str = 'Reconstructing slice ' + strtrim(i,2) + '/' + $
-        strtrim(nrows-1,2)
-      if (widget_info(status_widget, /valid_id)) then $
-        widget_control, status_widget, set_value=str
-      print, str
-      r = reconstruct_slice(tomoParams, i, vol, r2, center=cent[i], angles=angles)
+      self->display_status, 'Reconstructing slice ' + strtrim(i,2) + '/' + strtrim(nrows-1,2), 2
+      r = reconstruct_slice((*self.pVolume)[*,[i,(i+1)<self.ny],*], r2, center=center[i])
       if (i eq 0) then begin
         ncols = n_elements(r[*,0])
         recon = intarr(ncols, ncols, nrows, /nozero)
@@ -809,46 +931,48 @@ pro tomo::reconstruct_volume, tomoParams, base_file, center=center, $
       if ((n_elements(r2) ne 0) and (i ne nrows-1)) then begin
         recon[0,0,i+1] = round(r2)
       endif
-      if (widget_info(abort_widget, /valid_id)) then begin
-        event = widget_event(/nowait, abort_widget)
-        widget_control, abort_widget, get_uvalue=abort
-        if (abort) then begin
-          if (widget_info(status_widget, /valid_id)) then $
-            widget_control, status_widget, $
-            set_value='Reconstruction aborted.'
-          return
-        endif
+      if (self.check_abort()) then begin
+        self->display_status, 'Reconstruction aborted', 1
+        return
       endif
     endfor
-    ; If there was no input angle array copy the one that reconstruct_slice
-    ; generated back into self
-    if (not ptr_valid(self.angles)) then self.angles=ptr_new(angles)
-    ; We are all done with the vol array, free it
-    vol = 0
-    if (widget_info(status_widget, /valid_id)) then $
-      widget_control, status_widget, set_value='Writing volume file ...'
-    t2 = systime(1)
-    self->write_volume, output_file, recon, /reconstructed
-    t3 = systime(1)
-    print, 'read_tomo_netcdf execution times:'
-    print, '              Reading input file:', t1-t0
-    print, '                  Reconstructing:', t2-t1
-    print, '             Writing output file:', t3-t2
-    print, '                           Total:', t3-t0
   endelse
   
-  status = self->write_setup(base_file + '.setup')
-  if (widget_info(status_widget, /valid_id)) then $
-    widget_control, status_widget, set_value='Reconstruction complete.'
-    
+  ptr_free, self.pVolume
+  tReconDone = systime(1)
+  self->write_sample_config
+  
+  self->display_status, 'Converting to output data type ...', 1
+  if (self.reconDataType eq 'Int16') then begin
+    recon = fix(recon)
+  endif
+  if (self.reconDataType eq 'UInt16') then begin
+    recon = uint(recon)
+  endif
+  tConvertInt = systime(1)
+
+  self.imageType = 'RECONSTRUCTED'
+  dims = size(recon, /dimensions)
+  self.nx = dims[0]
+  self.ny = dims[1]
+  self.nz = dims[2]
+
+  if (write_output) then begin
+    self->display_status, 'Writing reconstructed file ...', 1
+    self->write_volume, output_file, recon, netcdf=(self.reconWriteFormat eq 'netCDF')
+  endif
+  self.pVolume = ptr_new(recon, /no_copy)
+  tEnd = systime(1)
+  print, '     Convert 360 to 180:', tConvert360 - tStart
+  print, ' Convert input to float:', tConvertFloat - tConvert360
+  print, '            Reconstruct:', tReconDone-tConvertFloat
+  print, 'Convert output to ' + self.reconDataType + ':', tConvertInt - tReconDone
+  print, '             Write file:', tEnd-tConvertInt
+  print, '             Total time:', tEnd-tStart
+  self->display_status, 'Reconstruction complete.', 1
 end
 
 
-pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
-  raw=raw, corrected=corrected, reconstructed=reconstructed, $
-  xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
-  xmax=xmax, ymax=ymax, zmax=zmax
-  
   ;+
   ; NAME:
   ;   TOMO::WRITE_VOLUME
@@ -919,27 +1043,15 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
   ;   24-JUN-2002  MLR  Fixed bug if input volume was 2-D rather than 3-D.
   ;-
   ;-
-  
-  if (n_elements(netcdf) eq 0) then netcdf=1
-  
-  size = size(volume)
+pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
+  xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
+  xmax=xmax, ymax=ymax, zmax=zmax
+
+   size = size(volume)
   ; If this is a 2-D array fake it out by setting third dimension to 1
   if (size[0] eq 2) then size[3]=1
-  if (keyword_set(raw)) then self.image_type = "RAW"
-  if (keyword_set(corrected)) then self.image_type = "CORRECTED"
-  if (keyword_set(reconstructed)) then self.image_type = "RECONSTRUCTED"
-  
-  
-  if (netcdf eq 0) then begin
-    openw, lun, file, /get, /swap_if_big_endian
-    ncols = size[1]
-    nrows = size[2]
-    nangles = size[3]
-    writeu, lun, ncols, nrows, nangles, volume
-    free_lun, lun
-    return
-  endif else begin
-  
+
+  if (keyword_set(netcdf)) then begin
     ; netCDF file format
     if (keyword_set(append)) then begin
       ; If APPEND keyword is specifified then open an existing netCDF file
@@ -976,17 +1088,17 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
       ncdf_attput, file_id, /GLOBAL, 'camera', str
       if (self.sample ne '') then str=self.sample else str=' '
       ncdf_attput, file_id, /GLOBAL, 'sample', str
-      if (self.image_type ne '') then str=self.image_type else str=' '
-      ncdf_attput, file_id, /GLOBAL, 'image_type', str
+      if (self.imageType ne '') then str=self.imageType else str=' '
+      ncdf_attput, file_id, /GLOBAL, 'imageType', str
       ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
       ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
-      ncdf_attput, file_id, /GLOBAL, 'center', self.center
-      ncdf_attput, file_id, /GLOBAL, 'x_pixel_size', self.x_pixel_size
-      ncdf_attput, file_id, /GLOBAL, 'y_pixel_size', self.y_pixel_size
-      ncdf_attput, file_id, /GLOBAL, 'z_pixel_size', self.z_pixel_size
-      if (ptr_valid(self.angles)) then $
-        ncdf_attput, file_id, /GLOBAL, 'angles', *(self.angles)
-      if (self.scale_factor ne 0) then scale=self.scale_factor else scale=1.0
+      ncdf_attput, file_id, /GLOBAL, 'center', self.rotationCenter
+      ncdf_attput, file_id, /GLOBAL, 'xPixelSize', self.xPixelSize
+      ncdf_attput, file_id, /GLOBAL, 'yPixelSize', self.yPixelSize
+      ncdf_attput, file_id, /GLOBAL, 'zPixelSize', self.zPixelSize
+      if (ptr_valid(self.pAngles)) then $
+        ncdf_attput, file_id, /GLOBAL, 'angles', *(self.pAngles)
+      if (self.preprocessScale ne 0) then scale=self.preprocessScale else scale=1.0
       ncdf_attput, file_id, vol_id,  'scale_factor',  scale
       ; Put the file into data mode.
       ncdf_control, file_id, /endef
@@ -1015,13 +1127,49 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
       
     ; Close the file
     ncdf_close, file_id
+  endif else begin
+    ; Write HDF5 file
+    file_id = h5f_create(file)
+    group_id = h5g_create(file_id, 'exchange')
+    self->write_hdf5_dataset, group_id, 'data', volume
+    h5g_close, group_id
+    group_id = h5g_create(file_id, 'process')
+    self->write_hdf5_dataset, group_id, 'imageType', self.imageType
+    self->write_hdf5_dataset, group_id, 'angles', *self.pAngles
+    self->write_hdf5_dataset, group_id, 'xPixelSize', self.xPixelSize
+    self->write_hdf5_dataset, group_id, 'yPixelSize', self.yPixelSize
+    self->write_hdf5_dataset, group_id, 'zPixelSize', self.zPixelSize
+    self->write_hdf5_dataset, group_id, 'rotationCenter', self.rotationCenter
+    self->write_hdf5_dataset, group_id, 'rotationCenterSlope', self.rotationCenterSlope
+    self->write_hdf5_dataset, group_id, 'preprocessScale', self.preprocessScale
+    if (self.imageType eq 'NORMALIZED') then begin
+      self->write_hdf5_dataset, group_id, 'dataOffset', self.preprocessOffset
+      self->write_hdf5_dataset, group_id, 'dataScale', self.preprocessScale
+    endif else if (self.imageType eq 'RECONSTRUCTED') then begin
+      self->write_hdf5_dataset, group_id, 'dataOffset', self.reconOffset
+      self->write_hdf5_dataset, group_id, 'dataScale', self.reconScale      
+    endif
+    h5g_close, group_id
+    h5f_close, file_id
   endelse
+  
 end
 
+pro tomo::write_hdf5_dataset, group_id, dataset_name, data
+  datatype_id = h5t_idl_create(data)
+  dims = size(data, /dimensions)
+  if (dims[0] eq 0) then dims = 1
+  dataspace_id = h5s_create_simple(dims)
+  ; Create dataset in the output file
+  dataset_id = h5d_create(group_id, dataset_name, datatype_id, dataspace_id)
+  ; Write data to dataset
+  h5d_write, dataset_id, data
+  ; Close things
+  h5d_close, dataset_id
+  h5s_close, dataspace_id
+  h5t_close, datatype_id
+end
 
-function tomo::read_volume, file, $
-  xrange=xrange, yrange=yrange, zrange=zrange
-  
   ;+
   ; NAME:
   ;   TOMO::READ_VOLUME
@@ -1077,71 +1225,40 @@ function tomo::read_volume, file, $
   ;   23-FEB-2000  MLR  Added xrange, yrange, zrange keywords
   ;   11-APR-2001  MLR  Added support for netCDF file format.
   ;-
-  
+ function tomo::read_volume, file, store=store, xrange=xrange, yrange=yrange, zrange=zrange
+ 
   if (n_elements(file) eq 0) then file = dialog_pickfile(/read, /must_exist)
   if file eq "" then return, 0
+  t0 = systime(1)
+  self->set_file_components, file
   
-  on_ioerror, ignore_error
-  ncdf_control, 0, /noverbose
-  file_id = ncdf_open(file, /nowrite)
-  ignore_error:
-  if (n_elements(file_id) eq 0) then begin
-    on_ioerror, null
-    ; This is not a netCDF file, it is an old APS format file
-    openr, lun, file, error=error, /get, /swap_if_big_endian
-    if (error ne 0) then message, 'Error opening file: ' + file
-    nx = 0L
-    ny = 0L
-    nz = 0L
-    header = 12  ; Size of header in bytes
-    readu, lun, nx, ny, nz
-    ; Simplest case is if no ranges are specified, no need to loop
-    if (n_elements(zrange) eq 0) and (n_elements(yrange) eq 0) and $
-      (n_elements(xrange) eq 0) then begin
-      volume = intarr(nx, ny, nz, /nozero)
-      readu, lun, volume
-    endif else begin
-      if (n_elements(xrange) eq 0) then xrange = [0, nx-1]
-      if (n_elements(yrange) eq 0) then yrange = [0, ny-1]
-      if (n_elements(zrange) eq 0) then zrange = [0, nz-1]
-      ; Compute nx, ny, nz clip if user specified too large a range
-      ix = (xrange[1] - xrange[0] + 1) < nx
-      iy = (yrange[1] - yrange[0] + 1) < ny
-      iz = (zrange[1] - zrange[0] + 1) < nz
-      volume = intarr(ix, iy, iz, /nozero)
-      slice = intarr(nx, ny, /nozero)
-      point_lun, lun, header + zrange[0]*nx*ny*2L
-      for i = 0, iz-1 do begin
-        readu, lun, slice
-        volume[0, 0, i] = $
-          slice[xrange[0]:xrange[1], yrange[0]:yrange[1]]
-      endfor
-      volume = reform(volume, /overwrite)
-      free_lun, lun
-    endelse
-  endif else begin
+  if (keyword_set(store)) then begin
+    ptr_free, self.pVolume
+  endif
+
+  if (ncdf_is_ncdf(file)) then begin
     ; This is a netCDF file
+    file_id = ncdf_open(file, /nowrite)
     ; Process the global attributes
     status = ncdf_inquire(file_id)
     for i=0, status.ngatts-1 do begin
       name = ncdf_attname(file_id, /global, i)
       ncdf_attget, file_id, /global, name, value
       case name of
-        ; We rely on the .setup file for all information that is available there.
-        ;                'title':        self.title =        strtrim(value,2)
-        ;                'operator':     self.operator =     strtrim(value,2)
-        ;                'camera':       self.camera =       strtrim(value,2)
-        ;                'sample':       self.sample =       strtrim(value,2)
-        'image_type':   self.image_type =   strtrim(value,2)
-        ;                'energy':       self.energy =       value
-        ;                'dark_current': self.dark_current = value
-        ;                'center':       self.center =       value
-        ;                'x_pixel_size': self.x_pixel_size = value
-        ;                'y_pixel_size': self.y_pixel_size = value
-        ;                'z_pixel_size': self.z_pixel_size = value
+        'title':        self.title =        strtrim(value,2)
+        'operator':     self.operator =     strtrim(value,2)
+        'camera':       self.camera =       strtrim(value,2)
+        'sample':       self.sample =       strtrim(value,2)
+        'imageType':   self.imageType =   strtrim(value,2)
+        'energy':       self.energy =       value
+        'dark_current': self.dark_current = value
+        'center':       self.rotationCenter = value
+        'xPixelSize': self.xPixelSize = value
+        'yPixelSize': self.yPixelSize = value
+        'zPixelSize': self.zPixelSize = value
         'angles':       begin
-          ptr_free, self.angles
-          self.angles = ptr_new(value)
+          ptr_free, self.pAngles
+          self.pAngles = ptr_new(value)
         end
         else:
       endcase
@@ -1187,79 +1304,49 @@ function tomo::read_volume, file, $
       name = ncdf_attname(file_id, vol_id, i)
       ncdf_attget, file_id, vol_id, name, value
       case name of
-        'scale_factor': self.scale_factor = value
+        'scale_factor': self.preprocessScale = value
       endcase
     endfor
-    
     ; Close the netCDF file
     ncdf_close, file_id
-  endelse  ; netCDF
-  
-  return, volume
+
+  endif else begin
+    ; File must be HDF5
+    volume                   = h5_getdata(file, '/exchange/data')
+    self.imageType           = h5_getdata(file, '/process/imageType')
+    angles                   = h5_getdata(file, '/process/angles')
+    self.pAngles             = ptr_new(angles)
+    self.xPixelSize          = h5_getdata(file, '/process/xPixelSize')
+    self.yPixelSize          = h5_getdata(file, '/process/yPixelSize')
+    self.xPixelSize          = h5_getdata(file, '/process/zPixelSize')
+  endelse
+
+  self->read_sample_config
+
+  print, 'Time to read file=', systime(1)-t0
+  if (keyword_set(store)) then begin
+    dims = size(volume, /dimensions)
+    self.pVolume = ptr_new(volume, /no_copy)
+    self.nx = dims[0]
+    self.ny = dims[1]
+    self.nz = dims[2]
+    return, 0
+  endif else begin
+    return, volume
+  endelse
 end
 
 function tomo::get_angles
-  if (ptr_valid(self.angles)) then begin
-    return, *self.angles
+  if (ptr_valid(self.pAngles)) then begin
+    return, *self.pAngles
   endif else begin
     return, 0
   endelse
 end
 
 pro tomo::set_angles, angles
-  ptr_free, self.angles
-  self.angles = ptr_new(angles)
-end
-
-
-;+
-; NAME:
-;   TOMO::WRITE_SETUP
-;
-; PURPOSE:
-;   This function writes the setup information for a tomography data set to an
-;   ASCII file.
-;
-; CATEGORY:
-;   Tomography
-;
-; CALLING SEQUENCE:
-;   result = TOMO->WRITE_SETUP(File)
-;
-; INPUTS:
-;   File:
-;       The name of the output file.
-;
-; OUTPUTS:
-;   This function returns 0 if it was unable to write the file, 1 if it was
-;   successful.
-;
-; EXAMPLE:
-;       IDL>  status = TOMO->WRITE_SETUP('Sample1.setup')
-;
-; MODIFICATION HISTORY:
-;   Written by: Mark Rivers, Aug. 2001?
-;-
-
-function tomo::write_setup, file
-  openw, lun, file, error=error, /get_lun, width=1024
-  if (error ne 0) then return, 0
-  printf, lun, 'TITLE: ', self.title
-  printf, lun, 'OPERATOR: ', self.operator
-  printf, lun, 'CAMERA: ', self.camera
-  printf, lun, 'SAMPLE: ', self.sample
-  if (ptr_valid(self.comments)) then comments = *self.comments
-  for i=0, n_elements(comments)-1 do begin
-    printf, lun, 'COMMENT: ', comments[i]
-  endfor
-  printf, lun, 'DARK_CURRENT: ', self.dark_current
-  printf, lun, 'CENTER: ', self.center
-  printf, lun, 'ENERGY: ',  self.energy
-  printf, lun, 'X_PIXEL_SIZE: ', self.x_pixel_size
-  printf, lun, 'Y_PIXEL_SIZE: ', self.y_pixel_size
-  printf, lun, 'Z_PIXEL_SIZE: ', self.z_pixel_size
-  free_lun, lun
-  return, 1
+  ptr_free, self.pAngles
+  self.pAngles = ptr_new(angles)
 end
 
 
@@ -1293,93 +1380,62 @@ end
 ;-
 
 function tomo::read_setup, file
-  ; Clear any existing information
-  self->clear_setup
-  ncomments = 0
-  comment = strarr(100)
   line = ''
   openr, lun, file, error=error, /get_lun, width = 1024
   if (error ne 0) then return, 0
+  sampleConfig = orderedhash()
   while (not eof(lun)) do begin
     readf, lun, line
     pos = strpos(line, ' ')
     tag = strupcase(strmid(line, 0, pos))
     value = strtrim(strmid(line, pos, 1000), 2)
     case tag of
-      'TITLE:'  :  self.title = value
-      'OPERATOR:'  :  self.operator = value
-      'CAMERA:'  :  self.camera = value
-      'SAMPLE:'  :  self.sample = value
-      'COMMENT:'  :  begin
-        comment[ncomments] = value
-        ncomments = ncomments + 1
-      end
-      'DARK_CURRENT:'  :  self.dark_current = value
-      'CENTER:'  :  self.center = value
-      'ENERGY:'  :  self.energy = value
-      'X_PIXEL_SIZE:'  :  self.x_pixel_size = value
-      'Y_PIXEL_SIZE:'  :  self.y_pixel_size = value
-      'Z_PIXEL_SIZE:'  :  self.z_pixel_size = value
+      'TITLE:'         :  sampleConfig['SampleDescription1'] = value
+      'OPERATOR:'      :  sampleConfig['UserName'] = value
+      'CAMERA:'        :  sampleConfig['Camera'] = value
+      'SAMPLE:'        :  sampleConfig['SampleName'] = value
+      'DARK_CURRENT:'  :  begin
+                            sampleConfig['DarkFieldValue'] = value
+                            self.pDarks = ptrNew(value)
+                          end
+      'CENTER:'        :  self.rotationCenter = value
+      'ENERGY:'        :  sampleConfig['Energy'] = value
+      'X_PIXEL_SIZE:'  :  begin
+                            sampleConfig['ImagePixelSize'] = value
+                            self.xPixelSize = value
+                          end
+      'Y_PIXEL_SIZE:'  :  self.yPixelSize = value
+      'Z_PIXEL_SIZE:'  :  self.zPixelSize = value
+      else:
     endcase
   endwhile
-  if (ncomments gt 0) then begin
-    comment = comment[0:ncomments-1]
-    ptr_free, self.comments
-    self.comments =  ptr_new(comment)
-  endif
+  self.pSampleConfig = ptr_new(sampleConfig)
   free_lun, lun
   return, 1
 end
 
-;+
-; NAME:
-;   TOMO::GET_SETUP
-;
-; PURPOSE:
-;   This function returns the setup information for a tomography data set
-;
-; CATEGORY:
-;   Tomography
-;
-; CALLING SEQUENCE:
-;   setup = TOMO->GET_SETUP()
-;
-; OUTPUTS:
-;   This function returns a structure of type {TOMO} containing the information
-;   about the tomography dataset.  The current definition of the {TOMO}
-;   structure is:
-;       {tomo, $
-;        title: " ", $
-;        operator: " ", $
-;        camera: " ", $
-;        sample: " ", $
-;        comments: ptr_new(), $
-;        image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
-;        dark_current: 0., $
-;        center: 0., $
-;        energy: 0., $
-;        x_pixel_size: 0., $
-;        y_pixel_size: 0., $
-;        z_pixel_size: 0., $
-;        scale_factor: 0., $
-;        nx:     0L, $
-;        ny:     0L, $
-;        nz:     0L, $
-;        angles: ptr_new() $
-;    }
-;   This definition is subject to change in the future, but the above fields
-;   will not change, new fields may be added.
-;
-; EXAMPLE:
-;       IDL>  tomo = obj_new('TOMO')
-;       IDL>  status = TOMO->READ_SETUP('Sample1.setup')
-;       IDL>  setup = TOMO->GET_SETUP()
-;
-; MODIFICATION HISTORY:
-;   Written by: Mark Rivers, Nov. 18, 2001
-;-
+pro tomo::write_sample_config
+  (*self.pSampleConfig)['RotationCenter'] = self.rotationCenter
+  (*self.pSampleConfig)['RotationSlope']   = self.rotationCenterSlope
+  (*self.pSampleConfig)['UpperSlice'] = self.upperSlice
+  (*self.pSampleConfig)['LowerSlice'] = self.lowerSlice
+  openw, lun, /get_lun, self.baseFilename + '.config'
+  printf, lun, /implied_print, *self.pSampleConfig
+  close, lun
+end
 
-function tomo::get_setup
+pro tomo::read_sample_config, file
+  if (n_elements(file) eq 0) then file = self.baseFilename + '.config'
+  config = json_parse(file)
+  if (config.haskey('RotationCenter')) then self.rotationCenter = config['RotationCenter'] else self.rotationCenter = self.nx/2
+  if (config.haskey('RotationSlope')) then self.rotationCenterSlope = config['RotationSlope'] else self.rotationCenterSlope = 0.
+  if (config.haskey('UpperSlice')) then self.upperSlice = config['UpperSlice'] else self.upperSlice = self.ny*0.1
+  if (config.haskey('LowerSlice')) then self.lowerSlice = config['LowerSlice'] else self.lowerSlice = self.ny*0.9
+  self.pSampleConfig = ptr_new(config, /no_copy)
+end
+
+;+
+function tomo::get_struct
   t = {tomo}
   for i=0, n_tags(t)-1 do begin
     t.(i)=self.(i)
@@ -1387,59 +1443,332 @@ function tomo::get_setup
   return, t
 end
 
-
-function tomo::init, file
-  if (n_elements(file) ne 0) then status = self->read_setup(file)
-  return, 1
+pro tomo::set_file_components, input_file
+  path = file_dirname(input_file)
+  file = file_basename(input_file)
+  self.inputFilename = input_file
+  self.directory = path
+  ; Construct the base file name
+  base_file = file
+  ; First remove any extension
+  pos = base_file.LastIndexOf('.')
+  if (pos ge 0) then base_file = base_file.remove(pos)
+  ; Remove the string "norm"
+  pos = base_file.LastIndexOf('norm', /fold_case)
+  if (pos ge 0) then base_file = base_file.remove(pos)
+  ; Remove the string "recon"
+  pos = base_file.LastIndexOf('recon', /fold_case)
+  if (pos ge 0) then base_file = base_file.remove(pos)
+  self.baseFilename = base_file
 end
 
 pro tomo::cleanup
-  ptr_free, self.comments
-  ptr_free, self.angles
+  ptr_free, self.pAngles
+  ptr_free, self.pVolume
+  ptr_free, self.pFlats
+  ptr_free, self.pDarks
 end
 
-pro tomo::clear_setup
-  self.title=""
-  self.operator=""
-  self.camera=""
-  self.sample=""
-  ptr_free, self.comments
-  self.comments=ptr_new()
-  self.image_type=""
-  self.dark_current=0.
-  self.center=0.
-  self.energy=0.
-  self.x_pixel_size=0.
-  self.y_pixel_size=0.
-  self.z_pixel_size=0.
-  self.scale_factor=0.
-  self.nx=0L
-  self.ny=0L
-  self.nz=0L
-  ptr_free, self.angles
-  self.angles=ptr_new()
+function tomo::getPaddedSinogramWidth, numPixels
+  if (self.paddedSinogramWidth eq 0) then begin
+    ; Use the next largest power of 2 by default
+    paddedSinogramWidth = 128
+    repeat begin
+      paddedSinogramWidth=paddedSinogramWidth * 2
+    endrep until (paddedSinogramWidth ge numPixels)
+  endif else if (paddedSinogramWidth eq 1) then begin
+    paddedSinogramWidth = numPixels
+  endif
+  return, paddedSinogramWidth
 end
 
+pro tomo::set_recon_params, $
+  dataType = dataType, $
+  writeOutput = writeOutput, $
+  writeFormat = writeFormat, $
+  sinoScale = sinoScale, $
+  reconScale = reconScale, $
+  reconOffset = reconOffset, $
+  paddedSinogramWidth=paddedSinogramWidth, $
+  paddingAverage=paddingAverage, $
+  airPixels = airPixels, $
+  ringWidth = ringWidth, $
+  fluorescence = fluorescence, $
+  reconMethod = reconMethod, $
+  threads = threads, $
+  slicesPerChunk = slicesPerChunk, $
+  debug = debug, $
+  dbgFile = dbgFile, $
+  geom=geom, $
+  pswfParam=pswfParam, $
+  sampl=sampl, $
+  maxPixSize=maxPixSize, $
+  ROI=ROI, $
+  X0=X0, $
+  Y0=Y0, $
+  ltbl=ltbl, $
+  GR_filterName=GR_filterName, $
+  BP_method = BP_method, $
+  BP_filterName = BP_filterName, $
+  BP_filterSize = BP_filterSize, $
+  RiemannInterpolation = RiemannInterpolation, $
+  RadonInterpolation = RadonInterpolation
+
+  if (n_elements(dataType)             ne 0) then self.reconDataType = dataType
+  if (n_elements(writeOutput)          ne 0) then self.reconWriteOutput = writeOutput
+  if (n_elements(writeFormat)          ne 0) then self.reconWriteFormat = writeFormat
+  if (n_elements(sinoScale)            ne 0) then self.sinoScale = sinoScale
+  if (n_elements(reconScale)           ne 0) then self.reconScale = reconScale
+  if (n_elements(reconOffset)          ne 0) then self.reconOffset = reconOffset
+  if (n_elements(paddedSinogramWidth)  ne 0) then self.paddedSinogramWidth = paddedSinogramWidth
+  if (n_elements(paddingAverage)       ne 0) then self.paddingAverage = paddingAverage
+  if (n_elements(airPixels)            ne 0) then self.airPixels = airPixels
+  if (n_elements(ringWidth)            ne 0) then self.ringWidth = ringWidth
+  if (n_elements(fluorescence)         ne 0) then self.fluorescence = fluorescence
+  if (n_elements(threads)              ne 0) then self.reconThreads = threads
+  if (n_elements(debug)                ne 0) then self.debug = debug
+  if (n_elements(dbgFile)              ne 0) then self.debugFile = dbgFile
+  if (n_elements(geom)                 ne 0) then self.geom = geom
+  if (n_elements(pswfParam)            ne 0) then self.pswfParam = pswfParam
+  if (n_elements(sampl)                ne 0) then self.sampl = sampl
+  if (n_elements(maxPixSize)           ne 0) then self.maxPixSize = maxPixSize
+  if (n_elements(ROI)                  ne 0) then self.ROI = ROI
+  if (n_elements(X0)                   ne 0) then self.X0 = X0
+  if (n_elements(Y0)                   ne 0) then self.Y0 = Y0
+  if (n_elements(ltbl)                 ne 0) then self.ltbl = ltbl
+  if (n_elements(GR_filterName)        ne 0) then self.GR_filterName = GR_filterName
+  if (n_elements(reconMethod)          ne 0) then self.reconMethod = reconMethod
+  if (n_elements(slicesPerChunk)       ne 0) then self.reconSlicesPerChunk = slicesPerChunk
+  if (n_elements(BP_method)            ne 0) then self.BP_method = BP_method
+  if (n_elements(BP_filterName)        ne 0) then self.BP_filterName = BP_filterName
+  if (n_elements(BP_filterSize)        ne 0) then self.BP_filterSize = BP_filterSize
+  if (n_elements(RiemannInterpolation) ne 0) then self.RiemannInterpolation = RiemannInterpolation
+  if (n_elements(RadonInterpolation)   ne 0) then self.RadonInterpolation = RadonInterpolation
+end
+
+pro tomo::set_preprocess_params, $
+  zingerWidth = zingerWidth, $
+  zingerThreshold = zingerThreshold, $
+  zingerDoubleThreshold = zingerDoubleThreshold, $
+  dataType = dataType, $
+  writeOutput = writeOutput, $
+  writeFormat = writeFormat, $
+  scale = scale, $
+  threads = threads
+  
+  if (n_elements(zingerWidth)           ne 0) then self.zingerWidth = zingerWidth
+  if (n_elements(zingerThreshold)       ne 0) then self.zingerThreshold = zingerThreshold
+  if (n_elements(zingerDoubleThreshold) ne 0) then self.zingerDoubleThreshold = zingerThreshold
+  if (n_elements(dataType)              ne 0) then self.preprocessDataType = dataType
+  if (n_elements(writeOutput)           ne 0) then self.preprocessWriteOutput = writeOutput
+  if (n_elements(writeFormat)           ne 0) then self.preprocessWriteFormat = writeFormat
+  if (n_elements(scale)                 ne 0) then self.preprocessScale = scale
+  if (n_elements(threads)               ne 0) then self.preprocessThreads = threads
+end
+
+function tomo::get_saved_fields
+  fields = ['zingerWidth', 'zingerThreshold', 'zingerDoubleThreshold',                                                                          $
+            'preprocessScale', 'preprocessOffset', 'preprocessThreads', 'preprocessDataType', 'preprocessWriteOutput', 'preprocessWriteFormat', $
+            'reconMethod', 'reconSlicesPerChunk', 'reconDataType', 'reconWriteOutput', 'reconWriteFormat',                                      $
+            'reconScale', 'reconOffset', 'reconThreads',                                                                                        $
+            'paddedSinogramWidth', 'paddingAverage', 'airPixels', 'ringWidth', 'fluorescence',                                                  $
+            'debug', 'debugFile',                                                                                                               $
+            'geom', 'pswfParam', 'sampl', 'maxPixSize', 'ROI', 'X0', 'Y0', 'ltbl', 'GR_filterName',                                             $
+            'BP_Method', 'BP_filterName', 'BP_filterSize', 'RiemannInterpolation', 'RadonInterpolation'                                         $
+           ]
+  return, fields
+end
+
+function tomo::find_saved_field, field
+  myFieldNames = tag_names(self)
+  index = where(field.toUpper() eq myFieldNames)
+  return, index[0]
+end
+
+function tomo::get_settings
+  settings = orderedhash()
+  savedFields = self->get_saved_fields()
+  for i=0, n_elements(savedFields)-1 do begin
+    field = savedFields[i]
+    index = self->find_saved_field(field)
+    if (index lt 0) then continue
+    settings[field] = self.(index)
+  endfor
+  return, settings
+end
+
+pro tomo::save_settings, file
+  settings = self->get_settings()
+  openw, lun, /get_lun, file
+  printf, lun, /implied_print, settings
+  close, lun
+end
+
+pro tomo::restore_settings, file
+  settings = json_parse(file)
+  keys = settings.keys()
+  values = settings.values()
+  for i=0, n_elements(keys)-1 do begin
+    key = keys[i]
+    value = values[i]
+    index = self->find_saved_field(key)
+    if (index ge 0) then self.(index) = value
+  endfor
+end
+
+function tomo::init, settingsFile=settingsFile, statusWidget=statusWidget, abortWidget=abortWidget, debugLevel=debugLevel
+  if (n_elements(statusWidget)  ne 0) then self.statusWidget = statusWidget
+  if (n_elements(abortWidget)   ne 0) then self.abortWidget = abortWidget
+  if (n_elements(debugLevel)    ne 0) then self.debugLevel = debugLevel else self.debugLevel=1
+  self.zingerWidth                  = 3
+  self.zingerThreshold              = 0.1
+  self.zingerDoubleThreshold        = 1.05
+  self.preprocessScale              = 10000. 
+  self.preprocessOffset             = 0.
+  self.preprocessThreads            = 8;
+  self.preprocessDataType           = "Float32"
+  self.preprocessWriteOutput        = 0 ; 0=don't write, 1=write
+  self.preprocessWriteFormat        = "HDF5"
+  self.reconMethod                  = 0 ; 0=tomoRecon, 1=Gridrec, 2=Backproject
+  self.reconMethodTomoRecon         = 0
+  self.reconMethodGridrec           = 1
+  self.reconMethodBackproject       = 2
+  self.reconSlicesPerChunk          = 256
+  self.reconDataType                = "Int16"
+  self.reconWriteOutput             = 1 ; 0=don't write, 1=write
+  self.reconWriteFormat             = "HDF5"
+  ; Sinogram parameters
+  self.reconScale                   = 1.e6 ; Reconstruction scale
+  self.reconOffset                  = 0.0 ; Reconstruction offset
+  self.paddedSinogramWidth          = 0 ; Number of pixels in sinogram after padding
+                                        ; There are 2 "special" values of paddedSinogramWidth
+                                        ; 0 = automatically set the width to power of 2 that is >= actual width
+                                        ; 1 = No padding, set the width to the actual width
+  self.paddingAverage               = 10 ; Number of pixels to average on each side of sinogram to compute padding. 0 pixels pads with 0.0
+  self.airPixels                    = 10 ; Number of pixels of air to average at each end of sinogram row
+  self.ringWidth                    = 9 ; Number of pixels to smooth by when removing ring artifacts
+  self.fluorescence                 = 0 ; 0=absorption data, 1=fluorescence
+  ; tomoRecon parameters
+  self.reconThreads                 = 8
+  self.debug                        = 2
+  self.debugFile                    = "tomoRecon_debug.txt"
+  ; gridRec/tomoRecon parameters
+  self.geom                         = 0 ; 0 if array of angles provided;
+    ; 1,2 if uniform in half,full circle
+  self.pswfParam                    = 6.0 ; PSWF parameter
+  self.sampl                        = 1.0 ; "Oversampling" ratio
+  self.maxPixSize                   = 1.0 ; Max pixel size for reconstruction
+  self.ROI                          = 1.0 ; Region of interest (ROI) relative size
+  self.X0                           = 0.0 ; (X0,Y0)=Offset of ROI from rotation axis
+  self.Y0                           = 0.0 ; in units of center-to-edge distance.
+  self.ltbl                         = 512 ; No. elements in convolvent lookup tables
+  self.GR_filterName                = "shepp" ; Name of filter function
+  self.BP_Method                    = 0 ; 0=Riemann, 1=Radon
+  self.BP_MethodRiemann             = 0
+  self.BP_MethodRadon               = 1L
+  self.BP_filterName                = "SHEPP_LOGAN"
+  self.BP_filterSize                = 0 ; Length of filter
+  self.RiemannInterpolation         = 0 ; 0=none, 1=bilinear, 2=cubic
+  self.RiemannInterpolationNone     = 0
+  self.RiemannInterpolationBilinear = 1
+  self.RiemannInterpolationCubic    = 2
+  self.RadonInterpolation           = 0 ; 0=none, 1=linear
+  self.RadonInterpolationNone       = 0
+  self.RadonInterpolationLinear     = 1
+  self.tomoReconShareableLibrary    = getenv('TOMO_RECON_SHARE')
+  if (self.tomoReconShareableLibrary eq "") then begin
+    file = 'tomoRecon_' + !version.os + '_' + !version.arch
+    if (!version.os eq 'Win32') then file=file+'.dll' else file=file+'.so'
+    self.tomoReconShareableLibrary = file_which(file)
+  endif
+  if (self.tomoReconShareableLibrary eq '') then message, 'tomoRecon shareable library not defined'
+  if (n_elements(settingsFile) ne 0) then self->restore_settings, settings
+  return, 1
+end
 
 pro tomo__define
-  tomo = $
-    {tomo, $
-    title: " ", $
-    operator: " ", $
-    camera: " ", $
-    sample: " ", $
-    comments: ptr_new(), $
-    image_type: " ", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
-    dark_current: 0., $
-    center: 0., $
-    energy: 0., $
-    x_pixel_size: 0., $
-    y_pixel_size: 0., $
-    z_pixel_size: 0., $
-    scale_factor: 0., $
-    nx:     0L, $
-    ny:     0L, $
-    nz:     0L, $
-    angles: ptr_new() $
+  tomo =                              $
+   {tomo,                             $
+    ; Information about current dataset
+    pVolume:               ptr_new(), $
+    pFlats:                ptr_new(), $
+    pDarks:                ptr_new(), $
+    pAngles:               ptr_new(), $
+    pSampleConfig:         ptr_new(), $
+    nx:                           0L, $
+    ny:                           0L, $
+    nz:                           0L, $
+    xPixelSize:                   0., $
+    yPixelSize:                   0., $
+    zPixelSize:                   0., $
+    imageType:                    "", $  ; "RAW", "CORRECTED" or "RECONSTRUCTED"
+    inputFilename:                "", $
+    baseFilename:                 "", $
+    directory:                    "", $
+    ; Proprocessing parameters
+    zingerWidth:                  0L, $
+    zingerThreshold:              0., $
+    zingerDoubleThreshold:        0., $
+    preprocessScale:              0., $
+    preprocessOffset:             0., $
+    preprocessThreads:            0L, $
+    preprocessDataType:           "", $ 'UInt16' or 'Float32'
+    preprocessWriteOutput:        0L, $ 0: don't write, 1: write
+    preprocessWriteFormat:        "", $ 'netCDF' or 'HDF5'
+    ; Rotation center parameters
+    upperSlice:                   0L, $
+    lowerSlice:                   0L, $
+    rotationCenter:               0., $
+    rotationCenterSlope:          0., $
+    ; Reconstruction parameters
+    ; Reconstruction method
+    reconMethod:                  0L, $ ; 0=tomoRecon, 1=Gridrec, 2=Backproject
+    reconMethodTomoRecon:         0L, $
+    reconMethodGridrec:           0L, $
+    reconMethodBackproject:       0L, $
+    reconSlicesPerChunk:          0L, $
+    reconDataType:                "", $ 'UInt16', 'Int16' or 'Float32'
+    reconWriteOutput:             0L, $ 0: don't write, 1: write
+    reconWriteFormat:             "", $ 'netCDF' or 'HDF5'
+    tomoReconShareableLibrary:    "", $
+    ; tomoRecon parameters
+    reconScale:                   0., $ ; Scale factor for reconstruction
+    reconOffset:                  0., $ ; Offset factor for reconstruction
+    paddedSinogramWidth:          0L, $ ; Number of pixels in sinogram after padding
+    paddingAverage:               0L, $ ; Number of pixels to average on each side of sinogram to compute padding. 0 pixels pads with 0.0
+    airPixels:                    0L, $ ; Number of pixels of air to average at each end of sinogram row
+    ringWidth:                    0L, $ ; Number of pixels to smooth by when removing ring artifacts
+    fluorescence:                 0L, $ ; 0=absorption data, 1=fluorescence
+    ; tomoRecon parameters
+    reconThreads:                 0L, $
+    debug:                        0L, $
+    debugFile:                    "", $
+    ; gridRec/tomoRecon parameters
+    geom:                         0L, $ ; 0 if array of angles provided; 1,2 if uniform in half,full circle
+    pswfParam:                    0., $ ; PSWF parameter
+    sampl:                        0., $ ; "Oversampling" ratio
+    maxPixSize:                   0., $ ; Max pixel size for reconstruction
+    ROI:                          0., $ ; Region of interest (ROI) relative size
+    X0:                           0., $ ; (X0,Y0)=Offset of ROI from rotation axis
+    Y0:                           0., $ ; in units of center-to-edge distance.
+    ltbl:                         0L, $ ; No. elements in convolvent lookup tables
+    GR_filterName:                "", $ ; Name of filter function
+    ; Backproject parameters
+    BP_Method:                    0L, $ ; 0=Riemann, 1=Radon
+    BP_MethodRiemann:             0L, $
+    BP_MethodRadon:               0L, $
+    BP_filterName:                "", $ ; Name of filter function - initialized to "SHEPP_LOGAN" above
+    BP_filterSize:                0L, $ ; Length of filter
+    RiemannInterpolation:         0L, $ ; 0=none, 1=bilinear, 2=cubic
+    RiemannInterpolationNone:     0L, $
+    RiemannInterpolationBilinear: 0L, $
+    RiemannInterpolationCubic:    0L, $
+    RadonInterpolation:           0L, $ ; 0=none, 1=linear
+    RadonInterpolationNone:       0L, $
+    RadonInterpolationLinear:     0L, $
+    ; Status and debugging parameters
+    statusWidget:                 0L, $
+    abortWidget:                  0L, $
+    debugLevel:                   0L  $
   }
 end
