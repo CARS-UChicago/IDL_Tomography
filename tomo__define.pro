@@ -922,7 +922,7 @@ pro tomo::reconstruct_volume
     ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
     for i=0, nrows-1, 2 do begin
       self->display_status, 'Reconstructing slice ' + strtrim(i,2) + '/' + strtrim(nrows-1,2), 2
-      r = reconstruct_slice((*self.pVolume)[*,[i,(i+1)<self.ny],*], r2, center=center[i])
+      r = self->reconstruct_slice((*self.pVolume)[*,[i,(i+1)<self.ny],*], r2, center=center[i])
       if (i eq 0) then begin
         ncols = n_elements(r[*,0])
         recon = intarr(ncols, ncols, nrows, /nozero)
@@ -1605,6 +1605,13 @@ pro tomo::save_settings, file
 end
 
 pro tomo::restore_settings, file
+  catch, ioerror
+  if (ioerror ne 0) then begin
+    t = dialog_message(/error, $
+      ['Error reading settings file: ' + file + '.  Using defaults', $
+      !err_string])
+    return
+  endif
   settings = json_parse(file)
   keys = settings.keys()
   values = settings.values()
