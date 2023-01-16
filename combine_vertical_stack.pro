@@ -23,7 +23,7 @@ pro combine_vertical_stack, base_file_name, num_volumes, pixel_overlap, zstart=z
        endelse
     endfor
     print, 'Writing combined volume '
-    write_tomo_volume, base_file_name + '_combined_recon.volume', vol
+    write_tomo_volume, base_file_name + 'combined_recon.volume', vol
     print, 'Done'
 end
 
