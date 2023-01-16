@@ -745,17 +745,17 @@ pro tomo_display::restore_settings, file
   if (file_test(file, /read)) then begin
     self.tomoObj->restore_settings, file
     print, 'Restoring settings from file: ', self.settingsFile
+    ; Now parse the file again for this tomo_display object
+    settings = json_parse(file)
+    keys = settings.keys()
+    values = settings.values()
+    for i=0, n_elements(keys)-1 do begin
+      key = keys[i]
+      value = values[i]
+      index = self->find_saved_field(key)
+      if (index ge 0) then self.(index) = value
+    endfor
   endif
-  ; Now parse the file again for this tomo_display object
-  settings = json_parse(file)
-  keys = settings.keys()
-  values = settings.values()
-  for i=0, n_elements(keys)-1 do begin
-    key = keys[i]
-    value = values[i]
-    index = self->find_saved_field(key)
-    if (index ge 0) then self.(index) = value
-  endfor
   self->update_widgets
 end
 
@@ -792,7 +792,7 @@ function tomo_display::init
 
   self.optimizeMethod   = 0
   self.optimizeRange    = 6
-  self.optimizeStep     = .245
+  self.optimizeStep     = 0.25
   self.displayZoom      = 2
   self.displayAuto      = 1
   self.displayOrder     = 1
