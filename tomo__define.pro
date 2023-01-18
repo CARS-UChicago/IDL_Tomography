@@ -81,7 +81,7 @@ pro tomo::read_camera_file, filename
     self.yPixelSize = self.xPixelSize
     self.zPixelSize = self.xPixelSize
     self->read_sample_config
-    (*(self.pSampleConfig))['Camera'] = camera
+    (*(self.pSampleConfig))['Camera'] = camera[0]
   endif
  
   self.imageType = 'RAW'
@@ -876,8 +876,8 @@ pro tomo::reconstruct_volume
 
   tStart = systime(1)
   self->display_status, 'Initializing reconstruction ...', 1
-  if (keyword_set(netcdf)) then output_file = self.baseFilename + 'recon.nc' $
-                           else output_file = self.baseFilename + 'recon.h5'
+  if (self.reconWriteFormat eq 'netCDF') then output_file = self.baseFilename + 'recon.nc' $
+                                         else output_file = self.baseFilename + 'recon.h5'
   ; Set write_output keyword by default
   if (n_elements(write_output) eq 0) then write_output=1
   
@@ -1067,6 +1067,7 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
       ; Create netCDF file
       file_id = ncdf_create(file, /clobber)
       ncdf_control, file_id, fill=0
+      config = *self.pSampleConfig
       
       ; Create dimensions
       if (n_elements(xmax) eq 0) then xmax=size[1]
@@ -1080,18 +1081,19 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
       vol_id = ncdf_vardef(file_id, 'VOLUME', [nx_id, ny_id, nz_id], /SHORT)
       
       ; Create attributes.  Replace null strings with a blank.
-      if (self.title ne '') then str=self.title else str=' '
+      if (config.haskey('SampleDescription1')) then str=config['SampleDescription1'] else str=' '
       ncdf_attput, file_id, /GLOBAL, 'title', str
-      if (self.operator ne '') then str=self.operator else str=' '
+      if (config.haskey('UserName')) then str=config['UserName'] else str=' '
       ncdf_attput, file_id, /GLOBAL, 'operator', str
-      if (self.camera ne '') then str=self.camera else str=' '
+      if (config.haskey('Camera')) then str=config['Camera'] else str=' '
       ncdf_attput, file_id, /GLOBAL, 'camera', str
-      if (self.sample ne '') then str=self.sample else str=' '
+      if (config.haskey('SampleName')) then str=config['SampleName'] else str=' '
       ncdf_attput, file_id, /GLOBAL, 'sample', str
       if (self.imageType ne '') then str=self.imageType else str=' '
       ncdf_attput, file_id, /GLOBAL, 'imageType', str
-      ncdf_attput, file_id, /GLOBAL, 'energy', self.energy
-      ncdf_attput, file_id, /GLOBAL, 'dark_current', self.dark_current
+      if (config.haskey('Energy')) then energy =config['Energy'] else energy=0
+      ncdf_attput, file_id, /GLOBAL, 'energy', energy
+      ncdf_attput, file_id, /GLOBAL, 'dark_current', (*self.pDarks)[0]
       ncdf_attput, file_id, /GLOBAL, 'center', self.rotationCenter
       ncdf_attput, file_id, /GLOBAL, 'xPixelSize', self.xPixelSize
       ncdf_attput, file_id, /GLOBAL, 'yPixelSize', self.yPixelSize
@@ -1237,6 +1239,7 @@ end
   endif
 
   if (ncdf_is_ncdf(file)) then begin
+    config = *self.pSampleConfig
     ; This is a netCDF file
     file_id = ncdf_open(file, /nowrite)
     ; Process the global attributes
@@ -1245,17 +1248,20 @@ end
       name = ncdf_attname(file_id, /global, i)
       ncdf_attget, file_id, /global, name, value
       case name of
-        'title':        self.title =        strtrim(value,2)
-        'operator':     self.operator =     strtrim(value,2)
-        'camera':       self.camera =       strtrim(value,2)
-        'sample':       self.sample =       strtrim(value,2)
-        'imageType':   self.imageType =   strtrim(value,2)
-        'energy':       self.energy =       value
-        'dark_current': self.dark_current = value
+        'title':        config['SampleDescription1'] = strtrim(value,2)
+        'operator':     config['UserName']           = strtrim(value,2)
+        'camera':       config['Camera']             = strtrim(value,2)
+        'sample':       config['SampleName']         = strtrim(value,2)
+        'imageType':    self.imageType               = strtrim(value,2)
+        'energy':       config['Energy']             = value
+        'dark_current':  begin
+          config['DarkFieldValue'] = value
+          self.pDarks = ptr_new(value)
+        end
         'center':       self.rotationCenter = value
-        'xPixelSize': self.xPixelSize = value
-        'yPixelSize': self.yPixelSize = value
-        'zPixelSize': self.zPixelSize = value
+        'xPixelSize':   self.xPixelSize     = value
+        'yPixelSize':   self.yPixelSize     = value
+        'zPixelSize':   self.zPixelSize     = value
         'angles':       begin
           ptr_free, self.pAngles
           self.pAngles = ptr_new(value)
@@ -1263,6 +1269,7 @@ end
         else:
       endcase
     endfor
+    self.pSampleConfig = ptr_new(config)
     ; Get the variable id
     vol_id   = ncdf_varid (file_id, 'VOLUME')
     
@@ -1425,7 +1432,7 @@ pro tomo::write_sample_config
 end
 
 pro tomo::read_sample_config, file
-  if (n_elements(file) eq 0) then file = self.baseFilename + '.config'
+  if (n_elements(file) eq 0) then file = self.directory + '/' + self.baseFilename + '.config'
   config = json_parse(file)
   if (config.haskey('RotationCenter')) then self.rotationCenter = config['RotationCenter'] else self.rotationCenter = self.nx/2
   if (config.haskey('RotationSlope')) then self.rotationCenterSlope = config['RotationSlope'] else self.rotationCenterSlope = 0.
@@ -1627,6 +1634,7 @@ function tomo::init, settingsFile=settingsFile, statusWidget=statusWidget, abort
   if (n_elements(statusWidget)  ne 0) then self.statusWidget = statusWidget
   if (n_elements(abortWidget)   ne 0) then self.abortWidget = abortWidget
   if (n_elements(debugLevel)    ne 0) then self.debugLevel = debugLevel else self.debugLevel=1
+  self.pSampleConfig                = ptr_new(orderedhash())
   self.zingerWidth                  = 3
   self.zingerThreshold              = 0.1
   self.zingerDoubleThreshold        = 1.05
