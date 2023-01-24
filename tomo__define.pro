@@ -54,6 +54,9 @@ pro tomo::read_camera_file, filename
     self->display_status, 'Reading ' + file
     projections = read_nd_netcdf(file)
     dims = size(projections, /dimensions)
+    self.nx = dims[0]
+    self.ny = dims[1]
+    self.nz = dims[2]
     num_projections = dims[2]
     flats = [[[flat1]], [[flat2]]]
     status = self.read_setup(self.baseFilename + '.setup')
@@ -80,6 +83,9 @@ pro tomo::read_camera_file, filename
     self.xPixelSize = h5_getdata(filename, '/measurement/instrument/detection_system/objective/resolution')
     self.yPixelSize = self.xPixelSize
     self.zPixelSize = self.xPixelSize
+    self.nx = dims[0]
+    self.ny = dims[1]
+    self.nz = dims[2]
     self->read_sample_config
     (*(self.pSampleConfig))['Camera'] = camera[0]
   endif
@@ -90,9 +96,6 @@ pro tomo::read_camera_file, filename
   self.pVolume = ptr_new(projections, /no_copy)
   self.pFlats = ptr_new(flats, /no_copy)
   self.pDarks = ptr_new(darks, /no_copy)
-  self.nx = dims[0]
-  self.ny = dims[1]
-  self.nz = dims[2]
 
   print, 'Time to read camera file=', systime(1)-t0
 end
@@ -1082,16 +1085,22 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
       
       ; Create attributes.  Replace null strings with a blank.
       if (config.haskey('SampleDescription1')) then str=config['SampleDescription1'] else str=' '
+      if (str eq '') then str = ' '
       ncdf_attput, file_id, /GLOBAL, 'title', str
       if (config.haskey('UserName')) then str=config['UserName'] else str=' '
+      if (str eq '') then str = ' '
       ncdf_attput, file_id, /GLOBAL, 'operator', str
       if (config.haskey('Camera')) then str=config['Camera'] else str=' '
+      if (str eq '') then str = ' '
       ncdf_attput, file_id, /GLOBAL, 'camera', str
       if (config.haskey('SampleName')) then str=config['SampleName'] else str=' '
+      if (str eq '') then str = ' '
       ncdf_attput, file_id, /GLOBAL, 'sample', str
       if (self.imageType ne '') then str=self.imageType else str=' '
+      if (str eq '') then str = ' '
       ncdf_attput, file_id, /GLOBAL, 'imageType', str
       if (config.haskey('Energy')) then energy =config['Energy'] else energy=0
+      if (energy eq '') then energy = 0
       ncdf_attput, file_id, /GLOBAL, 'energy', energy
       ncdf_attput, file_id, /GLOBAL, 'dark_current', (*self.pDarks)[0]
       ncdf_attput, file_id, /GLOBAL, 'center', self.rotationCenter
@@ -1244,6 +1253,11 @@ end
     file_id = ncdf_open(file, /nowrite)
     ; Process the global attributes
     status = ncdf_inquire(file_id)
+    ; Set some reasonable defaults in case attributes are missing
+    self.imageType = 'RECONSTRUCTED'
+    self.xPixelSize = 1
+    self.yPixelSize = 1
+    self.zPixelSize = 1
     for i=0, status.ngatts-1 do begin
       name = ncdf_attname(file_id, /global, i)
       ncdf_attget, file_id, /global, name, value
@@ -1319,13 +1333,18 @@ end
 
   endif else begin
     ; File must be HDF5
-    volume                   = h5_getdata(file, '/exchange/data')
-    self.imageType           = h5_getdata(file, '/process/imageType')
-    angles                   = h5_getdata(file, '/process/angles')
-    self.pAngles             = ptr_new(angles)
-    self.xPixelSize          = h5_getdata(file, '/process/xPixelSize')
-    self.yPixelSize          = h5_getdata(file, '/process/yPixelSize')
-    self.xPixelSize          = h5_getdata(file, '/process/zPixelSize')
+    h5_list, file, output=contents
+    h = hash(reform(contents[1,*]))
+    volume                                                    = h5_getdata(file, '/exchange/data')
+    if (h.haskey('/process/imageType')) then self.imageType   = h5_getdata(file, '/process/imageType') else $
+                                             self.imageType   = 'RECONSTRUCTED' 
+    if (h.haskey('/process/angles')) then begin
+      angles                                                  = h5_getdata(file, '/process/angles')
+      self.pAngles = ptr_new(angles)
+    endif
+    if (h.haskey('/process/xPixelSize')) then self.xPixelSize = h5_getdata(file, '/process/xPixelSize')
+    if (h.haskey('/process/yPixelSize')) then self.yPixelSize = h5_getdata(file, '/process/yPixelSize')
+    if (h.haskey('/process/zPixelSize')) then self.xPixelSize = h5_getdata(file, '/process/zPixelSize')
   endelse
 
   self->read_sample_config
@@ -1433,6 +1452,7 @@ end
 
 pro tomo::read_sample_config, file
   if (n_elements(file) eq 0) then file = self.directory + '/' + self.baseFilename + '.config'
+  if ((file_info(file)).exists eq 0) then return
   config = json_parse(file)
   if (config.haskey('RotationCenter')) then self.rotationCenter = config['RotationCenter'] else self.rotationCenter = self.nx/2
   if (config.haskey('RotationSlope')) then self.rotationCenterSlope = config['RotationSlope'] else self.rotationCenterSlope = 0.
