@@ -404,7 +404,7 @@ pro tomo_display::display_slice, new_window=new_window
   if (ptr_valid(self.tomoStruct.pVolume)) then begin
     widget_control, self.widgets.disp_slice, get_value=slice
     widget_control, self.widgets.displayDirection, get_value=direction
-    widget_control, self.widgets.input_file, get_value=file
+    widget_control, self.widgets.base_file, get_value=file
     ; Set the axis dimensions
     if (self.tomoStruct.imageType eq 'RECONSTRUCTED') then begin
       xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.xPixelSize
@@ -447,8 +447,37 @@ pro tomo_display::display_slice, new_window=new_window
     if (keyword_set(new_window)) or (obj_valid(self.image_display) eq 0) then begin
       self.image_display = obj_new('image_display', r, min=min, max=max, title=title, xdist=xdist, ydist=ydist)
     endif else begin
-      self.image_display->scale_image, r, min=min, max=max, title=title, xdist=xdist, ydist=ydist, /leave_mouse
+      self.image_display->set_image_data, r, title=title
     endelse
+
+  endif else begin
+    t = dialog_message('Must read in volume file first.', /error)
+  endelse
+end
+
+pro tomo_display::display_volume
+  if (ptr_valid(self.tomoStruct.pVolume)) then begin
+    widget_control, /hourglass
+    widget_control, self.widgets.disp_slice, get_value=slice
+    widget_control, self.widgets.displayDirection, get_value=direction
+    widget_control, self.widgets.base_file, get_value=file
+    ; Set the axis dimensions
+    if (self.tomoStruct.imageType eq 'RECONSTRUCTED') then begin
+      xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.xPixelSize
+      ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.xPixelSize
+      zdist = findgen(self.tomoStruct.nz)*self.tomoStruct.yPixelSize
+    endif else begin
+      xdist = findgen(self.tomoStruct.nx)*self.tomoStruct.xPixelSize
+      ydist = findgen(self.tomoStruct.ny)*self.tomoStruct.yPixelSize
+      zdist = *self.tomoStruct.pAngles
+    endelse
+    axes = ['X', 'Y', 'Z']
+    widget_control, self.widgets.rotation_center[0], get_value=center
+    title = file + '    Center='+strtrim(string(center),2)
+    widget_control, self.widgets.displayAuto, get_value=auto
+      widget_control, self.widgets.displayMin, get_value=min
+      widget_control, self.widgets.displayMax, get_value=max
+    image_display, *self.tomoStruct.pVolume, xdist=xdist, ydist=ydist, zdist=zdist, min=min, max=max, title=title
 
   endif else begin
     t = dialog_message('Must read in volume file first.', /error)
@@ -615,6 +644,10 @@ pro tomo_display::event, event
 
     self.widgets.display_slice: begin
       self->display_slice, /new_window
+    end
+
+    self.widgets.display_volume: begin
+      self->display_volume
     end
 
     self.widgets.volume_render: begin
@@ -933,6 +966,8 @@ function tomo_display::init
   self.widgets.disp_slider              = widget_slider(col1, value=100, min=0, max=100, /suppress_value)
   col1                                  = widget_base(row, /column, /align_center)
   self.widgets.display_slice            = widget_button(col1, value='Display slice')
+  col1                                  = widget_base(row, /column, /align_center)
+  self.widgets.display_volume           = widget_button(col1, value='Display volume')
 
   row                                   = widget_base(col, /row)
   t                                     = widget_label(row, value='Volume render:')
@@ -1165,6 +1200,7 @@ pro tomo_display__define
     disp_slice:               0L, $
     disp_slider:              0L, $
     display_slice:            0L, $
+    display_volume:           0L, $
     volume_render:            0L, $
     movie_output:             0L, $
     first_slice:              0L, $
