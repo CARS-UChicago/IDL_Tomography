@@ -1050,7 +1050,7 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
   xoffset=xoffset, yoffset=yoffset, zoffset=zoffset, $
   xmax=xmax, ymax=ymax, zmax=zmax
 
-   size = size(volume)
+  size = size(volume)
   ; If this is a 2-D array fake it out by setting third dimension to 1
   if (size[0] eq 2) then size[3]=1
 
@@ -1146,7 +1146,8 @@ pro tomo::write_volume, file, volume, netcdf=netcdf, append=append, $
     h5g_close, group_id
     group_id = h5g_create(file_id, 'process')
     self->write_hdf5_dataset, group_id, 'imageType', self.imageType
-    self->write_hdf5_dataset, group_id, 'angles', *self.pAngles
+    if (ptr_valid(self.pAngles)) then $
+      self->write_hdf5_dataset, group_id, 'angles', *self.pAngles
     self->write_hdf5_dataset, group_id, 'xPixelSize', self.xPixelSize
     self->write_hdf5_dataset, group_id, 'yPixelSize', self.yPixelSize
     self->write_hdf5_dataset, group_id, 'zPixelSize', self.zPixelSize
@@ -1336,15 +1337,27 @@ end
     h5_list, file, output=contents
     h = hash(reform(contents[1,*]))
     volume                                                    = h5_getdata(file, '/exchange/data')
-    if (h.haskey('/process/imageType')) then self.imageType   = h5_getdata(file, '/process/imageType') else $
-                                             self.imageType   = 'RECONSTRUCTED' 
+    ; This code should be improved to only read the selected subset of the data.
+    ; For now we trim the data if any of the range keywords is set
+    if (keyword_set(xrange) or keyword_set(yrange) or keyword_set(zrange)) then begin
+      dims = size(volume, /dimensions)
+      if (n_elements(xrange) eq 0) then xrange = [0, dims[0]-1]
+      if (n_elements(yrange) eq 0) then yrange = [0, dims[1]-1]
+      if (n_elements(zrange) eq 0) then zrange = [0, dims[2]-1]
+      volume = volume[xrange[0]:xrange[1], yrange[0]:yrange[1], zrange[0]:zrange[1]]
+    endif
+    if (h.haskey('/process/imageType')) then self.imageType   = h5_getdata(file, '/process/imageType')
+    if (self.imageType eq '') then self.imageType   = 'RECONSTRUCTED'
     if (h.haskey('/process/angles')) then begin
       angles                                                  = h5_getdata(file, '/process/angles')
       self.pAngles = ptr_new(angles)
-    endif
+    endif else begin
+      dims = size(volume, /dimensions)
+      self.pAngles = ptr_new(findgen(dims[2]))
+    endelse
     if (h.haskey('/process/xPixelSize')) then self.xPixelSize = h5_getdata(file, '/process/xPixelSize')
     if (h.haskey('/process/yPixelSize')) then self.yPixelSize = h5_getdata(file, '/process/yPixelSize')
-    if (h.haskey('/process/zPixelSize')) then self.xPixelSize = h5_getdata(file, '/process/zPixelSize')
+    if (h.haskey('/process/zPixelSize')) then self.zPixelSize = h5_getdata(file, '/process/zPixelSize')
   endelse
 
   self->read_sample_config
@@ -1468,6 +1481,10 @@ function tomo::get_struct
     t.(i)=self.(i)
   endfor
   return, t
+end
+
+function tomo::get_pvolume
+  return, self.pVolume
 end
 
 pro tomo::set_file_components, input_file
