@@ -1527,6 +1527,9 @@ function tomo::getPaddedSinogramWidth, numPixels
 end
 
 pro tomo::set_recon_params, $
+  rotationCenter = rotationCenter, $
+  rotCenterSlope = rotCenterSlope, $
+  reconMethod = reconMethod, $
   dataType = dataType, $
   writeOutput = writeOutput, $
   writeFormat = writeFormat, $
@@ -1538,7 +1541,6 @@ pro tomo::set_recon_params, $
   airPixels = airPixels, $
   ringWidth = ringWidth, $
   fluorescence = fluorescence, $
-  reconMethod = reconMethod, $
   threads = threads, $
   slicesPerChunk = slicesPerChunk, $
   debug = debug, $
@@ -1558,6 +1560,9 @@ pro tomo::set_recon_params, $
   RiemannInterpolation = RiemannInterpolation, $
   RadonInterpolation = RadonInterpolation
 
+  if (n_elements(rotationCenter)       ne 0) then self.rotationCenter = rotationCenter
+  if (n_elements(rotCenterSlope)       ne 0) then self.rotationCenterSlope = rotCenterSlope
+  if (n_elements(reconMethod)          ne 0) then self.reconMethod = reconMethod
   if (n_elements(dataType)             ne 0) then self.reconDataType = dataType
   if (n_elements(writeOutput)          ne 0) then self.reconWriteOutput = writeOutput
   if (n_elements(writeFormat)          ne 0) then self.reconWriteFormat = writeFormat
@@ -1581,7 +1586,6 @@ pro tomo::set_recon_params, $
   if (n_elements(Y0)                   ne 0) then self.Y0 = Y0
   if (n_elements(ltbl)                 ne 0) then self.ltbl = ltbl
   if (n_elements(GR_filterName)        ne 0) then self.GR_filterName = GR_filterName
-  if (n_elements(reconMethod)          ne 0) then self.reconMethod = reconMethod
   if (n_elements(slicesPerChunk)       ne 0) then self.reconSlicesPerChunk = slicesPerChunk
   if (n_elements(BP_method)            ne 0) then self.BP_method = BP_method
   if (n_elements(BP_filterName)        ne 0) then self.BP_filterName = BP_filterName
