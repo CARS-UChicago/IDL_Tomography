@@ -30,9 +30,10 @@ pro combine_vertical_stack, base_file_name, num_volumes, pixel_overlap, $
     nx = dims[0]
     ny = dims[1]
     nz = dims[2]
+    dtype = size(v, /type)
     nz_total = nz + (num_volumes-1) * (nz - pixel_overlap/binning)
     print, systime() + ' Creating combined array dimensions = [' + strtrim(nx,2) + ',' + strtrim(ny,2) + ',' + strtrim(nz_total,2) + ']'
-    vol = intarr(nx, ny, nz_total, /nozero)
+    vol = make_array(nx, ny, nz_total, type=dtype, /nozero)
     print, systime() + ' Copying volume 0 to combined array'
     vol[0,0,0] = v
     for i=1, num_volumes-1 do begin
