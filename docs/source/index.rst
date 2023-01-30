@@ -31,6 +31,9 @@ the IDL software without compiling any code.
 tomo_display is provided both in source code form in the repository and as an IDL .save
 file, tomo_display.sav, that can be run for free in the IDL Virtual Machine.
 
+Installation
+------------
+
 Number formats
 ~~~~~~~~~~~~~~
 
