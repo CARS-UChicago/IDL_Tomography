@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>GSECARS Tomography Software &#8212; EPICS Modbus 1-0-43-geef5d84 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/bootstrap-sphinx.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <link rel="icon" href="_static/favicon_t.ico"/>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+<meta charset='utf-8'>
+<meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1'>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script type="text/javascript" src="_static/js/jquery-1.12.4.min.js"></script>
+<script type="text/javascript" src="_static/js/jquery-fix.js"></script>
+<script type="text/javascript" src="_static/bootstrap-3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="_static/bootstrap-sphinx.js"></script>
+
+  </head><body>
+
+  <div id="navbar" class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="#">
+          EPICS Modbus</a>
+        <span class="navbar-text navbar-version pull-left"><b>1-0</b></span>
+      </div>
+
+        <div class="collapse navbar-collapse nav-collapse">
+          <ul class="nav navbar-nav">
+            
+            
+              <li class="dropdown globaltoc-container">
+  <a role="button"
+     id="dLabelGlobalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="#">Site <b class="caret"></b></a>
+  <ul class="dropdown-menu globaltoc"
+      role="menu"
+      aria-labelledby="dLabelGlobalToc"></ul>
+</li>
+              
+                <li class="dropdown">
+  <a role="button"
+     id="dLabelLocalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="#">Page <b class="caret"></b></a>
+  <ul class="dropdown-menu localtoc"
+      role="menu"
+      aria-labelledby="dLabelLocalToc"><ul>
+<li><a class="reference internal" href="#">GSECARS Tomography Software</a><ul>
+<li><a class="reference internal" href="#overview">Overview</a><ul>
+<li><a class="reference internal" href="#number-formats">Number formats</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</ul>
+</li>
+              
+            
+            
+              
+                
+              
+            
+            
+            
+            
+              <li class="hidden-sm">
+<div id="sourcelink">
+  <a href="_sources/index.rst.txt"
+     rel="nofollow">Source</a>
+</div></li>
+            
+          </ul>
+
+          
+            
+<form class="navbar-form navbar-right" action="search.html" method="get">
+ <div class="form-group">
+  <input type="text" name="q" class="form-control" placeholder="Search" />
+ </div>
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+          
+        </div>
+    </div>
+  </div>
+
+<div class="container">
+  <div class="row">
+    <div class="body col-md-12 content" role="main">
+      
+  <section id="gsecars-tomography-software">
+<h1><a class="toc-backref" href="#id3" role="doc-backlink">GSECARS Tomography Software</a><a class="headerlink" href="#gsecars-tomography-software" title="Permalink to this heading">¶</a></h1>
+<dl class="field-list simple">
+<dt class="field-odd">author<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Mark Rivers, University of Chicago</p>
+</dd>
+</dl>
+<nav class="contents" id="contents">
+<p class="topic-title">Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#gsecars-tomography-software" id="id3">GSECARS Tomography Software</a></p>
+<ul>
+<li><p><a class="reference internal" href="#overview" id="id4">Overview</a></p>
+<ul>
+<li><p><a class="reference internal" href="#number-formats" id="id5">Number formats</a></p></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+<section id="overview">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Overview</a><a class="headerlink" href="#overview" title="Permalink to this heading">¶</a></h2>
+<p>This document describes the software used for reconstructing and viewing tomography
+data at GSECARS. The software consists of the following components:
+- C++ library containing optimized code for preprocessing and reconstruction
+- IDL class library called “tomo” that does the following:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Read raw data files</p></li>
+<li><p>Preprocess using the C++ library</p></li>
+<li><p>Optimize rotation center</p></li>
+<li><p>Reconstruct using the C++ library</p></li>
+<li><p>Save reconstructed data</p></li>
+<li><p>Save and restore preprocessing and reconstruction parameters</p></li>
+</ul>
+</div></blockquote>
+<ul class="simple">
+<li><p>IDL visualization class called “image_display” that can display 2-D and 3-D data</p></li>
+<li><p>IDL Graphical User Interface program that calls the “tomo” and “image_display” classes</p></li>
+</ul>
+<p>All of these IDL routines are available from
+<a href="#id1"><span class="problematic" id="id2">`Github repository &lt;https://github.com/CARS-UChicago/IDL_tomography`__</span></a>.
+The repository contains DLLs (Windows) and shareable libraries (Linux) to run
+the IDL software without compiling any code.</p>
+<p>tomo_display is provided both in source code form in the repository and as an IDL .save
+file, tomo_display.sav, that can be run for free in the IDL Virtual Machine.</p>
+<section id="number-formats">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">Number formats</a><a class="headerlink" href="#number-formats" title="Permalink to this heading">¶</a></h3>
+<p>It can be convenient to specify the modbusStartAddress and modbusLength
+in octal, rather than decimal, because this is the convention on most
+PLCs. In the iocsh and vxWorks shells this is done by using a leading 0
+on the number, i.e. 040400 is an octal number.</p>
+</section>
+</section>
+</section>
+
+
+    </div>
+      
+  </div>
+</div>
+<footer class="footer">
+  <div class="container">
+    <p class="pull-right">
+      <a href="#">Back to top</a>
+      
+    </p>
+    <p>
+        &copy; Copyright 2020, Mark Rivers.<br/>
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 6.1.3.<br/>
+    </p>
+  </div>
+</footer>
+  </body>
+</html>
