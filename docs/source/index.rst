@@ -6,6 +6,8 @@ GSECARS Tomography Software
 
 .. contents:: Contents
 
+.. _IDL_Tomography: https://github.com/CARS-UChicago/IDL_tomography
+
 
 Overview
 --------
@@ -14,17 +16,18 @@ This document describes the software used for reconstructing and viewing tomogra
 data at GSECARS. The software consists of the following components:
 - C++ library containing optimized code for preprocessing and reconstruction
 - IDL class library called "tomo" that does the following:
+
   - Read raw data files
   - Preprocess using the C++ library
   - Optimize rotation center
   - Reconstruct using the C++ library
   - Save reconstructed data
   - Save and restore preprocessing and reconstruction parameters
-- IDL visualization class called "image_display" that can display 2-D and 3-D data
+
+- IDL visualization class called image_display that can display 2-D and 3-D data
 - IDL Graphical User Interface program that calls the "tomo" and "image_display" classes
 
-All of these IDL routines are available from
-`Github repository <https://github.com/CARS-UChicago/IDL_tomography`__.
+All of these IDL routines are available from IDL_Tomography_.
 The repository contains DLLs (Windows) and shareable libraries (Linux) to run
 the IDL software without compiling any code.  
 
