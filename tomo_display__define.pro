@@ -47,7 +47,7 @@ pro tomo_display::update_widgets
   widget_control, self.widgets.optimizeMethod,         set_value=self.optimizeMethod
   widget_control, self.widgets.optimizeRange,          set_value=self.optimizeRange
   widget_control, self.widgets.optimizeStep,           set_value=self.optimizeStep
-  widget_control, self.widgets.displayZoom,            set_value=self.displayZoom
+  widget_control, self.widgets.movieZoom,              set_value=self.movieZoom
   widget_control, self.widgets.displayOrder,           set_value=self.displayOrder
   widget_control, self.widgets.displayDirection,       set_value=self.displayDirection
   widget_control, self.widgets.displayAuto,            set_value=self.displayAuto
@@ -136,34 +136,6 @@ pro tomo_display::set_preprocess_params
                                        scale=scale, threads=threads, dataType=data_type, writeOutput=write_output, writeFormat=file_format
 end
 
-pro tomo_display::rebin, image, x_dist, y_dist
-  ; This function is called to rebin a 2-D array, either shrinking or expanding it
-  ; by the selected "zoom" factor
-  widget_control, self.widgets.displayZoom, get_value=zoom, get_uvalue=all_zooms
-  zoom = all_zooms[zoom]
-  if (zoom eq 1) then return
-  image = reform(image)
-  ncols = n_elements(image[*,0])
-  nrows = n_elements(image[0,*])
-  if (zoom gt 1) then begin
-    last_col = ncols - 1
-    last_row = nrows - 1
-    ncols = ncols * fix(zoom)
-    nrows = nrows * fix(zoom)
-  endif
-  if (zoom lt -1) then begin
-    izoom = fix(abs(zoom))
-    last_col = (ncols/izoom)*izoom - 1
-    last_row = (nrows/izoom)*izoom - 1
-    ncols = ncols / izoom
-    nrows = nrows / izoom
-  endif
-  image = rebin(image[0:last_col, 0:last_row], ncols, nrows)
-  x_dist = rebin(x_dist[0:last_col], ncols)
-  y_dist = rebin(y_dist[0:last_row], nrows)
-end
-
-
 pro tomo_display::reconstruct, islice
   ; This function is called to reconstruct a single slice or to reconstruct all
   ; If islice is defined then we are to reconstruct a single slice
@@ -194,8 +166,6 @@ pro tomo_display::reconstruct, islice
     dims = size(r, /dimensions)
     xdist = findgen(dims[0])*self.tomoStruct.xPixelSize
     ydist = xdist
-    ; Change the size of the image before calling image_display
-    self->rebin, r, xdist, ydist
     widget_control, self.widgets.input_file, get_value=file
     dims = size(r, /dimensions)
     xdist = findgen(dims[0])*self.tomoStruct.xPixelSize
@@ -442,8 +412,6 @@ pro tomo_display::display_slice, new_window=new_window
       widget_control, self.widgets.displayMin, get_value=min
       widget_control, self.widgets.displayMax, get_value=max
     endelse
-    ; Change the size of the image before calling image_display
-    self->rebin, r, xdist, ydist
     if (keyword_set(new_window)) or (obj_valid(self.image_display) eq 0) then begin
       self.image_display = obj_new('image_display', r, min=min, max=max, title=title, xdist=xdist, ydist=ydist)
     endif else begin
@@ -672,8 +640,8 @@ pro tomo_display::event, event
       self.displayOrder = event.value
     end
 
-    self.widgets.displayZoom: begin
-      self.displayZoom = event.value
+    self.widgets.movieZoom: begin
+      self.movieZoom = event.value
     end
 
     self.widgets.displayAuto: begin
@@ -702,7 +670,8 @@ pro tomo_display::event, event
         widget_control, self.widgets.movie_output, get_value=output
         widget_control, self.widgets.displayDirection, get_value=direction
         widget_control, self.widgets.movie_file, get_value=file
-        widget_control, self.widgets.displayZoom, get_value=zoom, get_uvalue=all_zooms
+        widget_control, self.widgets.movieZoom, get_value=zoom, get_uvalue=all_zooms
+        scale = all_zooms[zoom]
         widget_control, self.widgets.first_slice, get_value=start
         widget_control, self.widgets.last_slice, get_value=stop
         widget_control, self.widgets.slice_step, get_value=step
@@ -710,7 +679,6 @@ pro tomo_display::event, event
         widget_control, self.widgets.movie_fps, get_value=fps
         widget_control, self.widgets.movie_bps, get_value=bps
         widget_control, self.widgets.tiff_scale, get_value=unscaled_tiff
-        scale = all_zooms[zoom]
         label=0
         case output of
           0: label=1
@@ -745,7 +713,7 @@ end
 
 function tomo_display::get_saved_fields
   fields = ['optimizeMethod', 'optimizeRange', 'optimizeStep', $
-            'displayZoom', 'displayOrder', 'displayDirection', $
+            'movieZoom', 'displayOrder', 'displayDirection', $
             'displayAuto', 'displayMin', 'displayMax' ]
   return, fields
 end
@@ -826,7 +794,7 @@ function tomo_display::init
   self.optimizeMethod   = 0
   self.optimizeRange    = 6
   self.optimizeStep     = 0.25
-  self.displayZoom      = 2
+  self.movieZoom        = 2
   self.displayAuto      = 1
   self.displayOrder     = 1
   self.displayDirection = 2
@@ -957,9 +925,6 @@ function tomo_display::init
   self.widgets.displayOrder             = cw_bgroup(row, ['Bottom to top', 'Top to bottom'], label_left='Order:', row=1, set_value=1, /exclusive)
 
   row                                   = widget_base(col, /row)
-  self.widgets.displayZoom              = cw_bgroup(row, ['1/4', '1/2', '1', '2', '4'], label_left='Zoom:', row=1, set_value=2, /exclusive, uvalue=[-4, -2, 1, 2, 4])
-
-  row                                   = widget_base(col, /row)
   t                                     = widget_label(row, value='Display slice:')
   col1                                  = widget_base(row, /column)
   self.widgets.disp_slice               = cw_field(col1, /integer, title='', xsize=10, value=100, /return_events)
@@ -981,6 +946,9 @@ function tomo_display::init
   self.widgets.movie_output             = cw_bgroup(row, ['Screen', 'JPEG', 'TIFF', 'MP4'], label_left='Output:', row=1, set_value=0, /exclusive)
   col1                                  = widget_base(row, /column, /align_center)
   self.widgets.make_movie               = widget_button(col1, value='Make movie')
+
+  row                                   = widget_base(col, /row)
+  self.widgets.movieZoom                = cw_bgroup(row, ['1/4', '1/2', '1', '2', '4'], label_left='Zoom:', row=1, set_value=2, /exclusive, uvalue=[-4, -2, 1, 2, 4])
 
   row                                   = widget_base(col, /row)
   self.widgets.tiff_scale               = cw_bgroup(row, ['Scaled (8-bit)', 'Unscaled'], label_left='TIFF scaling:', row=1, set_value=0, /exclusive)
@@ -1210,7 +1178,7 @@ pro tomo_display__define
     movie_fps:                0L, $
     movie_bps:                0L, $
     tiff_scale:               0L, $
-    displayZoom:              0L, $
+    movieZoom:                0L, $
     movie_file:               0L, $
     make_movie:               0L, $
     flip_data:                0L, $
@@ -1262,12 +1230,12 @@ pro tomo_display__define
     optimizeMethod:   0L, $
     optimizeRange:    0., $
     optimizeStep:     0., $
-    displayZoom:      0L, $
     displayAuto:      0L, $
     displayOrder:     0L, $
     displayDirection: 0L, $
     displayMin:       0., $
     displayMax:       0., $
+    movieZoom:        0L, $
     settingsFile:     "" $
   }
 end
