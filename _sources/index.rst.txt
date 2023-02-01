@@ -84,23 +84,10 @@ Install IDL_Tomography
     Example: ``set TOMO_RECON_SHARE=C:\tomography\idl\tomoRecon_Win32_x86.dll``. This can be done in Control Panel/System as well.
 - On Linux make sure the fftw-devel package is installed.  This is required for reconstruction.
 
-Starting tomo_display
----------------------
-If you are running the licensed version of IDL then start IDL and type the IDL command *tomo_display*.
-If you are running the IDL Virtual Machine on Windows then double-click on the tomo_display.sav file,
-or open the IDL Virtual Machine from the Windows Start menu and browse for the file.
-On Linux type the command ``idl -vm=tomo_display.sav`` 
-
 File formats
 ------------
 Raw data
 ~~~~~~~~
-From May 2014 to July 2020 the raw data is stored in netCDF files with the extension “.nc”.  
-There are three netCDF files per dataset.  Two are the flat field images collected at 
-the beginning and end of the scan, the third contains all of the projections.
-An ASCII text file with the extension “.setup” contains the metadata, 
-including the sample information, x-ray energy, and pixel size.
-
 Beginning in July 2020 the raw data is stored in HDF5 files with the extension “.h5”.  
 There is one HDF5 file per dataset, and it contains the flat field images and the projections.
 It also contains metadata including the positions of many motors on the beamline, the ring current,
@@ -108,31 +95,108 @@ the tomography data collection parameters, the sample and optics information, an
 An ASCII text file with the extension “.config” contains the tomography data collection parameters,
 the sample and optics information, and more.
 
+From May 2014 to July 2020 the raw data is stored in netCDF files with the extension “.nc”.  
+There are three netCDF files per dataset.  Two are the flat field images collected at 
+the beginning and end of the scan, the third contains all of the projections.
+An ASCII text file with the extension “.setup” contains the metadata, 
+including the sample information, x-ray energy, and pixel size.
+
 Preprocessed (normalized) data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Beginning with the new version of *tomo_display* in January 2023 the
+preprocessed data generally not written to disk at all, it is kept in memory after preprocessing.
+This significantly improves the reconstruction speed.  
+*tomo_display* can optionally save the preprocessed data either as a netCDF file whose
+name ends in "norm.nc" or an HDF5 file whose name ends in "norm.h5".
+
 Prior to January 2023 preprocessed data was written to disk as netCDF files with a file name that ends in ".volume".
 Prior to July 2020 these files were written by *tomo_display*, while from July 2020 to January 2023 they were written
-by a Python script called preprocess_13bm.py.  Beginning with the new version of *tomo_display* in January 2023 the
-preprocessed data generally not written to disk at all, it is kept in memory.  This significantly improves
-the reconstruction speed.  *tomo_display* can optionally save the preprocessed data either as a netCDF file whose
-name ends in "norm.nc" or an HDF5 file whose name ends in "norm.h5".
+by a Python script called preprocess_13bm.py.
 
 Reconstructed data
 ~~~~~~~~~~~~~~~~~~
-Prior to January 2023 the reconstructed files were stored in netCDF format with a file name that ends
-in "recon.volume".  tomo_display can now stored reconstructed files in either netCDF format with a file
+eginning with the new version of *tomo_display* in January 2023 tomo_display can store reconstructed files in either netCDF format with a file
 name that ends in "recon.nc", or in HDF5 format with a file name that ends in "recon.h5".  HDF5 is 2-3 times
 faster to write, and is generally recommended.  However, there are some limitations in reading HDF5 files into
 ImageJ which are discussed below.
 
-Using tomo_display
-------------------
+Prior to January 2023 the reconstructed files were stored in netCDF format with a file name that ends
+in "recon.volume".
 
-Visualizing results
--------------------
+Starting tomo_display
+---------------------
+If you are running the licensed version of IDL then start IDL and type the IDL command *tomo_display*.
+If you are running the IDL Virtual Machine on Windows then double-click on the tomo_display.sav file,
+or open the IDL Virtual Machine from the Windows Start menu and browse for the file.
+On Linux type the command ``idl -vm=tomo_display.sav`` 
 
-Visualize with tomo_display
+tomo_display Quick Start
+------------------------
+When tomo_display first opens it looks like this:
+
+.. figure:: tomo_display_start.png
+    :align: center
+
+    **tomo_display window on startup**
+    
+Note that all regions of the screen are disabled.
+
+Read camera file
+~~~~~~~~~~~~~~~~
+To begin process use the **File/Read camera file** menu to browse for a raw data file.  This can be a single .h5 for recent data,
+or any of the 3 .nc files for pre-2020 dataset.  After reading the file the screen will look like this:
+
+.. figure:: tomo_display_after_read_camera.png
+    :align: center
+
+    **tomo_display window after reading a camera file**
+
+Note the the Preprocess, Visualize, and Movies screen regions are now enabled.
+
+Visualizing raw data
+~~~~~~~~~~~~~~~~~~~~
+Pressing the **Display slice** button in the Visualize region opens an **image_display** window like this:
+
+.. figure:: image_display_raw.png
+    :align: center
+
+    **image_display window showing the raw camera data in the Z direction (projection)**
+
+Preprocessing
+~~~~~~~~~~~~~
+Pressing the Preprocess button in the Preprocess region will perform preprocessing.  This consists of
+
+- Subtracting the dark current from all flat fields and projections
+- Averaging the flat fields and removing zingers (hot pixels) from them using double-correlation
+- Dividing each projection by the average flat field, and multiplying by a scale factor (default=10000)
+- Removing zingers from the normalized projections
+- If the **Data type** is UInt16 converts to that data type.  Float32 should normally be used if not saving to disk.
+- Optionally saving the normalized data to an HDF5 or netCDF file
+
+After preprocessing the screen will look like this:
+
+.. figure:: tomo_display_after_preprocess.png
+    :align: center
+
+    **tomo_display window after preprocessing**
+
+Visualizing normalized data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Pressing the **Display slice** button in the Visualize region with Direction=Z opens an **image_display** window like this:
+
+.. figure:: image_display_normalized_Z.png
+    :align: center
+
+    **image_display window showing the normalized projection in the Z direction (projection)**
+
+Pressing the **Display slice** button in the Visualize region with Direction=Y opens an **image_display** window like this:
+
+.. figure:: image_display_normalized_Y.png
+    :align: center
+
+    **image_display window showing the normalized projection in the Y direction (sinogram)**
+
 
 Visualize with ImageJ
 ~~~~~~~~~~~~~~~~~~~~~
