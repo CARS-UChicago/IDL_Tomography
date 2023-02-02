@@ -123,15 +123,13 @@ ImageJ which are discussed below.
 Prior to January 2023 the reconstructed files were stored in netCDF format with a file name that ends
 in "recon.volume".
 
-Starting tomo_display
----------------------
+tomo_display Quick Start
+------------------------
 If you are running the licensed version of IDL then start IDL and type the IDL command *tomo_display*.
 If you are running the IDL Virtual Machine on Windows then double-click on the tomo_display.sav file,
 or open the IDL Virtual Machine from the Windows Start menu and browse for the file.
 On Linux type the command ``idl -vm=tomo_display.sav`` 
 
-tomo_display Quick Start
-------------------------
 When tomo_display first opens it looks like this:
 
 .. figure:: tomo_display_start.png
@@ -197,13 +195,17 @@ Pressing the **Display slice** button in the Visualize region with Direction=Y o
 
     **image_display window showing the normalized projection in the Y direction (sinogram)**
 
+Optimizing rotation center
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Reconstruction
+~~~~~~~~~~~~~~
 
 Visualize with ImageJ
-~~~~~~~~~~~~~~~~~~~~~
+---------------------
 
 Limitations in ImageJ
-_____________________
-
+~~~~~~~~~~~~~~~~~~~~~
 
 Scripting and batch processing
 ------------------------------
