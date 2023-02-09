@@ -201,6 +201,14 @@ Optimizing rotation center
 Reconstruction
 ~~~~~~~~~~~~~~
 
+Processing options
+------------------
+
+.. figure:: image_display_normalized_Y.png
+    :align: center
+
+    **image_display window showing the normalized projection in the Y direction (sinogram)**
+
 Visualize with ImageJ
 ---------------------
 
