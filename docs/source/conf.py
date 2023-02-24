@@ -34,7 +34,7 @@ pygments_style = 'sphinx'
 html_theme = 'sphinx_rtd_theme'
 
 html_static_path = ['_static']
-#html_style = 'css/my_theme.css'
+html_style = 'css/my_theme.css'
 html_last_updated_fmt = '%Y-%B-%d'
 html_show_sourcelink = True
 htmlhelp_basename = 'IDL_Tomography_doc'
