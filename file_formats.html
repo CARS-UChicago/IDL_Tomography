@@ -4,10 +4,11 @@
 <html class="writer-html5" lang="en" >
 <head>
   <meta charset="utf-8" />
-  
+  <meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Index &mdash; IDL Tomography Processing</title>
+  <title>File formats &mdash; IDL Tomography Processing</title>
   
 
   
@@ -38,8 +39,10 @@
     <script type="text/javascript" src="_static/js/theme.js"></script>
 
     
-    <link rel="index" title="Index" href="#" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="tomo_display Quick Start" href="tomo_display_quick_start.html" />
+    <link rel="prev" title="Installation" href="installation.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -84,10 +87,15 @@
               
             
             
-              <ul>
+              <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="file_formats.html">File formats</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">File formats</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#raw-data">Raw data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#preprocessed-normalized-data">Preprocessed (normalized) data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reconstructed-data">Reconstructed data</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">tomo_display Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="processing_options.html">Processing options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="imagej.html">Visualize with ImageJ</a></li>
@@ -141,11 +149,13 @@
     
       <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
         
-      <li>Index</li>
+      <li>File formats</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
+          
+            <a href="_sources/file_formats.rst.txt" rel="nofollow"> View page source</a>
           
         
       </li>
@@ -158,18 +168,53 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-
-<h1 id="index">Index</h1>
-
-<div class="genindex-jumpbox">
- 
-</div>
+  <section id="file-formats">
+<h1>File formats<a class="headerlink" href="#file-formats" title="Permalink to this heading">¶</a></h1>
+<section id="raw-data">
+<h2>Raw data<a class="headerlink" href="#raw-data" title="Permalink to this heading">¶</a></h2>
+<p>Beginning in July 2020 the raw data is stored in HDF5 files with the extension “.h5”.
+There is one HDF5 file per dataset, and it contains the flat field images and the projections.
+It also contains metadata including the positions of many motors on the beamline, the ring current,
+the tomography data collection parameters, the sample and optics information, and more.
+An ASCII text file with the extension “.config” contains the tomography data collection parameters,
+the sample and optics information, and more.</p>
+<p>From May 2014 to July 2020 the raw data is stored in netCDF files with the extension “.nc”.
+There are three netCDF files per dataset.  Two are the flat field images collected at
+the beginning and end of the scan, the third contains all of the projections.
+An ASCII text file with the extension “.setup” contains the metadata,
+including the sample information, x-ray energy, and pixel size.</p>
+</section>
+<section id="preprocessed-normalized-data">
+<h2>Preprocessed (normalized) data<a class="headerlink" href="#preprocessed-normalized-data" title="Permalink to this heading">¶</a></h2>
+<p>Beginning with the new version of <em>tomo_display</em> in January 2023 the
+preprocessed data generally not written to disk at all, it is kept in memory after preprocessing.
+This significantly improves the reconstruction speed.
+<em>tomo_display</em> can optionally save the preprocessed data either as a netCDF file whose
+name ends in “norm.nc” or an HDF5 file whose name ends in “norm.h5”.</p>
+<p>Prior to January 2023 preprocessed data was written to disk as netCDF files with a file name that ends in “.volume”.
+Prior to July 2020 these files were written by <em>tomo_display</em>, while from July 2020 to January 2023 they were written
+by a Python script called preprocess_13bm.py.</p>
+</section>
+<section id="reconstructed-data">
+<h2>Reconstructed data<a class="headerlink" href="#reconstructed-data" title="Permalink to this heading">¶</a></h2>
+<p>eginning with the new version of <em>tomo_display</em> in January 2023 tomo_display can store reconstructed files in either netCDF format with a file
+name that ends in “recon.nc”, or in HDF5 format with a file name that ends in “recon.h5”.  HDF5 is 2-3 times
+faster to write, and is generally recommended.  However, there are some limitations in reading HDF5 files into
+ImageJ which are discussed below.</p>
+<p>Prior to January 2023 the reconstructed files were stored in netCDF format with a file name that ends
+in “recon.volume”.</p>
+</section>
+</section>
 
 
            </div>
            
           </div>
           <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="tomo_display_quick_start.html" class="btn btn-neutral float-right" title="tomo_display Quick Start" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
 
   <hr/>
 

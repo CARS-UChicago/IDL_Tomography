@@ -4,10 +4,11 @@
 <html class="writer-html5" lang="en" >
 <head>
   <meta charset="utf-8" />
-  
+  <meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Index &mdash; IDL Tomography Processing</title>
+  <title>Overview &mdash; IDL Tomography Processing</title>
   
 
   
@@ -38,8 +39,10 @@
     <script type="text/javascript" src="_static/js/theme.js"></script>
 
     
-    <link rel="index" title="Index" href="#" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation" href="installation.html" />
+    <link rel="prev" title="GSECARS Tomography Software" href="index.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -84,8 +87,8 @@
               
             
             
-              <ul>
-<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
+              <ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="file_formats.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">tomo_display Quick Start</a></li>
@@ -141,11 +144,13 @@
     
       <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
         
-      <li>Index</li>
+      <li>Overview</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
+          
+            <a href="_sources/overview.rst.txt" rel="nofollow"> View page source</a>
           
         
       </li>
@@ -158,18 +163,43 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-
-<h1 id="index">Index</h1>
-
-<div class="genindex-jumpbox">
- 
-</div>
+  <section id="overview">
+<h1>Overview<a class="headerlink" href="#overview" title="Permalink to this heading">¶</a></h1>
+<p>This document describes how to install and use the software to reconstruct and
+visualize tomography data from the 13-BM-D beamline.
+This includes data collected both on the upstream tomography table, and that collected in the 250-ton press.</p>
+<p>The software consists of the following components:</p>
+<ul class="simple">
+<li><p>C++ library containing optimized code for preprocessing and reconstruction</p></li>
+<li><p><a href="#id1"><span class="problematic" id="id2">IDL_</span></a> class library called <code class="docutils literal notranslate"><span class="pre">tomo</span></code> that does the following:</p>
+<ul>
+<li><p>Read raw data files</p></li>
+<li><p>Preprocess using the C++ library</p></li>
+<li><p>Optimize rotation center</p></li>
+<li><p>Reconstruct using the C++ library</p></li>
+<li><p>Save reconstructed data</p></li>
+<li><p>Save and restore preprocessing and reconstruction parameters</p></li>
+</ul>
+</li>
+<li><p>IDL visualization class called <code class="docutils literal notranslate"><span class="pre">image_display</span></code> that can display 2-D and 3-D data</p></li>
+<li><p>IDL GUI program called <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code> that calls the <code class="docutils literal notranslate"><span class="pre">tomo</span></code> and <code class="docutils literal notranslate"><span class="pre">image_display</span></code> classes</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">tomo</span></code> and <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code> are provided in source code form in the <a href="#id3"><span class="problematic" id="id4">IDL_Tomography_</span></a> repository.
+That repository contains DLLs (Windows) and shareable libraries (Linux) to run
+the IDL software without compiling any code.  <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code> is also available as as an IDL .sav
+file, <a href="#id5"><span class="problematic" id="id6">tomo_display.sav_</span></a>, that can be run for free in the IDL Virtual Machine. <code class="docutils literal notranslate"><span class="pre">image_display</span></code> is available in a
+separate <a href="#id7"><span class="problematic" id="id8">IDL_imaging_</span></a> repository.</p>
+</section>
 
 
            </div>
            
           </div>
           <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="installation.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="index.html" class="btn btn-neutral float-left" title="GSECARS Tomography Software" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
 
   <hr/>
 
