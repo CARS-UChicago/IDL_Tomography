@@ -1,0 +1,26 @@
+Overview
+========
+
+This document describes how to install and use the software to reconstruct and 
+visualize tomography data from the 13-BM-D beamline.  
+This includes data collected both on the upstream tomography table, and that collected in the 250-ton press.
+
+The software consists of the following components:
+
+- C++ library containing optimized code for preprocessing and reconstruction
+- IDL_ class library called ``tomo`` that does the following:
+
+  - Read raw data files
+  - Preprocess using the C++ library
+  - Optimize rotation center
+  - Reconstruct using the C++ library
+  - Save reconstructed data
+  - Save and restore preprocessing and reconstruction parameters
+- IDL visualization class called ``image_display`` that can display 2-D and 3-D data
+- IDL GUI program called ``tomo_display`` that calls the ``tomo`` and ``image_display`` classes
+
+``tomo`` and ``tomo_display`` are provided in source code form in the IDL_Tomography_ repository. 
+That repository contains DLLs (Windows) and shareable libraries (Linux) to run
+the IDL software without compiling any code.  ``tomo_display`` is also available as as an IDL .sav
+file, tomo_display.sav_, that can be run for free in the IDL Virtual Machine. ``image_display`` is available in a
+separate IDL_imaging_ repository.
