@@ -1,3 +1,5 @@
+@import url("sphinx_xxx_theme.css");
+
 /* override table width restrictions */
 @media screen and (min-width: 767px) {
 
@@ -9,5 +11,9 @@
 
    .wy-table-responsive {
       overflow: visible !important;
+   }
+   
+   .wy-nav-content {
+     max-width: 1500px !important;
    }
 }
