@@ -1,92 +1,46 @@
-
-
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
-  <meta charset="utf-8" />
-  <meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
   <title>tomo_display Quick Start &mdash; IDL Tomography Processing</title>
-  
-
-  
-  <link rel="stylesheet" href="_static/css/my_theme.css" type="text/css" />
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="_static/css/my_theme.css" type="text/css" />
-
-  
-  
-
-  
-  
-
-  
-
-  
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/my_theme.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
         <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
         <script src="_static/doctools.js"></script>
         <script src="_static/sphinx_highlight.js"></script>
-    
-    <script type="text/javascript" src="_static/js/theme.js"></script>
-
-    
+    <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Processing options" href="processing_options.html" />
     <link rel="prev" title="File formats" href="file_formats.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
-
-   
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
-    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-          
 
           
-            <a href="index.html" class="icon icon-home"> IDL Tomography
           
-
-          
+          <a href="index.html" class="icon icon-home">
+            IDL Tomography
           </a>
-
-          
-            
-            
-          
-
-          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
@@ -114,73 +68,32 @@
 <li class="toctree-l1"><a class="reference internal" href="benchmarks.html">Benchmarks</a></li>
 </ul>
 
-            
-          
         </div>
-        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="index.html">IDL Tomography</a>
-        
       </nav>
 
-
       <div class="wy-nav-content">
-        
         <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
+          <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-    
-      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
-        
-      <li>tomo_display Quick Start</li>
-    
-    
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">tomo_display Quick Start</li>
       <li class="wy-breadcrumbs-aside">
-        
-          
             <a href="_sources/tomo_display_quick_start.rst.txt" rel="nofollow"> View page source</a>
-          
-        
       </li>
-    
   </ul>
-
-  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-            
+             
   <section id="tomo-display-quick-start">
-<h1>tomo_display Quick Start<a class="headerlink" href="#tomo-display-quick-start" title="Permalink to this heading">¶</a></h1>
+<h1>tomo_display Quick Start<a class="headerlink" href="#tomo-display-quick-start" title="Permalink to this heading"></a></h1>
 <p>If you are running the licensed version of IDL then start IDL and type the IDL command <em>tomo_display</em>.
 If you are running the IDL Virtual Machine on Windows then double-click on the tomo_display.sav file,
 or open the IDL Virtual Machine from the Windows Start menu and browse for the file.
@@ -189,34 +102,34 @@ On Linux type the command <code class="docutils literal notranslate"><span class
 <figure class="align-center" id="id1">
 <img alt="_images/tomo_display_start.png" src="_images/tomo_display_start.png" />
 <figcaption>
-<p><span class="caption-text"><strong>tomo_display window on startup</strong></span><a class="headerlink" href="#id1" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>tomo_display window on startup</strong></span><a class="headerlink" href="#id1" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <p>Note that all regions of the screen are disabled.</p>
 <section id="read-camera-file">
-<h2>Read camera file<a class="headerlink" href="#read-camera-file" title="Permalink to this heading">¶</a></h2>
+<h2>Read camera file<a class="headerlink" href="#read-camera-file" title="Permalink to this heading"></a></h2>
 <p>To begin process use the <strong>File/Read camera file</strong> menu to browse for a raw data file.  This can be a single .h5 for recent data,
 or any of the 3 .nc files for pre-2020 dataset.  After reading the file the screen will look like this:</p>
 <figure class="align-center" id="id2">
 <img alt="_images/tomo_display_after_read_camera.png" src="_images/tomo_display_after_read_camera.png" />
 <figcaption>
-<p><span class="caption-text"><strong>tomo_display window after reading a camera file</strong></span><a class="headerlink" href="#id2" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>tomo_display window after reading a camera file</strong></span><a class="headerlink" href="#id2" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <p>Note the the Preprocess, Visualize, and Movies screen regions are now enabled.</p>
 </section>
 <section id="visualizing-raw-data">
-<h2>Visualizing raw data<a class="headerlink" href="#visualizing-raw-data" title="Permalink to this heading">¶</a></h2>
+<h2>Visualizing raw data<a class="headerlink" href="#visualizing-raw-data" title="Permalink to this heading"></a></h2>
 <p>Pressing the <strong>Display slice</strong> button in the Visualize region opens an <strong>image_display</strong> window like this:</p>
 <figure class="align-center" id="id3">
 <img alt="_images/image_display_raw_Z.png" src="_images/image_display_raw_Z.png" />
 <figcaption>
-<p><span class="caption-text"><strong>image_display window showing the raw camera data in the Z direction (projection)</strong></span><a class="headerlink" href="#id3" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>image_display window showing the raw camera data in the Z direction (projection)</strong></span><a class="headerlink" href="#id3" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 </section>
 <section id="preprocessing">
-<h2>Preprocessing<a class="headerlink" href="#preprocessing" title="Permalink to this heading">¶</a></h2>
+<h2>Preprocessing<a class="headerlink" href="#preprocessing" title="Permalink to this heading"></a></h2>
 <p>Pressing the Preprocess button in the Preprocess region will perform preprocessing.  This consists of</p>
 <ul class="simple">
 <li><p>Subtracting the dark current from all flat fields and projections</p></li>
@@ -230,31 +143,31 @@ or any of the 3 .nc files for pre-2020 dataset.  After reading the file the scre
 <figure class="align-center" id="id4">
 <img alt="_images/tomo_display_after_preprocess.png" src="_images/tomo_display_after_preprocess.png" />
 <figcaption>
-<p><span class="caption-text"><strong>tomo_display window after preprocessing</strong></span><a class="headerlink" href="#id4" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>tomo_display window after preprocessing</strong></span><a class="headerlink" href="#id4" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 </section>
 <section id="visualizing-normalized-data">
-<h2>Visualizing normalized data<a class="headerlink" href="#visualizing-normalized-data" title="Permalink to this heading">¶</a></h2>
+<h2>Visualizing normalized data<a class="headerlink" href="#visualizing-normalized-data" title="Permalink to this heading"></a></h2>
 <p>Pressing the <strong>Display slice</strong> button in the Visualize region with Direction=Z opens an <strong>image_display</strong> window like this:</p>
 <figure class="align-center" id="id5">
 <img alt="_images/image_display_normalized_Z.png" src="_images/image_display_normalized_Z.png" />
 <figcaption>
-<p><span class="caption-text"><strong>image_display window showing the normalized projection in the Z direction (projection)</strong></span><a class="headerlink" href="#id5" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>image_display window showing the normalized projection in the Z direction (projection)</strong></span><a class="headerlink" href="#id5" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <p>Pressing the <strong>Display slice</strong> button in the Visualize region with Direction=Y opens an <strong>image_display</strong> window like this:</p>
 <figure class="align-center" id="id6">
 <img alt="_images/image_display_normalized_Y.png" src="_images/image_display_normalized_Y.png" />
 <figcaption>
-<p><span class="caption-text"><strong>image_display window showing the normalized projection in the Y direction (sinogram)</strong></span><a class="headerlink" href="#id6" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>image_display window showing the normalized projection in the Y direction (sinogram)</strong></span><a class="headerlink" href="#id6" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 </section>
 <section id="optimizing-rotation-center">
-<h2>Optimizing rotation center<a class="headerlink" href="#optimizing-rotation-center" title="Permalink to this heading">¶</a></h2>
+<h2>Optimizing rotation center<a class="headerlink" href="#optimizing-rotation-center" title="Permalink to this heading"></a></h2>
 <section id="selecting-optimization-method">
-<h3>Selecting optimization method<a class="headerlink" href="#selecting-optimization-method" title="Permalink to this heading">¶</a></h3>
+<h3>Selecting optimization method<a class="headerlink" href="#selecting-optimization-method" title="Permalink to this heading"></a></h3>
 <p>There are two methods available for optimizing the rotation center, “Entropy” and “0-180”.</p>
 <p>Entropy reconstructs the slices with different rotation centers using the user-specified range and step size.
 It computes the image entropy for each center, and selects the optimum center as the one with the lowest entropy.
@@ -270,7 +183,7 @@ in 1 pixel increments over the user-specified range and step, and determines at 
 of view.</p>
 </section>
 <section id="selecting-slices-for-optimization">
-<h3>Selecting slices for optimization<a class="headerlink" href="#selecting-slices-for-optimization" title="Permalink to this heading">¶</a></h3>
+<h3>Selecting slices for optimization<a class="headerlink" href="#selecting-slices-for-optimization" title="Permalink to this heading"></a></h3>
 <p>The optimization is done for two slices, one near the top of the dataset and one near the bottom.
 By default these slices are 10% down from the top and 10% up from the bottom.  The user
 may need to adjust these slice numbers to select slices that are in the sample, and not in the
@@ -279,7 +192,7 @@ selected by using <strong>Display slice</strong> in the Z direction, moving the 
 value in the desired slices.</p>
 </section>
 <section id="selecting-center-range-and-step-for-optimization">
-<h3>Selecting center, range and step for optimization<a class="headerlink" href="#selecting-center-range-and-step-for-optimization" title="Permalink to this heading">¶</a></h3>
+<h3>Selecting center, range and step for optimization<a class="headerlink" href="#selecting-center-range-and-step-for-optimization" title="Permalink to this heading"></a></h3>
 <p>The <strong>Rotation center</strong> field selects the center of the range to be used in the optimization.
 The <strong>Optimize range</strong> field selects the full range of the optimization, i.e. the optimization range is from center-range/2 to
 center+range/2.
@@ -289,7 +202,7 @@ rotation centers to less than 0.25 pixels.
 The 0-180 method has a minimum useful step size of 0.5 pixels, because the shifts are limited to integer pixel increments.</p>
 </section>
 <section id="manual-optimization">
-<h3>Manual optimization<a class="headerlink" href="#manual-optimization" title="Permalink to this heading">¶</a></h3>
+<h3>Manual optimization<a class="headerlink" href="#manual-optimization" title="Permalink to this heading"></a></h3>
 <p>If neither neither the entropy or 0-180 methods produce satisfactory results, it is possible to manually optimize
 the center.  For both the upper and lower slices manually change the <strong>Rotation center</strong> for that slice and press
 <strong>Reconstruct slice</strong>.  Determine which rotation center gives a reconstruction with the fewest artifacts.  Slices
@@ -297,7 +210,7 @@ with small highly absorbing objects are ideal for this, since they show “cresc
 is wrong.  The centers in the upper and lower slices should be very similar.</p>
 </section>
 <section id="correcting-rotation-tilt">
-<h3>Correcting rotation tilt<a class="headerlink" href="#correcting-rotation-tilt" title="Permalink to this heading">¶</a></h3>
+<h3>Correcting rotation tilt<a class="headerlink" href="#correcting-rotation-tilt" title="Permalink to this heading"></a></h3>
 <p>The reason for using slices near the top and bottom is to judge whether the rotation axis is correctly aligned
 to be parallel to the columns in the camera.  If it is then the center will be the same at the top and bottom.
 If it is not, and the error is significant (e.g. 1 pixel or more) there are two ways to fix the problem.
@@ -306,13 +219,13 @@ and hence make the rotation center be the same on the top and bottom.
 The second method is to adjust the mechanical alignment of the system for future datasets.</p>
 </section>
 <section id="optimization-plots">
-<h3>Optimization plots<a class="headerlink" href="#optimization-plots" title="Permalink to this heading">¶</a></h3>
+<h3>Optimization plots<a class="headerlink" href="#optimization-plots" title="Permalink to this heading"></a></h3>
 <p>This is the plot produced when optimizing with the 0-180 method, using center=960, range=10, step=0.5
 It found the optimum center of 961.5 for the upper slice (120) and 961.0 for the lower slice (1080).</p>
 <figure class="align-center" id="id7">
 <img alt="_images/0-180_optimization.png" src="_images/0-180_optimization.png" />
 <figcaption>
-<p><span class="caption-text"><strong>0-180 optimization plot</strong></span><a class="headerlink" href="#id7" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>0-180 optimization plot</strong></span><a class="headerlink" href="#id7" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <p>This is the plot produced when optimizing with the entropy method, using center=960, range=10, step=0.25
@@ -321,13 +234,13 @@ These values are within 0.25 pixels of those found with the 0-180 method.</p>
 <figure class="align-center" id="id8">
 <img alt="_images/entropy_optimization.png" src="_images/entropy_optimization.png" />
 <figcaption>
-<p><span class="caption-text"><strong>Entropy optimization plot</strong></span><a class="headerlink" href="#id8" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>Entropy optimization plot</strong></span><a class="headerlink" href="#id8" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 </section>
 </section>
 <section id="reconstruction">
-<h2>Reconstruction<a class="headerlink" href="#reconstruction" title="Permalink to this heading">¶</a></h2>
+<h2>Reconstruction<a class="headerlink" href="#reconstruction" title="Permalink to this heading"></a></h2>
 <p>Once the optimum rotation center is found, use the <strong>Reconstruct all</strong> button to reconstruct all of the slices.
 The output data type can be signed 16-bit integer (Int16), unsigned 16-bit integer (UInt16), or 32-bit floating point (Float32).
 Normally <strong>Save result</strong> is set to Yes, so that the reconstruction is written to a file.
@@ -340,7 +253,7 @@ and <strong>Reconstruct</strong> regions are disabled.</p>
 <figure class="align-center" id="id9">
 <img alt="_images/tomo_display_after_reconstruction.png" src="_images/tomo_display_after_reconstruction.png" />
 <figcaption>
-<p><span class="caption-text"><strong>tomo_display window after reconstruction</strong></span><a class="headerlink" href="#id9" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>tomo_display window after reconstruction</strong></span><a class="headerlink" href="#id9" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <p>The <strong>Actual intensity range</strong> shows the min and max values of the reconstructed data.  The “Display intensity range”
@@ -350,7 +263,7 @@ min and max values can be set to control the displayed contrast when <strong>Man
 <figure class="align-center" id="id10">
 <img alt="_images/image_display_reconstructed_Z.png" src="_images/image_display_reconstructed_Z.png" />
 <figcaption>
-<p><span class="caption-text"><strong>image_display window showing the center reconstructed slice in the Z (vertical) direction</strong></span><a class="headerlink" href="#id10" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>image_display window showing the center reconstructed slice in the Z (vertical) direction</strong></span><a class="headerlink" href="#id10" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <p>Pressing the <strong>Display slice</strong> button in the Visualize region with Direction=Y displays a vertical slice parallel to the X-ray beam
@@ -358,7 +271,7 @@ in an <strong>image_display</strong> window like this.</p>
 <figure class="align-center" id="id11">
 <img alt="_images/image_display_reconstructed_Y.png" src="_images/image_display_reconstructed_Y.png" />
 <figcaption>
-<p><span class="caption-text"><strong>image_display window showing the center reconstructed slice in the Y direction</strong></span><a class="headerlink" href="#id11" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>image_display window showing the center reconstructed slice in the Y direction</strong></span><a class="headerlink" href="#id11" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <p>Pressing the <strong>Display slice</strong> button in the Visualize region with Direction=X displays a vertical slice perpendicular to the X-ray beam
@@ -366,7 +279,7 @@ in an <strong>image_display</strong> window like this.</p>
 <figure class="align-center" id="id12">
 <img alt="_images/image_display_reconstructed_X.png" src="_images/image_display_reconstructed_X.png" />
 <figcaption>
-<p><span class="caption-text"><strong>image_display window showing the center reconstructed slice in the X direction</strong></span><a class="headerlink" href="#id12" title="Permalink to this image">¶</a></p>
+<p><span class="caption-text"><strong>image_display window showing the center reconstructed slice in the X direction</strong></span><a class="headerlink" href="#id12" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 </section>
@@ -374,53 +287,35 @@ in an <strong>image_display</strong> window like this.</p>
 
 
            </div>
-           
           </div>
-          <footer>
-    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
-        <a href="processing_options.html" class="btn btn-neutral float-right" title="Processing options" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="file_formats.html" class="btn btn-neutral float-left" title="File formats" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="processing_options.html" class="btn btn-neutral float-right" title="Processing options" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>
-        &#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">
-        Last updated on 2023-February-24.
-      </span>
-
-    </p>
+    <p>&#169; Copyright 2023, Mark Rivers.
+      <span class="lastupdated">Last updated on 2023-March-01.
+      </span></p>
   </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
 
 </footer>
         </div>
       </div>
-
     </section>
-
   </div>
-  
-
-  <script type="text/javascript">
+  <script>
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-
-  
-  
-    
-   
+  </script> 
 
 </body>
 </html>
