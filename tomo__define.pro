@@ -1460,7 +1460,7 @@ pro tomo::write_sample_config
   (*self.pSampleConfig)['LowerSlice'] = self.lowerSlice
   openw, lun, /get_lun, self.baseFilename + '.config'
   printf, lun, /implied_print, *self.pSampleConfig
-  close, lun
+  free_lun, lun
 end
 
 pro tomo::read_sample_config, file
@@ -1649,7 +1649,7 @@ pro tomo::save_settings, file
   settings = self->get_settings()
   openw, lun, /get_lun, file
   printf, lun, /implied_print, settings
-  close, lun
+  free_lun, lun
 end
 
 pro tomo::restore_settings, file
