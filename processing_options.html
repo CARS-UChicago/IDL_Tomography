@@ -223,23 +223,23 @@ slice reconstructions, and not when using tomoRecon.</p>
 <h3>Reconstruction method<a class="headerlink" href="#reconstruction-method" title="Permalink to this heading"></a></h3>
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 20%" />
-<col style="width: 80%" />
+<col style="width: 10%" />
+<col style="width: 90%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p>tomoRecon</p></td>
+<tr class="row-odd"><td><p><strong>tomoRecon</strong></p></td>
 <td><p>This uses the Gridrec algorithm running with multiple threads.
 Each thread performs the sinogram calculation, air normalization,
 ring artifact reduction, and reconstruction for two slices at a time.
 It is by far the fastest method, and is the default.</p></td>
 </tr>
-<tr class="row-even"><td><p>Gridrec</p></td>
+<tr class="row-even"><td><p><strong>Gridrec</strong></p></td>
 <td><p>This performs the sinogram calculation, air normalization, and ring artifact reduction in IDL.
 The Gridrec reconstruction is done using the Gridrec algorithm in C code in a single thread.
 It has the advantage of being able to examine the sinogram and center-of-gravity for diagnostics.
 It is slower than tomoRecon but faster than Backproject.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Backproject</p></td>
+<tr class="row-odd"><td><p><strong>Backproject</strong></p></td>
 <td><p>This performs the sinogram calculation, air normalization, and ring artifact reduction in IDL.
 Reconstruction is done using the IDL <cite>radon()</cite> function.
 It has the advantage of being able to examine the sinogram and center-of-gravity for diagnostics.
@@ -290,19 +290,19 @@ new features because of this.</p>
 <col style="width: 80%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p>Filter size</p></td>
+<tr class="row-odd"><td><p><strong>Filter size</strong></p></td>
 <td><p>The number of pixels in the filter used before backprojection.</p></td>
 </tr>
-<tr class="row-even"><td><p>Filter type</p></td>
+<tr class="row-even"><td><p><strong>Filter type</strong></p></td>
 <td><p>The type of filter to use.  Choices are Gen_Hamming, Shepp_Logan, LP_Cosine, Ramlak, and None.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Backprojection method</p></td>
+<tr class="row-odd"><td><p><strong>Backprojection method</strong></p></td>
 <td><p>Choices are Riemann and Radon.</p></td>
 </tr>
-<tr class="row-even"><td><p>Riemann interpolation</p></td>
+<tr class="row-even"><td><p><strong>Riemann interpolation</strong></p></td>
 <td><p>The intepolation method to use with Riemann backprojection.  Choices are None, Bilinear, and Cubic.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Radmon interpolation</p></td>
+<tr class="row-odd"><td><p><strong>Radon interpolation</strong></p></td>
 <td><p>The intepolation method to use with Radon backprojection.  Choices are None and Linear.</p></td>
 </tr>
 </tbody>
@@ -317,18 +317,18 @@ new features because of this.</p>
 <col style="width: 80%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p>Filter</p></td>
+<tr class="row-odd"><td><p><strong>Filter</strong></p></td>
 <td><p>The filter to use with reconstruction.  Choices are Shepp-Logan, Hann, Hamming, and Ramlak.</p></td>
 </tr>
-<tr class="row-even"><td><p>Sample parameter</p></td>
+<tr class="row-even"><td><p><strong>Sample parameter</strong></p></td>
 <td><p>The sample parameter in the Gridrec algorithm.  We need an explanation of what this does.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Padded sinogram width</p></td>
+<tr class="row-odd"><td><p><strong>Padded sinogram width</strong></p></td>
 <td><p>The width to which to pad the sinogram.  Choices are Auto, No Padding, 1024, 2048, and 4096.
-Auto selects the next power of 2 that is &amp;ge; to the width of the projections.
+Auto selects the next power of 2 that is &gt;= the width of the projections.
 Reconstructions are more accurate with larger padding, as the expense of computing time.</p></td>
 </tr>
-<tr class="row-even"><td><p>Pixel to average for padding</p></td>
+<tr class="row-even"><td><p><strong>Pixel to average for padding</strong></p></td>
 <td><p>When the sinogram is padded this selects the number of pixels from the right and left edges to average
 when computing the padding value.  0 selects a padding value of 0.</p></td>
 </tr>
@@ -344,12 +344,12 @@ when computing the padding value.  0 selects a padding value of 0.</p></td>
 <col style="width: 80%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p>Number of threads</p></td>
+<tr class="row-odd"><td><p><strong>Number of threads</strong></p></td>
 <td><p>This is the number of threads to use for the C++ reconstruction.
 It is reasonable to use the number cores in the processing machine.
 A smaller number could be used if other compute-intensive tasks are to run at the same time.</p></td>
 </tr>
-<tr class="row-even"><td><p>Slices per chunk</p></td>
+<tr class="row-even"><td><p><strong>Slices per chunk</strong></p></td>
 <td><p>The reconstruction can be done in chunks to reduce the amount of memory required.
 This is the number of slices in each chunk.  <em>Not currently implemented.</em></p></td>
 </tr>
