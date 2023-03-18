@@ -46,6 +46,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">tomo_display Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="processing_options.html">Processing options</a></li>
+<li class="toctree-l1"><a class="reference internal" href="image_display.html">Visualize with image_display</a></li>
 <li class="toctree-l1"><a class="reference internal" href="imagej.html">Visualize with ImageJ</a></li>
 <li class="toctree-l1"><a class="reference internal" href="scripting.html">Scripting and batch processing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="benchmarks.html">Benchmarks</a></li>
@@ -83,7 +84,7 @@ This includes data collected both on the upstream tomography table, and that col
 <p>The software consists of the following components:</p>
 <ul class="simple">
 <li><p>C++ library containing optimized code for preprocessing and reconstruction</p></li>
-<li><p><a href="#id1"><span class="problematic" id="id2">IDL_</span></a> class library called <code class="docutils literal notranslate"><span class="pre">tomo</span></code> that does the following:</p>
+<li><p><a class="reference external" href="https://www.l3harrisgeospatial.com/Software-Technology/IDL">IDL</a> class library called <code class="docutils literal notranslate"><span class="pre">tomo</span></code> that does the following:</p>
 <ul>
 <li><p>Read raw data files</p></li>
 <li><p>Preprocess using the C++ library</p></li>
@@ -96,11 +97,11 @@ This includes data collected both on the upstream tomography table, and that col
 <li><p>IDL visualization class called <code class="docutils literal notranslate"><span class="pre">image_display</span></code> that can display 2-D and 3-D data</p></li>
 <li><p>IDL GUI program called <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code> that calls the <code class="docutils literal notranslate"><span class="pre">tomo</span></code> and <code class="docutils literal notranslate"><span class="pre">image_display</span></code> classes</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">tomo</span></code> and <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code> are provided in source code form in the <a href="#id3"><span class="problematic" id="id4">IDL_Tomography_</span></a> repository.
+<p><code class="docutils literal notranslate"><span class="pre">tomo</span></code> and <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code> are provided in source code form in the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Tomography</a> repository.
 That repository contains DLLs (Windows) and shareable libraries (Linux) to run
 the IDL software without compiling any code.  <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code> is also available as as an IDL .sav
-file, <a href="#id5"><span class="problematic" id="id6">tomo_display.sav_</span></a>, that can be run for free in the IDL Virtual Machine. <code class="docutils literal notranslate"><span class="pre">image_display</span></code> is available in a
-separate <a href="#id7"><span class="problematic" id="id8">IDL_imaging_</span></a> repository.</p>
+file, <a class="reference external" href="https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.sav">tomo_display.sav</a>, that can be run for free in the IDL Virtual Machine. <code class="docutils literal notranslate"><span class="pre">image_display</span></code> is available in a
+separate <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_imaging</a> repository.</p>
 </section>
 
 
@@ -115,7 +116,7 @@ separate <a href="#id7"><span class="problematic" id="id8">IDL_imaging_</span></
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-March-16.
+      <span class="lastupdated">Last updated on 2023-March-18.
       </span></p>
   </div>
 

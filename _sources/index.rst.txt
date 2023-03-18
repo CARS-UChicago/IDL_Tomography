@@ -1,9 +1,3 @@
-.. _IDL_Tomography:      https://github.com/CARS-UChicago/IDL_tomography
-.. _IDL_Imaging:         https://github.com/CARS-UChicago/IDL_tomography
-.. _tomo_display.sav:    https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.sav
-.. _IDL:                 https://www.l3harrisgeospatial.com/Software-Technology/IDL
-.. _IDL_Register:        https://www.l3harrisgeospatial.com/Company/Create-Account?returnurl=https%3a%2f%2fwww.l3harrisgeospatial.com%2fSoftware-Technology%2fIDL
-
 GSECARS Tomography Software
 ===========================
 
@@ -22,6 +16,7 @@ Table of Contents
   file_formats
   tomo_display_quick_start
   processing_options
+  image_display
   imagej
   scripting
   benchmarks

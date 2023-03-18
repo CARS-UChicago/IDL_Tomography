@@ -1,3 +1,9 @@
+.. _IDL_Tomography:      https://github.com/CARS-UChicago/IDL_tomography
+.. _IDL_Imaging:         https://github.com/CARS-UChicago/IDL_tomography
+.. _IDL:                 https://www.l3harrisgeospatial.com/Software-Technology/IDL
+.. _tomo_display.sav:    https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.sav
+.. _IDL_Register:        https://www.l3harrisgeospatial.com/Company/Create-Account?returnurl=https%3a%2f%2fwww.l3harrisgeospatial.com%2fSoftware-Technology%2fIDL
+
 Installation
 ============
 The following instructions are for installation for sites who have an IDL license which will use the full version of IDL

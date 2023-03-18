@@ -50,6 +50,7 @@
 <li class="toctree-l1"><a class="reference internal" href="file_formats.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">tomo_display Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="processing_options.html">Processing options</a></li>
+<li class="toctree-l1"><a class="reference internal" href="image_display.html">Visualize with image_display</a></li>
 <li class="toctree-l1"><a class="reference internal" href="imagej.html">Visualize with ImageJ</a></li>
 <li class="toctree-l1"><a class="reference internal" href="scripting.html">Scripting and batch processing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="benchmarks.html">Benchmarks</a></li>
@@ -88,7 +89,7 @@ A computer with at least 32 GB of RAM, at least 8 cores, and a fast solid-state 
 is recommended.</p>
 <section id="install-idl">
 <h2>Install IDL<a class="headerlink" href="#install-idl" title="Permalink to this heading"></a></h2>
-<p>All sites must install <a href="#id1"><span class="problematic" id="id2">IDL_</span></a>, whether they will use the licensed version or the Virtual Machine.
+<p>All sites must install <a class="reference external" href="https://www.l3harrisgeospatial.com/Software-Technology/IDL">IDL</a>, whether they will use the licensed version or the Virtual Machine.
 You should <a class="reference external" href="https://www.l3harrisgeospatial.com/Company/Create-Account?returnurl=https%3a%2f%2fwww.l3harrisgeospatial.com%2fSoftware-Technology%2fIDL">register on the Harris site</a>
 and then you can download the software and follow the installation
 instructions. If you want to get started immediately with the IDL Virtual Machine you can
@@ -100,11 +101,11 @@ but please also register with Harris.</p>
 <ul class="simple">
 <li><p>Create a directory that will contain the IDL tomography routines. This might be C:GSECARS_tomography on Windows
 or /home/youraccount/GSECARS_tomography on Linux.</p></li>
-<li><p>Clone the <a href="#id3"><span class="problematic" id="id4">IDL_Tomography_</span></a> and <a href="#id5"><span class="problematic" id="id6">IDL_Imaging_</span></a> repositories into that directory. This must be done even if you
+<li><p>Clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Tomography</a> and <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repositories into that directory. This must be done even if you
 are using the IDL Virtual Machine because that repository contains the required DLLs for Windows and shareable
 libraries for Linux.</p></li>
-<li><p>If you are running the licensed version of IDL clone the <a href="#id7"><span class="problematic" id="id8">IDL_Imaging_</span></a> repository into the same directory.</p></li>
-<li><p>If you are running the IDL Virtual Machine download <a href="#id9"><span class="problematic" id="id10">tomo_display.sav_</span></a> to a folder like C:GSECARS_tomography.</p></li>
+<li><p>If you are running the licensed version of IDL clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repository into the same directory.</p></li>
+<li><p>If you are running the IDL Virtual Machine download <a class="reference external" href="https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.sav">tomo_display.sav</a> to a folder like C:GSECARS_tomography.</p></li>
 <li><p>If you are using the licensed version of IDL you need to add the directory you created to the IDL_PATH.
 In the IDLDE use Window/Preferences/IDL/Paths to add that directory to the IDL Path, and check the box
 to also search subdirectories.
@@ -140,7 +141,7 @@ Example: <code class="docutils literal notranslate"><span class="pre">set</span>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-March-16.
+      <span class="lastupdated">Last updated on 2023-March-18.
       </span></p>
   </div>
 

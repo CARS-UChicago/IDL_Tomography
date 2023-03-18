@@ -17,7 +17,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Visualize with ImageJ" href="imagej.html" />
+    <link rel="next" title="Visualize with image_display" href="image_display.html" />
     <link rel="prev" title="tomo_display Quick Start" href="tomo_display_quick_start.html" /> 
 </head>
 
@@ -45,7 +45,33 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="file_formats.html">File formats</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">tomo_display Quick Start</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Processing options</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Processing options</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#preprocessing-options">Preprocessing options</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#zinger-removal">Zinger removal</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#dark-current">Dark current</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scale-factor">Scale factor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#number-of-threads">Number of threads</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#sinogram-options">Sinogram options</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#air-pixels">Air pixels</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#data-type">Data type</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#display-sinogram">Display sinogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#plot-center-of-gravity">Plot center-of-gravity</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#reconstruction-options">Reconstruction options</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#reconstruction-method">Reconstruction method</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1">Scale factor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ring-smoothing-width">Ring smoothing width</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#backproject">Backproject</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#gridrec-tomorecon">Gridrec/tomoRecon</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#tomorecon">tomoRecon</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="image_display.html">Visualize with image_display</a></li>
 <li class="toctree-l1"><a class="reference internal" href="imagej.html">Visualize with ImageJ</a></li>
 <li class="toctree-l1"><a class="reference internal" href="scripting.html">Scripting and batch processing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="benchmarks.html">Benchmarks</a></li>
@@ -77,6 +103,267 @@
              
   <section id="processing-options">
 <h1>Processing options<a class="headerlink" href="#processing-options" title="Permalink to this heading"></a></h1>
+<p>There are a number of options available to control the preprocessing, sinogram, and reconstruction steps.
+These can be controlled with the Processing Options screen, which is opened with <em>Options/Processing options …</em>
+in the main tomo_display screen.</p>
+<figure class="align-center" id="id2">
+<img alt="_images/processing_options.png" src="_images/processing_options.png" />
+<figcaption>
+<p><span class="caption-text"><strong>Processing options screen</strong></span><a class="headerlink" href="#id2" title="Permalink to this image"></a></p>
+</figcaption>
+</figure>
+<section id="preprocessing-options">
+<h2>Preprocessing options<a class="headerlink" href="#preprocessing-options" title="Permalink to this heading"></a></h2>
+<section id="zinger-removal">
+<h3>Zinger removal<a class="headerlink" href="#zinger-removal" title="Permalink to this heading"></a></h3>
+<p>Zingers are anomalously bright pixels, typically caused by an X-ray directly striking the camera sensor.
+If they are not removed they will cause single-pixel line artifacts across the image during reconstruction.
+Zinger removal uses a median-filter algorithm for normal projections, and a double-correlation algorithm for the flat fields.
+The median filter algorithm has two adjustable parameters:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 80%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><strong>Zinger width</strong></p></td>
+<td><p>This controls the width and height of the median filter window in pixels.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Zinger threshold</strong></p></td>
+<td><p>This is the fractional amount larger than the median value at which a pixel is flagged as a zinger.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The median filter algorithm does the following:</p>
+<ul class="simple">
+<li><p>Computes the median value in a window of size [<strong>Zinger width</strong>, <strong>Zinger width</strong>], starting at pixel [0, 0].</p></li>
+<li><p>Computes the ratio of each pixel value in the window to the median value.</p></li>
+<li><p>If the ratio is greater than 1 + <strong>Zinger threshold</strong> then the pixel value is replaced by the median value.</p></li>
+<li><p>The window is translated horizontally by <strong>Zinger width</strong> across each row until all columns in that row have been filtered.</p></li>
+<li><p>The window is translated vertically by <strong>Zinger width</strong> until all rows have been filtered.</p></li>
+<li><p>The process is much faster than doing a normal median filter on the entire image.
+This is because a normal median filter computes the median centered on every pixel in the image, or NX * NY times, where
+NX and NY are the number of X and Y pixels in the image. The above algorithm only computes the median
+(NX * NY)/(<strong>Zinger width</strong> * <strong>Zinger width</strong>) times.  This is 9 times fewer median calculations if <strong>Zinger width</strong> is 3.</p></li>
+</ul>
+<p>The median filter calculation is done in the multithreaded C++ preprocessing code that also does
+dark current and flat field correction.</p>
+<p>The double correlation algorithm used for flat fields does the following:</p>
+<ul class="simple">
+<li><p>Computes the ratio of flat field N and flat field N+1, i.e. N/(N+1)</p></li>
+<li><p>Computes the median value of the ratio</p></li>
+<li><p>Divides the ratio by the median value, so the ratio will have an average value near 1.</p></li>
+<li><p>All pixels in the ratio with values greater than 1 + <strong>Zinger threshold</strong> are identified as zingers in flat field N.</p></li>
+<li><p>All pixels in the ratio with values less than 1 - <strong>Zinger threshold</strong> are identified as zingers in flat field N+1.</p></li>
+<li><p>The zinger values are replaced by the value of that pixel in the other flat field, scaled by the median ratio.</p></li>
+</ul>
+<p>The double-correlation calculation is done in IDL, which is fast enough for the limited number of flat fields.</p>
+</section>
+<section id="dark-current">
+<h3>Dark current<a class="headerlink" href="#dark-current" title="Permalink to this heading"></a></h3>
+<p>This value is currently read-only.  It is read from the .h5 or .setup files and displayed in this screen for information.
+The option to allow changing the value in this screen could be added in the future if needed.</p>
+</section>
+<section id="scale-factor">
+<h3>Scale factor<a class="headerlink" href="#scale-factor" title="Permalink to this heading"></a></h3>
+<p>During the preprocessing each projection is divided by the average of the flat fields.  This produces a normalized image
+whose intensity if approximately in the range of 0.0 to 1.0.  If one wants to have the option to save the preprocessed
+data as an unsigned 16-bit integer then it needs to first be scaled by a scale factor.
+10000 is the default scale factor, which will produce normalized values in the approximate range of 0 to 10000.
+This is more than enough precision for the tomography cameras, which are typically 12-bits.
+A scale factor of 16000 would handle 16-bit cameras with little danger of overflow (&gt;32K),
+which would only happen if some pixels were more than 2.0 times brighter than the flat field.</p>
+</section>
+<section id="number-of-threads">
+<h3>Number of threads<a class="headerlink" href="#number-of-threads" title="Permalink to this heading"></a></h3>
+<p>This is the number of threads to use for the C++ preprocessing.  It is reasonable to use the number cores in the processing
+machine.  A smaller number could be used if other compute-intensive tasks are to run at the same time.</p>
+</section>
+</section>
+<section id="sinogram-options">
+<h2>Sinogram options<a class="headerlink" href="#sinogram-options" title="Permalink to this heading"></a></h2>
+<section id="air-pixels">
+<h3>Air pixels<a class="headerlink" href="#air-pixels" title="Permalink to this heading"></a></h3>
+<p>The preprocessing does a first stage of normalization by dividing each projection by the average of the flat fields.
+If <strong>Air pixels</strong> is greater than 0 then it does the following secondary stage of normalization for each row in the sinogram:</p>
+<ul class="simple">
+<li><p>Averages the first <strong>Air pixels</strong> on the left edge of the row and on the right edge of the row.</p></li>
+<li><p>Draws a straight line between the left and right average air values.</p></li>
+<li><p>That line is defined as the actual flat field value, and each pixel is renormalized to the value in that line.</p></li>
+<li><p>This secondary correction can correct for changes in the overall beam intensity, for example due to drops in storage ring
+beam current during the measurement.</p></li>
+<li><p>It can also correct for changes due to drift in the mirror or monochromator optics, providing that the changes are uniform
+in the horizontal direction.  That is often the case for mirror and monochromator drifts.</p></li>
+</ul>
+<p>If <strong>Air pixels</strong> is 0 then there is no secondary normalization.</p>
+</section>
+<section id="data-type">
+<h3>Data type<a class="headerlink" href="#data-type" title="Permalink to this heading"></a></h3>
+<p>The choices are Absorption and Fluorescence.  For Absorption data the logarithm of the normalized data must be
+computed before reconstruction. For Fluorscence data the logarithm operation is not performed.</p>
+</section>
+<section id="display-sinogram">
+<h3>Display sinogram<a class="headerlink" href="#display-sinogram" title="Permalink to this heading"></a></h3>
+<p>Selecting this option will display the sinogram after the logarithm is performed.  This option should only be used when
+reconstructing single slices, and it can only be used if the reconstruction method is Gridrec or Backproject.  With
+tomoRecon the sinogram is computed in C++, and IDL does not have access to the sinogram.</p>
+<p>[Need to put image here once Gridrec and Backproject are working again]</p>
+</section>
+<section id="plot-center-of-gravity">
+<h3>Plot center-of-gravity<a class="headerlink" href="#plot-center-of-gravity" title="Permalink to this heading"></a></h3>
+<p>Selecting this option will plot the center of gravity of the each row of the sinogram as a function of angle.  This can be
+useful for seeing artifacts like sample motion.  It has the same restrictions as displaying the sinogram, i.e. only for single
+slice reconstructions, and not when using tomoRecon.</p>
+<p>[Need to put image here once Gridrec and Backproject are working again]</p>
+</section>
+</section>
+<section id="reconstruction-options">
+<h2>Reconstruction options<a class="headerlink" href="#reconstruction-options" title="Permalink to this heading"></a></h2>
+<section id="reconstruction-method">
+<h3>Reconstruction method<a class="headerlink" href="#reconstruction-method" title="Permalink to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 80%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>tomoRecon</p></td>
+<td><p>This uses the Gridrec algorithm running with multiple threads.
+Each thread performs the sinogram calculation, air normalization,
+ring artifact reduction, and reconstruction for two slices at a time.
+It is by far the fastest method, and is the default.</p></td>
+</tr>
+<tr class="row-even"><td><p>Gridrec</p></td>
+<td><p>This performs the sinogram calculation, air normalization, and ring artifact reduction in IDL.
+The Gridrec reconstruction is done using the Gridrec algorithm in C code in a single thread.
+It has the advantage of being able to examine the sinogram and center-of-gravity for diagnostics.
+It is slower than tomoRecon but faster than Backproject.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Backproject</p></td>
+<td><p>This performs the sinogram calculation, air normalization, and ring artifact reduction in IDL.
+Reconstruction is done using the IDL <cite>radon()</cite> function.
+It has the advantage of being able to examine the sinogram and center-of-gravity for diagnostics.
+It is the slowest method.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="id1">
+<h3>Scale factor<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h3>
+<p>The data from the tomography reconstruction is the linear X-ray attenuation coefficient in units of inverse pixel size.
+They represent the fraction of X-rays absorbed as the beam traverses that single pixel.
+Since the beam is typically absorbed by 10% to 90% as it traverses ~2K pixels, the absorption in each pixel is quite small,
+typically in the range of .0001 to .01.
+If it is desired to save the reconstructed values as signed or unsigned 16-bit integers, rather than floating point
+values, it is necessary to scale the reconstruction values by a <strong>Scale factor</strong>.</p>
+<p>The default scale factor is 1,000,000 (10^6), which will convert a typical voxel value of .001 to 1000.
+1000 can be converted to a 16-bit integer with no significant loss of information, because the noise is always larger than 10^-6.</p>
+<p>The scale factor can be set to 1 for no scaling.  The reconstructed data would then need to be saved as 32-bit float.</p>
+</section>
+<section id="ring-smoothing-width">
+<h3>Ring smoothing width<a class="headerlink" href="#ring-smoothing-width" title="Permalink to this heading"></a></h3>
+<p>The ring artifact reduction method assumes that the average row of the sinogram should be quite “smooth”,
+without many high-frequency features.  It detects high-frequency anomalies and removes them.</p>
+<p>If <strong>Ring smoothing width</strong> is non-zero then ring artifact reduction is performed using the following algorithm
+before reconstruction for each slice.</p>
+<ul class="simple">
+<li><p>The average row of the sinogram is computed.</p></li>
+<li><p>The smoothed average row is computed using a boxcar filter of width <strong>Ring smoothing width</strong>.</p></li>
+<li><p>The difference row (average row minus average smoothed row) is computed.</p></li>
+<li><p>That difference row is subtracted from each row in the sinogram.</p></li>
+</ul>
+<p>The default <strong>Ring smoothing width</strong> is 9, which quite effectively removes narrow ring artifacts.
+By using larger values for <strong>Ring smoothing width</strong> wider ring artifacts can be removed.
+However, very large values can introduce new artifacts, and this depends on the structures in the sample.
+Setting the value to 0 will prevent any ring artifact correction from being performed.</p>
+<p>One common problem is a sample in a cylindrical container which is close to being centered on the rotation axis.
+The inner and outer edges of the cylinder wall will be detected as ring artifacts, and the algorithm can cause
+new features because of this.</p>
+</section>
+</section>
+<section id="backproject">
+<h2>Backproject<a class="headerlink" href="#backproject" title="Permalink to this heading"></a></h2>
+<p>The following parameters are available when the reconstruction method is Backproject.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 80%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>Filter size</p></td>
+<td><p>The number of pixels in the filter used before backprojection.</p></td>
+</tr>
+<tr class="row-even"><td><p>Filter type</p></td>
+<td><p>The type of filter to use.  Choices are Gen_Hamming, Shepp_Logan, LP_Cosine, Ramlak, and None.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Backprojection method</p></td>
+<td><p>Choices are Riemann and Radon.</p></td>
+</tr>
+<tr class="row-even"><td><p>Riemann interpolation</p></td>
+<td><p>The intepolation method to use with Riemann backprojection.  Choices are None, Bilinear, and Cubic.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Radmon interpolation</p></td>
+<td><p>The intepolation method to use with Radon backprojection.  Choices are None and Linear.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="gridrec-tomorecon">
+<h2>Gridrec/tomoRecon<a class="headerlink" href="#gridrec-tomorecon" title="Permalink to this heading"></a></h2>
+<p>The following parameters are available when the reconstruction method is either Gridrec or tomoRecon.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 80%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>Filter</p></td>
+<td><p>The filter to use with reconstruction.  Choices are Shepp-Logan, Hann, Hamming, and Ramlak.</p></td>
+</tr>
+<tr class="row-even"><td><p>Sample parameter</p></td>
+<td><p>The sample parameter in the Gridrec algorithm.  We need an explanation of what this does.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Padded sinogram width</p></td>
+<td><p>The width to which to pad the sinogram.  Choices are Auto, No Padding, 1024, 2048, and 4096.
+Auto selects the next power of 2 that is &amp;ge; to the width of the projections.
+Reconstructions are more accurate with larger padding, as the expense of computing time.</p></td>
+</tr>
+<tr class="row-even"><td><p>Pixel to average for padding</p></td>
+<td><p>When the sinogram is padded this selects the number of pixels from the right and left edges to average
+when computing the padding value.  0 selects a padding value of 0.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="tomorecon">
+<h2>tomoRecon<a class="headerlink" href="#tomorecon" title="Permalink to this heading"></a></h2>
+<p>The following parameters are available when the reconstruction method is tomoRecon.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 80%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>Number of threads</p></td>
+<td><p>This is the number of threads to use for the C++ reconstruction.
+It is reasonable to use the number cores in the processing machine.
+A smaller number could be used if other compute-intensive tasks are to run at the same time.</p></td>
+</tr>
+<tr class="row-even"><td><p>Slices per chunk</p></td>
+<td><p>The reconstruction can be done in chunks to reduce the amount of memory required.
+This is the number of slices in each chunk.  <em>Not currently implemented.</em></p></td>
+</tr>
+</tbody>
+</table>
+<p>NOTE: Chunking was implemented in R1-0 of tomo_display.
+It is not currently implemented because that requires writing the output files in chunks, and that is not
+currently supported in the tomo class for HDF5 files.</p>
+<p>For detectors with 3K x 3K pixels the reconstructed datasets as 16-bit integers will be 58 GB.
+he normalized data will be a similar size.
+Both datasets can thus be memory resident in a machine with 128 GB of RAM.
+That much memory only costs about $400 today, so chunking is probably not needed until datasets are much
+larger than this.</p>
+</section>
 </section>
 
 
@@ -84,14 +371,14 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="tomo_display_quick_start.html" class="btn btn-neutral float-left" title="tomo_display Quick Start" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="imagej.html" class="btn btn-neutral float-right" title="Visualize with ImageJ" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="image_display.html" class="btn btn-neutral float-right" title="Visualize with image_display" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-March-16.
+      <span class="lastupdated">Last updated on 2023-March-18.
       </span></p>
   </div>
 

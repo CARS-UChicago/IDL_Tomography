@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visualize with image_display &mdash; IDL Tomography Processing</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/my_theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Visualize with ImageJ" href="imagej.html" />
+    <link rel="prev" title="Processing options" href="processing_options.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            IDL Tomography
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_formats.html">File formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">tomo_display Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="processing_options.html">Processing options</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Visualize with image_display</a></li>
+<li class="toctree-l1"><a class="reference internal" href="imagej.html">Visualize with ImageJ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="scripting.html">Scripting and batch processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="benchmarks.html">Benchmarks</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">IDL Tomography</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Visualize with image_display</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/image_display.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="visualize-with-image-display">
+<h1>Visualize with image_display<a class="headerlink" href="#visualize-with-image-display" title="Permalink to this heading"></a></h1>
+<p><strong>image_display</strong> is written in IDL.  It can be passed a single 2-D slice, or a 3-D volume to visualize.
+<strong>image_display</strong> can be called from tomo_display, directly from the IDL command line, or from other IDL applications.</p>
+<p>When using tomo_display the  <strong>Display slice</strong> button will call <strong>image_display</strong> for the currently selected direction and slice.
+The <strong>Display volume</strong> button will pass the entire 3-D volume to <strong>image_display</strong>.  This is slower to start, because it makes a
+copy of the entire volume before passing it.  The advantage of <strong>Display volume</strong> is that one can then load another volume and display it
+at the same time, allowing direct visual comparison of slices from multiple datasets.  However, one must be aware of the available
+memory when using the 3-D display feature.</p>
+<p>This shows the <strong>image_display</strong> window when loading a 3-D dataset with <strong>Display volume</strong>.</p>
+<figure class="align-center" id="id1">
+<img alt="_images/image_display_3D_Z.png" src="_images/image_display_3D_Z.png" />
+<figcaption>
+<p><span class="caption-text"><strong>image_display window with 3-D data currently displaying slice 600 in Z</strong></span><a class="headerlink" href="#id1" title="Permalink to this image"></a></p>
+</figcaption>
+</figure>
+<ul>
+<li><p>The widgets at the bottom select the direction in which to view slices (X, Y, or Z) and the slice number to visualize.
+The slice number can be entered directly, or selected with the slider bar.</p></li>
+<li><p>The mouse scroll wheel is used to zoom in and out.</p></li>
+<li><p>The widgets in the top-left show the coordinates of the mouse in the image window and the intensity at that pixel.</p></li>
+<li><p>The coordinates are displayed in both pixel units, and distance units (microns).
+For raw or normalized projection data the Z axis units are degrees.</p></li>
+<li><p>The widgets in the top-right show the actual intensity range for the current slice.
+The intensity range to use for the display can be manually set with the <strong>Set</strong> widgets, or scaled to the full range
+with the <strong>Autoscale</strong> button.</p></li>
+<li><p>The widgets on the left above the plot control the following:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 80%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><strong>Display order</strong></p></td>
+<td><p>Controls whether the image is displayed with row 0 at the top or bottom.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Zoom mode</strong></p></td>
+<td><p>Controls whether zooming is done with pixel replication or interpolation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>New color table</strong></p></td>
+<td><p>Loads a color lookup table selector.  Select a color table, adjust the top, bottom, and gamma if desired,
+and press <strong>Done</strong>.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Reset zoom</strong></p></td>
+<td><p>Resets the zoom so that the entire image is displayed as large as possible in the image window.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Pixels (horizontal)</strong></p></td>
+<td><p>Sets the number of horizontal pixels in the the output image file when <strong>Save file</strong> is pressed.
+When saving in PDF format this number is the width of the image in inches.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Save file</strong></p></td>
+<td><p>Saves the current image in one of the following file formats:</p>
+<ul class="simple">
+<li><p>Windows bitmap (.bmp)</p></li>
+<li><p>JPEG (.jpg or .jpeg)</p></li>
+<li><p>PDF (.pdf)</p></li>
+<li><p>PNG (.png)</p></li>
+<li><p>TIFF (.tif or .tiff)</p></li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li><p>The plots on the top and left of the image are the row and column profiles through the image at the current pixel position.
+The plot range in X is controlled by the image pan and zoom, and the plot range in Y is controlled by the selected Display
+intensity range.</p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="processing_options.html" class="btn btn-neutral float-left" title="Processing options" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="imagej.html" class="btn btn-neutral float-right" title="Visualize with ImageJ" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Mark Rivers.
+      <span class="lastupdated">Last updated on 2023-March-18.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
