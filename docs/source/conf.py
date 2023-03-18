@@ -13,6 +13,7 @@ copyright = '2023, Mark Rivers'
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.mathjax',
               'sphinx.ext.extlinks',
+              'sphinx.ext.autosectionlabel',
               'sphinx.ext.napoleon']
 
 todo_include_todos = True
