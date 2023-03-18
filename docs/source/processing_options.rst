@@ -118,19 +118,19 @@ Reconstruction method
 .....................
 
 .. list-table::
-  :widths: 20 80
+  :widths: 10 90
 
-  * - tomoRecon
+  * - **tomoRecon**
     - This uses the Gridrec algorithm running with multiple threads. 
       Each thread performs the sinogram calculation, air normalization,
       ring artifact reduction, and reconstruction for two slices at a time.
       It is by far the fastest method, and is the default.
-  * - Gridrec
+  * - **Gridrec**
     - This performs the sinogram calculation, air normalization, and ring artifact reduction in IDL.
       The Gridrec reconstruction is done using the Gridrec algorithm in C code in a single thread.
       It has the advantage of being able to examine the sinogram and center-of-gravity for diagnostics.
       It is slower than tomoRecon but faster than Backproject.
-  * - Backproject
+  * - **Backproject**
     - This performs the sinogram calculation, air normalization, and ring artifact reduction in IDL.
       Reconstruction is done using the IDL `radon()` function.
       It has the advantage of being able to examine the sinogram and center-of-gravity for diagnostics.
@@ -179,15 +179,15 @@ The following parameters are available when the reconstruction method is Backpro
 .. list-table::
   :widths: 20 80
 
-  * - Filter size
+  * - **Filter size**
     - The number of pixels in the filter used before backprojection.
-  * - Filter type
+  * - **Filter type**
     - The type of filter to use.  Choices are Gen_Hamming, Shepp_Logan, LP_Cosine, Ramlak, and None.
-  * - Backprojection method
+  * - **Backprojection method**
     - Choices are Riemann and Radon.
-  * - Riemann interpolation
+  * - **Riemann interpolation**
     - The intepolation method to use with Riemann backprojection.  Choices are None, Bilinear, and Cubic.
-  * - Radmon interpolation
+  * - **Radon interpolation**
     - The intepolation method to use with Radon backprojection.  Choices are None and Linear.
 
 Gridrec/tomoRecon
@@ -197,15 +197,15 @@ The following parameters are available when the reconstruction method is either 
 .. list-table::
   :widths: 20 80
 
-  * - Filter
+  * - **Filter**
     - The filter to use with reconstruction.  Choices are Shepp-Logan, Hann, Hamming, and Ramlak.
-  * - Sample parameter
+  * - **Sample parameter**
     - The sample parameter in the Gridrec algorithm.  We need an explanation of what this does.
-  * - Padded sinogram width
+  * - **Padded sinogram width**
     - The width to which to pad the sinogram.  Choices are Auto, No Padding, 1024, 2048, and 4096. 
-      Auto selects the next power of 2 that is &ge; to the width of the projections.
+      Auto selects the next power of 2 that is >= the width of the projections.
       Reconstructions are more accurate with larger padding, as the expense of computing time.
-  * - Pixel to average for padding
+  * - **Pixel to average for padding**
     - When the sinogram is padded this selects the number of pixels from the right and left edges to average 
       when computing the padding value.  0 selects a padding value of 0.
       
@@ -216,11 +216,11 @@ The following parameters are available when the reconstruction method is tomoRec
 .. list-table::
   :widths: 20 80
 
-  * - Number of threads
+  * - **Number of threads**
     - This is the number of threads to use for the C++ reconstruction.  
       It is reasonable to use the number cores in the processing machine.
       A smaller number could be used if other compute-intensive tasks are to run at the same time.
-  * - Slices per chunk
+  * - **Slices per chunk**
     - The reconstruction can be done in chunks to reduce the amount of memory required.
       This is the number of slices in each chunk.  *Not currently implemented.*
       
