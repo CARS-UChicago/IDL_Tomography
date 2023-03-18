@@ -12,7 +12,7 @@ The comparison is done for 4 different dataset sizes.
 
 The performance improvement between R1-0 and R2-0 is a factor of 3.8 to 5.6 depending on the dataset size.
 
-The improved performance is due to a number of factors:
+The greatly improved performance is due to a number of factors:
 
 - Removing Python tomopy from the pipeline for normalization.
   The new IDL preprocessing is 10-15 times faster than Python.
