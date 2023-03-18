@@ -1,7 +1,7 @@
-This repository contains tIDL software for processing tomography data from the GSECARS
+This repository contains IDL software for processing tomography data from the GSECARS
 beamlines at the Advanced Photon Source.
 
-The software uses the [tomoRecon](https://github.com/CARS-UChicago/tomoRecon) software for fast 
+The software uses the [tomoRecon](https://github.com/CARS-UChicago/tomoRecon) package for fast 
 multi-threaded C++ preprocessing and reconstruction.  This C++ software is called from IDL.
 
 Documentation and release notes can be found here:
