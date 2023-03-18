@@ -11,7 +11,7 @@
    - Leaving normalized data after proprocessing in memory to be reconstructed immediately 
    - Writing reconstructed data in HDF5 format. It can then be quickly read into ImageJ
  - Improved performance by factor of 3.8-5.6 depending on dataset size
- - Adds Sphinx-generated documentation (https//:cars-uchicago.github.io/IDL_Tomography)
+ - Adds Sphinx-generated documentation (https://cars-uchicago.github.io/IDL_Tomography)
 
 ## R1-0 (November 25, 2022)
 - This is the first formal release.
