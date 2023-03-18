@@ -1,15 +1,17 @@
 # IDL_Tomography Release notes
 
-## R2-0 (December XXX, 2022)
+## R2-0 (March XXX, 2023)
  - Continues support for the following:
    - Reconstruction of on-the-fly netCDF data files
    - Reading and writing netCDF .volume files
  - Adds support for the following:
    - Reading and preprocessing raw data files in HDF5 format
    - Writing normalized data in HDF5 format
-     - This step will now be optional
+     - This step is optional
    - Leaving normalized data after proprocessing in memory to be reconstructed immediately 
    - Writing reconstructed data in HDF5 format. It can then be quickly read into ImageJ
+ - Improved performance by factor of 3.8-5.6 depending on dataset size
+ - Adds Sphinx-generated documentation (https//:cars-uchicago.github.io/IDL_Tomography)
 
 ## R1-0 (November 25, 2022)
 - This is the first formal release.
