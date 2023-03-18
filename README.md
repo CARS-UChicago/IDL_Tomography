@@ -5,5 +5,5 @@ The software uses the [tomoRecon](https://github.com/CARS-UChicago/tomoRecon) pa
 multi-threaded C++ preprocessing and reconstruction.  This C++ software is called from IDL.
 
 Documentation and release notes can be found here:
-- [Documentation](cars-uchicago.github.io/IDL_Tomography)
+- [Documentation](https://cars-uchicago.github.io/IDL_Tomography)
 - [Release notes](RELEASE.md)
