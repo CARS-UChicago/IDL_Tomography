@@ -48,7 +48,9 @@
 <li class="toctree-l1"><a class="reference internal" href="processing_options.html">Processing options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="image_display.html">Visualize with image_display</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Visualize with ImageJ</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#limitations-in-imagej">Limitations in ImageJ</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#netcdf-plugin">netCDF plugin</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#hdf5-plugin">HDF5 plugin</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#incompatibility-of-netcdf-and-hdf5-plugins">Incompatibility of netCDF and HDF5 plugins</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="scripting.html">Scripting and batch processing</a></li>
@@ -81,8 +83,92 @@
              
   <section id="visualize-with-imagej">
 <h1>Visualize with ImageJ<a class="headerlink" href="#visualize-with-imagej" title="Permalink to this heading"></a></h1>
-<section id="limitations-in-imagej">
-<h2>Limitations in ImageJ<a class="headerlink" href="#limitations-in-imagej" title="Permalink to this heading"></a></h2>
+<p>ImageJ is an excellent free program for displaying and analyzing tomography data.
+ImageJ for Linux, Windows, and Mac can be downloaded from the
+<a class="reference external" href="https://imagej.nih.gov/ij/download.html">ImageJ Website</a>.</p>
+<p>The download is a ZIP file that can be extracted to a location like <code class="docutils literal notranslate"><span class="pre">C:\\ImageJ</span></code> on Windows
+or <code class="docutils literal notranslate"><span class="pre">/home/user/ImageJ</span></code> or <code class="docutils literal notranslate"><span class="pre">/usr/local/ImageJ</span></code> on Linux.</p>
+<section id="netcdf-plugin">
+<h2>netCDF plugin<a class="headerlink" href="#netcdf-plugin" title="Permalink to this heading"></a></h2>
+<p>The netCDF files written by <strong>tomo_display</strong> or the Python <strong>preprocess_13bm.py</strong> routines can be read into ImageJ
+by copying the following files into the ImageJ/plugins folder</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/07.12.12/NetCDF_.jar">netCDF jar file</a> from the University of Frieburg.</p></li>
+<li><p>GSETomo_.ijm from the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL Tomography</a> repository.  See the instructions in <a class="reference internal" href="installation.html#installation"><span class="std std-ref">Installation</span></a> for how to download this.</p></li>
+</ul>
+<p>Open ImageJ and select <code class="docutils literal notranslate"><span class="pre">Plugins/GSETomo</span></code>.  This will open a file browser to select a netCDF file.
+The 3-D dataset in the file
+will be opened as a stack in ImageJ</p>
+</section>
+<section id="hdf5-plugin">
+<h2>HDF5 plugin<a class="headerlink" href="#hdf5-plugin" title="Permalink to this heading"></a></h2>
+<p>There are 2 ImageJ plugins for reading HDF5 files.</p>
+<ul class="simple">
+<li><p>The first one is the <a class="reference external" href="https://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/hdf5.html">Freiburg HDF5 plugin</a>.
+This plugin can only read datasets smaller than 2 GB, so it is not useful for reading most tomography datasets.</p></li>
+<li><p>The second one is <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5">PSI HDF5 plugin</a>.
+This version is also limited to reading datasets smaller than 2 GB into “real” ImageJ stacks.
+However, it supports “virtual” ImageJ stacks, which can be any size.  Virtual stacks are not read into memory
+in their entirety, only the currently selected slice is actually in memory.</p></li>
+</ul>
+<p>Virtual datasets have these 2 advantages:</p>
+<ul class="simple">
+<li><p>The required memory is small</p></li>
+<li><p>It is very fast to open files and browse through them</p></li>
+</ul>
+<p>They also have a major disadvantage:</p>
+<ul class="simple">
+<li><p>The datasets are read-only.</p>
+<ul>
+<li><p>This means that they cannot be modified and scaled to display unsigned 16-bit data, the way that GSETomo_.ijm does for
+netCDF datasets.</p></li>
+</ul>
+</li>
+</ul>
+<p>To install the PSI plugin copy the latest jar file from the <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5/releases">PSI HDF5 releases</a> to the ImageJ/plugins folder.
+NOTE: If this is being installed in FIJI, rather than ImageJ it is first necessary to uninstall the Freiburg HDF5 plugin.
+This is explained in the <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5">PSI HDF5 plugin</a> README.md file.</p>
+<p>Open ImageJ and select <code class="docutils literal notranslate"><span class="pre">File/Import/HDF5...</span></code>.  This will open a file browser to select an HDF5 file.
+After selecting the HDF file it will open the following window to select which dataset to read:</p>
+<figure class="align-center" id="id1">
+<img alt="_images/ImageJ_HDF5_select.png" src="_images/ImageJ_HDF5_select.png" />
+<figcaption>
+<p><span class="caption-text"><strong>ImageJ HDF5 plugin dataset selection window</strong></span><a class="headerlink" href="#id1" title="Permalink to this image"></a></p>
+</figcaption>
+</figure>
+<p>This example is for reading an HDF5 raw data file, which contains 4 datasets.
+/exchange/data is the one with the projections, /exchange/data_white contains the flat fields.
+Reconstruction and normalized HDF5 only have a single dataset, /exchange/data.</p>
+<p>The 3-D dataset in the file will be opened by default as a virtual stack in ImageJ.  Unchecking the <code class="docutils literal notranslate"><span class="pre">Virtual</span> <span class="pre">Stack</span></code>
+box in the selection window will generate an error because the dataset is larger than 2 GB.</p>
+<p>This is an example of a reconstructed dataset read into a virtual stack:</p>
+<figure class="align-center" id="id2">
+<img alt="_images/ImageJ_virtual_stack.png" src="_images/ImageJ_virtual_stack.png" />
+<figcaption>
+<p><span class="caption-text"><strong>ImageJ virtual stack for HDF5 file with reconstructed data</strong></span><a class="headerlink" href="#id2" title="Permalink to this image"></a></p>
+</figcaption>
+</figure>
+<p>It is possible to copy the virtual stack into a real stack in ImageJ. This is as follows:</p>
+<ul class="simple">
+<li><p>Right click on the image in the virtual stack window</p></li>
+<li><p>Select <code class="docutils literal notranslate"><span class="pre">Duplicate</span></code></p></li>
+<li><p>In the next window check the <code class="docutils literal notranslate"><span class="pre">Duplicate</span> <span class="pre">stack</span></code> box.</p></li>
+</ul>
+<p>The copy operation takes some time.  The new window will be a real stack which can be modified.</p>
+</section>
+<section id="incompatibility-of-netcdf-and-hdf5-plugins">
+<h2>Incompatibility of netCDF and HDF5 plugins<a class="headerlink" href="#incompatibility-of-netcdf-and-hdf5-plugins" title="Permalink to this heading"></a></h2>
+<p>Unfortunately the netCDF and PSI HDF5 plugins referenced above are incompatible, meaning that they cannot both be
+installed in the same ImageJ installation.
+This is because they both use a Java logging utility, but they use incompatible versions.
+The netCDF plugin uses a much older version.
+In principle this could be fixed by changing the Java source code of the netCDF plugin
+to use the more recent version of the logging utility.
+This is not possible, however, because the source code for that plugin appears to have been lost.
+I have contacted both the author, and the chair of the department at the University of Freiburg where the
+author used to work, and neither are able to find it.</p>
+<p>If both plugins are needed then the workaround is to have 2 separate installations of ImageJ or FIJI.
+One will have the netCDF plugin and the other the HDF5 plugin.</p>
 </section>
 </section>
 

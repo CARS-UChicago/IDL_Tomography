@@ -49,7 +49,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#preprocessing-options">Preprocessing options</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#zinger-removal">Zinger removal</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#dark-current">Dark current</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#scale-factor">Scale factor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scale-factor-preprocessing">Scale factor (preprocessing)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#number-of-threads">Number of threads</a></li>
 </ul>
 </li>
@@ -62,7 +62,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#reconstruction-options">Reconstruction options</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#reconstruction-method">Reconstruction method</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id1">Scale factor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scale-factor-reconstruction">Scale factor (reconstruction)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#ring-smoothing-width">Ring smoothing width</a></li>
 </ul>
 </li>
@@ -106,10 +106,10 @@
 <p>There are a number of options available to control the preprocessing, sinogram, and reconstruction steps.
 These can be controlled with the Processing Options screen, which is opened with <em>Options/Processing options …</em>
 in the main tomo_display screen.</p>
-<figure class="align-center" id="id2">
+<figure class="align-center" id="id1">
 <img alt="_images/processing_options.png" src="_images/processing_options.png" />
 <figcaption>
-<p><span class="caption-text"><strong>Processing options screen</strong></span><a class="headerlink" href="#id2" title="Permalink to this image"></a></p>
+<p><span class="caption-text"><strong>Processing options screen</strong></span><a class="headerlink" href="#id1" title="Permalink to this image"></a></p>
 </figcaption>
 </figure>
 <section id="preprocessing-options">
@@ -164,8 +164,8 @@ dark current and flat field correction.</p>
 <p>This value is currently read-only.  It is read from the .h5 or .setup files and displayed in this screen for information.
 The option to allow changing the value in this screen could be added in the future if needed.</p>
 </section>
-<section id="scale-factor">
-<h3>Scale factor<a class="headerlink" href="#scale-factor" title="Permalink to this heading"></a></h3>
+<section id="scale-factor-preprocessing">
+<h3>Scale factor (preprocessing)<a class="headerlink" href="#scale-factor-preprocessing" title="Permalink to this heading"></a></h3>
 <p>During the preprocessing each projection is divided by the average of the flat fields.  This produces a normalized image
 whose intensity if approximately in the range of 0.0 to 1.0.  If one wants to have the option to save the preprocessed
 data as an unsigned 16-bit integer then it needs to first be scaled by a scale factor.
@@ -248,8 +248,8 @@ It is the slowest method.</p></td>
 </tbody>
 </table>
 </section>
-<section id="id1">
-<h3>Scale factor<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h3>
+<section id="scale-factor-reconstruction">
+<h3>Scale factor (reconstruction)<a class="headerlink" href="#scale-factor-reconstruction" title="Permalink to this heading"></a></h3>
 <p>The data from the tomography reconstruction is the linear X-ray attenuation coefficient in units of inverse pixel size.
 They represent the fraction of X-rays absorbed as the beam traverses that single pixel.
 Since the beam is typically absorbed by 10% to 90% as it traverses ~2K pixels, the absorption in each pixel is quite small,

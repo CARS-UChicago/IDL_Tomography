@@ -58,8 +58,8 @@ Dark current
 This value is currently read-only.  It is read from the .h5 or .setup files and displayed in this screen for information.
 The option to allow changing the value in this screen could be added in the future if needed.
 
-Scale factor
-............
+Scale factor (preprocessing)
+............................
 During the preprocessing each projection is divided by the average of the flat fields.  This produces a normalized image
 whose intensity if approximately in the range of 0.0 to 1.0.  If one wants to have the option to save the preprocessed
 data as an unsigned 16-bit integer then it needs to first be scaled by a scale factor.  
@@ -136,8 +136,8 @@ Reconstruction method
       It has the advantage of being able to examine the sinogram and center-of-gravity for diagnostics.
       It is the slowest method.
 
-Scale factor
-............
+Scale factor (reconstruction)
+.............................
 The data from the tomography reconstruction is the linear X-ray attenuation coefficient in units of inverse pixel size.
 They represent the fraction of X-rays absorbed as the beam traverses that single pixel.  
 Since the beam is typically absorbed by 10% to 90% as it traverses ~2K pixels, the absorption in each pixel is quite small, 
