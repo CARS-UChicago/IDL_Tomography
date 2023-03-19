@@ -3,6 +3,9 @@ Scripting and batch processing
 The ``tomo`` class can be called from user-written IDL routines to perform all steps in the reconstruction process.
 This can be used to write scripts to do batch processing of data without using the tomo_display GUI.
 
+The `tomo class documentation <_static/IDL_help/tomography_routines.html>`__ explains the use of each
+of the ``tomo`` methods.
+
 Processing a single dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The following IDL procedure will reconstruct a single dataset.

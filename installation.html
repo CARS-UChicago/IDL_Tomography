@@ -98,13 +98,21 @@ but please also register with Harris.</p>
 </section>
 <section id="install-idl-tomography">
 <h2>Install IDL_Tomography<a class="headerlink" href="#install-idl-tomography" title="Permalink to this heading"></a></h2>
-<ul class="simple">
+<ul>
 <li><p>Create a directory that will contain the IDL tomography routines. This might be C:GSECARS_tomography on Windows
 or /home/youraccount/GSECARS_tomography on Linux.</p></li>
 <li><p>Clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Tomography</a> and <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repositories into that directory. This must be done even if you
 are using the IDL Virtual Machine because that repository contains the required DLLs for Windows and shareable
 libraries for Linux.</p></li>
-<li><p>If you are running the licensed version of IDL clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repository into the same directory.</p></li>
+<li><p>If you are running the licensed version of IDL clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repository into the same directory.
+For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&gt;</span><span class="n">mkdir</span> <span class="o">~/</span><span class="n">GSECARS_tomography</span>
+<span class="o">&gt;</span><span class="n">cd</span> <span class="o">~/</span><span class="n">GSECARS_tomography</span>
+<span class="o">&gt;</span><span class="n">git</span> <span class="n">clone</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">CARS</span><span class="o">-</span><span class="n">UChicago</span><span class="o">/</span><span class="n">IDL_Tomography</span>
+<span class="o">&gt;</span><span class="n">git</span> <span class="n">clone</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">CARS</span><span class="o">-</span><span class="n">UChicago</span><span class="o">/</span><span class="n">IDL_Imaging</span>
+</pre></div>
+</div>
+</li>
 <li><p>If you are running the IDL Virtual Machine download <a class="reference external" href="https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.sav">tomo_display.sav</a> to a folder like C:GSECARS_tomography.</p></li>
 <li><p>If you are using the licensed version of IDL you need to add the directory you created to the IDL_PATH.
 In the IDLDE use Window/Preferences/IDL/Paths to add that directory to the IDL Path, and check the box
@@ -116,7 +124,7 @@ This can be done with Control Panel/System/Advanced/Environment Variables.
 This is necessary for both the licensed and Virtual Machine versions of IDL to find libfftw3f-3.dll.</p></li>
 <li><p>If you are using the IDL Virtual machine you must to the following to define the location of the tomoRecon
 shareable library:</p>
-<ul>
+<ul class="simple">
 <li><p>On Linux define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_linux_x86_64.so,
 which is contained in the IDL_Tomography software downloaded above.
 Example: <code class="docutils literal notranslate"><span class="pre">export</span> <span class="pre">TOMO_RECON_SHARE=/usr/local/tomography/idl/tomoRecon_linux_x86_64.so</span></code></p></li>

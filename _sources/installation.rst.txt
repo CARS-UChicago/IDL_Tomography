@@ -29,8 +29,16 @@ Install IDL_Tomography
   or /home/youraccount/GSECARS_tomography on Linux.
 - Clone the IDL_Tomography_ and IDL_Imaging_ repositories into that directory. This must be done even if you
   are using the IDL Virtual Machine because that repository contains the required DLLs for Windows and shareable
-  libraries for Linux.
+  libraries for Linux.  
 - If you are running the licensed version of IDL clone the IDL_Imaging_ repository into the same directory.
+  For example:
+  ::
+  
+    >mkdir ~/GSECARS_tomography
+    >cd ~/GSECARS_tomography
+    >git clone https://github.com/CARS-UChicago/IDL_Tomography
+    >git clone https://github.com/CARS-UChicago/IDL_Imaging
+
 - If you are running the IDL Virtual Machine download tomo_display.sav_ to a folder like C:\GSECARS_tomography.
 - If you are using the licensed version of IDL you need to add the directory you created to the IDL_PATH. 
   In the IDLDE use Window/Preferences/IDL/Paths to add that directory to the IDL Path, and check the box 
