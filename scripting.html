@@ -44,11 +44,15 @@
 <li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="file_formats.html">File formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">tomo_display Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tomo_display_quick_start.html">Quick Start for tomo_display</a></li>
 <li class="toctree-l1"><a class="reference internal" href="processing_options.html">Processing options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="image_display.html">Visualize with image_display</a></li>
 <li class="toctree-l1"><a class="reference internal" href="imagej.html">Visualize with ImageJ</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Scripting and batch processing</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Scripting and batch processing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#processing-a-single-dataset">Processing a single dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#processing-a-mulitple-datasets">Processing a mulitple datasets</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="benchmarks.html">Benchmarks</a></li>
 </ul>
 
@@ -78,6 +82,155 @@
              
   <section id="scripting-and-batch-processing">
 <h1>Scripting and batch processing<a class="headerlink" href="#scripting-and-batch-processing" title="Permalink to this heading"></a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">tomo</span></code> class can be called from user-written IDL routines to perform all steps in the reconstruction process.
+This can be used to write scripts to do batch processing of data without using the tomo_display GUI.</p>
+<section id="processing-a-single-dataset">
+<h2>Processing a single dataset<a class="headerlink" href="#processing-a-single-dataset" title="Permalink to this heading"></a></h2>
+<p>The following IDL procedure will reconstruct a single dataset.</p>
+<div class="highlight-IDL notranslate"><div class="highlight"><pre><span></span><span class="k">pro</span><span class="w"> </span>process_dataset,<span class="w"> </span>camera_file
+<span class="w">  </span>tomo<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">obj_new</span>(<span class="s1">&#39;tomo&#39;</span>)
+<span class="w">  </span>tomo<span class="o">-&gt;</span>restore_settings,<span class="w"> </span><span class="s1">&#39;tomo_settings.txt&#39;</span>
+<span class="w">  </span>tomo<span class="o">-&gt;</span>read_camera_file,<span class="w"> </span>camera_file
+<span class="w">  </span>tomo<span class="o">-&gt;</span>preprocess
+<span class="w">  </span>tomo<span class="o">-&gt;</span>optimize_center,<span class="w"> </span>[<span class="mi">200</span>,<span class="w"> </span><span class="mi">1080</span>],<span class="w"> </span><span class="mi">954</span>,<span class="w"> </span>method<span class="o">=</span><span class="s1">&#39;0-180&#39;</span>
+<span class="w">  </span>tomo<span class="o">-&gt;</span>reconstruct_volume
+<span class="k">end</span>
+</pre></div>
+</div>
+<p>This procedure does the following:</p>
+<ul>
+<li><p>Creates a <code class="docutils literal notranslate"><span class="pre">tomo</span></code> object</p></li>
+<li><p>Restores a settings file.
+It is a good idea to save a settings file with the preprocessing, center optimization, and reconstruction parameters
+that work well for similar datasets.  This can be done with the <code class="docutils literal notranslate"><span class="pre">File\Save</span> <span class="pre">settings</span> <span class="pre">...</span></code> menu in <code class="docutils literal notranslate"><span class="pre">tomo_display</span></code>.
+This is the contents of that tomo_settings.txt file:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;zingerWidth&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+  <span class="s2">&quot;zingerThreshold&quot;</span><span class="p">:</span> <span class="mf">0.10000000</span><span class="p">,</span>
+  <span class="s2">&quot;zingerDoubleThreshold&quot;</span><span class="p">:</span> <span class="mf">0.10000000</span><span class="p">,</span>
+  <span class="s2">&quot;preprocessScale&quot;</span><span class="p">:</span> <span class="mf">10000.000</span><span class="p">,</span>
+  <span class="s2">&quot;preprocessOffset&quot;</span><span class="p">:</span> <span class="mf">0.00000000</span><span class="p">,</span>
+  <span class="s2">&quot;preprocessThreads&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+  <span class="s2">&quot;preprocessDataType&quot;</span><span class="p">:</span> <span class="s2">&quot;Float32&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;preprocessWriteOutput&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;preprocessWriteFormat&quot;</span><span class="p">:</span> <span class="s2">&quot;HDF5&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;reconMethod&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;reconSlicesPerChunk&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span>
+  <span class="s2">&quot;reconDataType&quot;</span><span class="p">:</span> <span class="s2">&quot;Int16&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;reconWriteOutput&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+  <span class="s2">&quot;reconWriteFormat&quot;</span><span class="p">:</span> <span class="s2">&quot;HDF5&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;reconScale&quot;</span><span class="p">:</span> <span class="mf">1000000.0</span><span class="p">,</span>
+  <span class="s2">&quot;reconOffset&quot;</span><span class="p">:</span> <span class="mf">0.00000000</span><span class="p">,</span>
+  <span class="s2">&quot;reconThreads&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+  <span class="s2">&quot;paddedSinogramWidth&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;paddingAverage&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+  <span class="s2">&quot;airPixels&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+  <span class="s2">&quot;ringWidth&quot;</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span>
+  <span class="s2">&quot;fluorescence&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;debug&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+  <span class="s2">&quot;debugFile&quot;</span><span class="p">:</span> <span class="s2">&quot;tomoRecon_debug.txt&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;geom&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;pswfParam&quot;</span><span class="p">:</span> <span class="mf">6.0000000</span><span class="p">,</span>
+  <span class="s2">&quot;sampl&quot;</span><span class="p">:</span> <span class="mf">1.0000000</span><span class="p">,</span>
+  <span class="s2">&quot;maxPixSize&quot;</span><span class="p">:</span> <span class="mf">1.0000000</span><span class="p">,</span>
+  <span class="s2">&quot;ROI&quot;</span><span class="p">:</span> <span class="mf">1.0000000</span><span class="p">,</span>
+  <span class="s2">&quot;X0&quot;</span><span class="p">:</span> <span class="mf">0.00000000</span><span class="p">,</span>
+  <span class="s2">&quot;Y0&quot;</span><span class="p">:</span> <span class="mf">0.00000000</span><span class="p">,</span>
+  <span class="s2">&quot;ltbl&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">,</span>
+  <span class="s2">&quot;GR_filterName&quot;</span><span class="p">:</span> <span class="s2">&quot;hann&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;BP_Method&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;BP_filterName&quot;</span><span class="p">:</span> <span class="s2">&quot;Gen_Hamming&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;BP_filterSize&quot;</span><span class="p">:</span> <span class="mi">1920</span><span class="p">,</span>
+  <span class="s2">&quot;RiemannInterpolation&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;RadonInterpolation&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;optimizeMethod&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+  <span class="s2">&quot;optimizeRange&quot;</span><span class="p">:</span> <span class="mf">10.000000</span><span class="p">,</span>
+  <span class="s2">&quot;optimizeStep&quot;</span><span class="p">:</span> <span class="mf">0.50000000</span><span class="p">,</span>
+  <span class="s2">&quot;movieZoom&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+  <span class="s2">&quot;displayOrder&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+  <span class="s2">&quot;displayDirection&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+  <span class="s2">&quot;displayAuto&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+  <span class="s2">&quot;displayMin&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mf">1000.0000</span><span class="p">,</span>
+  <span class="s2">&quot;displayMax&quot;</span><span class="p">:</span> <span class="mf">3500.0000</span>
+</pre></div>
+</div>
+</li>
+<li><p>Reads the camera file</p></li>
+<li><p>Preprocesses the data</p></li>
+<li><p>Optimizes the rotation center. The upper and lower slices, initial guess of rotation center, and
+optimization method were specified on the command line.</p></li>
+<li><p>Does the reconstruction</p></li>
+</ul>
+<p>It can be run at the IDL command line with the following commands:</p>
+<div class="highlight-IDL notranslate"><div class="highlight"><pre><span></span>IDL<span class="o">&gt;</span><span class="w"> </span><span class="nb">cd</span>,<span class="w"> </span><span class="s1">&#39;C:\Data\Pamukcu&#39;</span>
+IDL<span class="o">&gt;</span><span class="w"> </span>.compile<span class="w"> </span><span class="o">-</span>v<span class="w"> </span><span class="s1">&#39;C:\Data\process_dataset.pro&#39;</span>
+IDL<span class="o">&gt;</span><span class="w"> </span>process_dataset,<span class="w"> </span><span class="s1">&#39;Ka5_RunD_A.h5&#39;</span>
+</pre></div>
+</div>
+<p>That produces this output:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Time</span> <span class="n">to</span> <span class="n">read</span> <span class="n">camera</span> <span class="n">file</span><span class="o">=</span>       <span class="mf">5.9350002</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">01</span><span class="p">:</span><span class="mi">17</span> <span class="mi">2023</span> <span class="n">Doing</span> <span class="n">corrections</span> <span class="n">on</span> <span class="n">flat</span> <span class="n">fields</span> <span class="o">...</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">01</span><span class="p">:</span><span class="mi">19</span> <span class="mi">2023</span> <span class="n">Dark</span><span class="p">,</span> <span class="n">flat</span><span class="p">,</span> <span class="n">zinger</span> <span class="n">correction</span> <span class="o">...</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">01</span><span class="p">:</span><span class="mi">27</span> <span class="mi">2023</span> <span class="n">Preprocessing</span> <span class="n">complete</span>
+<span class="n">Preprocess</span> <span class="n">execution</span> <span class="n">times</span><span class="p">:</span>
+                  <span class="n">Flat</span> <span class="n">adjustments</span><span class="p">:</span>       <span class="mf">2.5039999</span>
+  <span class="n">Dark</span><span class="p">,</span> <span class="n">flat</span> <span class="ow">and</span> <span class="n">zinger</span> <span class="n">correction</span><span class="p">:</span>       <span class="mf">7.4550002</span>
+                <span class="n">Convert</span> <span class="n">to</span> <span class="n">UInt16</span><span class="p">:</span>      <span class="mf">0.00000000</span>
+                    <span class="n">Writing</span> <span class="n">output</span><span class="p">:</span>    <span class="mf">0.0019998550</span>
+                    <span class="n">Freeing</span> <span class="n">memory</span><span class="p">:</span>      <span class="mf">0.58599997</span>
+                            <span class="n">Total</span><span class="p">:</span>       <span class="mf">10.547000</span>
+<span class="n">optimize_center</span><span class="p">,</span> <span class="n">time</span><span class="o">=</span>     <span class="mf">0.093000174</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">01</span><span class="p">:</span><span class="mi">27</span> <span class="mi">2023</span> <span class="n">Initializing</span> <span class="n">reconstruction</span> <span class="o">...</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">01</span><span class="p">:</span><span class="mi">27</span> <span class="mi">2023</span> <span class="n">Beginning</span> <span class="n">reconstruction</span> <span class="o">...</span>
+<span class="n">tomo_recon</span><span class="p">:</span> <span class="n">time</span> <span class="n">to</span> <span class="n">convert</span> <span class="n">to</span> <span class="nb">float</span><span class="p">:</span>      <span class="mf">0.12100005</span>
+                <span class="n">time</span> <span class="n">to</span> <span class="n">reconstruct</span><span class="p">:</span>       <span class="mf">36.282000</span>
+                          <span class="n">total</span> <span class="n">time</span><span class="p">:</span>       <span class="mf">36.403000</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">05</span> <span class="mi">2023</span> <span class="n">Converting</span> <span class="n">to</span> <span class="n">output</span> <span class="n">data</span> <span class="nb">type</span> <span class="o">...</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">13</span> <span class="mi">2023</span> <span class="n">Writing</span> <span class="n">reconstructed</span> <span class="n">file</span> <span class="o">...</span>
+    <span class="n">Convert</span> <span class="mi">360</span> <span class="n">to</span> <span class="mi">180</span><span class="p">:</span>      <span class="mf">0.00000000</span>
+<span class="n">Convert</span> <span class="nb">input</span> <span class="n">to</span> <span class="nb">float</span><span class="p">:</span>      <span class="mf">0.00000000</span>
+            <span class="n">Reconstruct</span><span class="p">:</span>       <span class="mf">37.346000</span>
+<span class="n">Convert</span> <span class="n">output</span> <span class="n">to</span> <span class="n">Int16</span><span class="p">:</span>       <span class="mf">8.6210001</span>
+            <span class="n">Write</span> <span class="n">file</span><span class="p">:</span>       <span class="mf">35.560000</span>
+            <span class="n">Total</span> <span class="n">time</span><span class="p">:</span>       <span class="mf">81.527000</span>
+<span class="n">Sun</span> <span class="n">Mar</span> <span class="mi">19</span> <span class="mi">10</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">49</span> <span class="mi">2023</span> <span class="n">Reconstruction</span> <span class="n">complete</span><span class="o">.</span>
+<span class="n">Time</span> <span class="n">to</span> <span class="n">read</span> <span class="n">file</span><span class="o">=</span>       <span class="mf">11.945000</span>
+</pre></div>
+</div>
+</section>
+<section id="processing-a-mulitple-datasets">
+<h2>Processing a mulitple datasets<a class="headerlink" href="#processing-a-mulitple-datasets" title="Permalink to this heading"></a></h2>
+<p>The following IDL procedure will reconstruct a multiple datasets collected with the IDL <code class="docutils literal notranslate"><span class="pre">collect_tomoscan_stack</span></code> procedure.
+Each file has a base name followed by _A, _B, etc.</p>
+<div class="highlight-IDL notranslate"><div class="highlight"><pre><span></span><span class="k">pro</span><span class="w"> </span>process_stack,<span class="w"> </span>base_file,<span class="w"> </span>num_files
+<span class="w">  </span>tomo<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">obj_new</span>(<span class="s1">&#39;tomo&#39;</span>)
+<span class="w">  </span>suffixes<span class="w"> </span><span class="o">=</span><span class="w"> </span>[<span class="s1">&#39;A&#39;</span>,<span class="w"> </span><span class="s1">&#39;B&#39;</span>,<span class="w"> </span><span class="s1">&#39;C&#39;</span>,<span class="w"> </span><span class="s1">&#39;D&#39;</span>,<span class="w"> </span><span class="s1">&#39;E&#39;</span>,<span class="w"> </span><span class="s1">&#39;F&#39;</span>,<span class="w"> </span><span class="s1">&#39;G&#39;</span>,<span class="w"> </span><span class="s1">&#39;H&#39;</span>,<span class="w"> </span><span class="s1">&#39;I&#39;</span>,<span class="w"> </span><span class="s1">&#39;J&#39;</span>,<span class="w"> </span><span class="s1">&#39;K&#39;</span>,<span class="w"> </span><span class="s1">&#39;L&#39;</span>,<span class="w"> </span><span class="s1">&#39;M&#39;</span>]
+<span class="w">  </span>tomo<span class="o">-&gt;</span>restore_settings,<span class="w"> </span><span class="s1">&#39;tomo_settings.txt&#39;</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span>i<span class="o">=</span><span class="mi">0</span>,<span class="w"> </span>num_files<span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">    </span>camera_file<span class="w"> </span><span class="o">=</span><span class="w"> </span>base_file<span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s1">&#39;_&#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span>suffixes[i]<span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s1">&#39;.h5&#39;</span>
+<span class="w">    </span><span class="nb">print</span>,<span class="w"> </span><span class="s1">&#39;Processing file: &#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span>camera_file
+<span class="w">    </span>tomo<span class="o">-&gt;</span>read_camera_file,<span class="w"> </span>camera_file
+<span class="w">    </span>tomo<span class="o">-&gt;</span>preprocess
+<span class="w">    </span>tomo<span class="o">-&gt;</span>optimize_center,<span class="w"> </span>[<span class="mi">200</span>,<span class="w"> </span><span class="mi">1080</span>],<span class="w"> </span><span class="mi">954</span>,<span class="w"> </span>method<span class="o">=</span><span class="s1">&#39;0-180&#39;</span>
+<span class="w">    </span>tomo<span class="o">-&gt;</span>reconstruct_volume
+<span class="w">    </span><span class="nb">print</span>,<span class="w"> </span><span class="s1">&#39;Done processing file: &#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span>camera_file
+<span class="w">  </span><span class="k">endfor</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+<p>This is similar to the <code class="docutils literal notranslate"><span class="pre">process_dataset</span></code> procedure above, but it loops over a set of datasets.
+Note that the <code class="docutils literal notranslate"><span class="pre">tomo</span></code> object is created outside the loop, which is more efficient.
+The settings file is also read outside the loop.
+The procedure prints status information before and after processing so the user can see what dataset
+is currently being processed.</p>
+<p>It can be run at the IDL command line with the following commands:</p>
+<div class="highlight-IDL notranslate"><div class="highlight"><pre><span></span>IDL<span class="o">&gt;</span><span class="w"> </span><span class="nb">cd</span>,<span class="w"> </span><span class="s1">&#39;C:\Data\Pamukcu&#39;</span>
+IDL<span class="o">&gt;</span><span class="w"> </span>.compile<span class="w"> </span><span class="o">-</span>v<span class="w"> </span><span class="s1">&#39;C:\Data\process_stack.pro&#39;</span>
+IDL<span class="o">&gt;</span><span class="w"> </span>process_stack,<span class="w"> </span><span class="s1">&#39;Ka5_RunD&#39;</span>,<span class="w"> </span><span class="mi">6</span>
+</pre></div>
+</div>
+<p>Ka5_RunD is the base file name, and there are 6 datasets in this stack.</p>
+</section>
 </section>
 
 
@@ -92,7 +245,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-March-18.
+      <span class="lastupdated">Last updated on 2023-March-19.
       </span></p>
   </div>
 

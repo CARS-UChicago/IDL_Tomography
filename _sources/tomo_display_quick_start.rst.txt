@@ -1,5 +1,5 @@
-tomo_display Quick Start
-------------------------
+Quick Start for tomo_display
+----------------------------
 If you are running the licensed version of IDL then start IDL and type the IDL command *tomo_display*.
 If you are running the IDL Virtual Machine on Windows then double-click on the tomo_display.sav file,
 or open the IDL Virtual Machine from the Windows Start menu and browse for the file.
