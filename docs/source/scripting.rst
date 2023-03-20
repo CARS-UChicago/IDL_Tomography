@@ -4,7 +4,7 @@ The ``tomo`` class can be called from user-written IDL routines to perform all s
 This can be used to write scripts to do batch processing of data without using the tomo_display GUI.
 
 The `tomo class documentation <_static/IDL_help/tomography_routines.html>`__ explains the use of each
-of the ``tomo`` methods.
+of the ``tomo`` methods.  These are the routines whose names begin with ``tomo::``.
 
 Processing a single dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
