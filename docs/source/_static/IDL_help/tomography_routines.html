@@ -14,7 +14,7 @@ this routine, refer to the IDL Online Help Navigator
 or type: <P>
 <PRE>     ? mk_html_help</PRE><P>
 at the IDL command line prompt.<P>
-<STRONG>Last modified: </STRONG>Sun Mar 19 15:17:18 2023.<P>
+<STRONG>Last modified: </STRONG>Sun Mar 19 16:11:18 2023.<P>
  
 <HR>
  
@@ -26,6 +26,8 @@ at the IDL command line prompt.<P>
 <LI><A HREF="#READ_TOMO_VOLUME">READ_TOMO_VOLUME</A>
 <LI><A HREF="#REMOVE_TOMO_ARTIFACTS">REMOVE_TOMO_ARTIFACTS</A>
 <LI><A HREF="#SINOGRAM">SINOGRAM</A>
+<LI><A HREF="#TOMO::CORRECT_ROTATION_TILT">TOMO::CORRECT_ROTATION_TILT</A>
+<LI><A HREF="#TOMO::OPTIMIZE_CENTER">TOMO::OPTIMIZE_CENTER</A>
 <LI><A HREF="#TOMO::PREPROCESS">TOMO::PREPROCESS</A>
 <LI><A HREF="#TOMO::READ_CAMERA_FILE">TOMO::READ_CAMERA_FILE</A>
 <LI><A HREF="#TOMO::READ_SETUP">TOMO::READ_SETUP</A>
@@ -247,7 +249,7 @@ at the IDL command line prompt.<P>
 <A NAME="SINOGRAM">
 <H2>SINOGRAM</H2></A>
 <A HREF="#REMOVE_TOMO_ARTIFACTS">[Previous Routine]</A>
-<A HREF="#TOMO::PREPROCESS">[Next Routine]</A>
+<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -308,9 +310,86 @@ at the IDL command line prompt.<P>
 <STRONG>(See sinogram.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::CORRECT_ROTATION_TILT">
+<H2>TOMO::CORRECT_ROTATION_TILT</H2></A>
+<A HREF="#SINOGRAM">[Previous Routine]</A>
+<A HREF="#TOMO::OPTIMIZE_CENTER">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+  TOMO::CORRECT_ROTATION_TILT
+
+ PURPOSE:
+   This procedure rotates each projection by the specified angle.
+   It can be used to correct for the rotation center not being parallel to the columns of the camera.
+
+ CALLING SEQUENCE:
+   TOMO->CORRECT_ROTATION_TILT, ANGLE
+
+ INPUT PARAMETERS:
+   ANGLE (required)
+     The angle in degrees clockwise by which to rotate each projection.
+
+; PROCEDURE:
+   Uses the IDL ROT function.  tomo::pVolume is modified in place.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::OPTIMIZE_CENTER">
+<H2>TOMO::OPTIMIZE_CENTER</H2></A>
+<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Previous Routine]</A>
+<A HREF="#TOMO::PREPROCESS">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+  TOMO::OPTIMIZE_CENTER
+
+ PURPOSE:
+   This procedure performs the preprocessing on a tomography dataset, producing normalized data that
+   is corrected for dark fields, flat fields, and zingers.
+   The data must have been read into the tomo object with tomo::read_camera_file.
+   The preprocessing parameters can be specified before calling this function with tomo::set_preprocess_params.
+
+ CALLING SEQUENCE:
+   TOMO->OPTIMIZE_CENTER, SLICES, CENTER, MERIT, WIDTH=WIDTH, STEP=STEP, METHOD=METHOD
+
+ INPUT PARAMETERS:
+   SLICES (required)
+     A 2-element array containing the slice numbers to use for optimization.
+     Normally one should be near the top of the projections and the other near the bottom
+   CENTER (required)
+     The initial guess of the optimum rotation center.
+     
+ OUTPUT PARAMETERS:
+   MERIT:
+     An array of [2, nCenter] where nCenter = WIDTH/STEP + 1. 
+     This array contains the figure of merit for each rotation center for the upper and lower slices.  
+     The minimum value is nominally the best rotation center.
+
+ KEYWORD PARAMETERS
+   WIDTH:
+     The full-width of the rotation center search region in pixels. Default=10.
+   STEP:
+     The step size within the WIDTH for each trial rotation center.  
+     Default=0.5 if METHOD='0-180' and 0.25 if METHOD='Entropy'.
+   METHOD:
+     The optimization method.  Valid choices are '0-180' and 'Entropy'.
+     
+ PROCEDURE:
+   The IDL tomography documentation (https://CARS-UChicago.github.io/IDL_tomography) explains
+   the optimization algorithms in detail.
+   
+   After the optimization the two slice numbers and the minimum values of MERIT are passed
+   to TOMO::SET_ROTATION.  That routine sets tomo::rotationCenter and tomo::rotationCenterSlope
+   which are used to set the rotation center of each slice during reconstruction.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::PREPROCESS">
 <H2>TOMO::PREPROCESS</H2></A>
-<A HREF="#SINOGRAM">[Previous Routine]</A>
+<A HREF="#TOMO::OPTIMIZE_CENTER">[Previous Routine]</A>
 <A HREF="#TOMO::READ_CAMERA_FILE">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -368,7 +447,7 @@ at the IDL command line prompt.<P>
        - base.config An ASCII file containing metadata. 
 
  INPUT PARAMETERS:
-   FILENAME (required:
+   FILENAME (required):
      For netCDF this can be the name of any of the 3 netCDF files
      For HDF5 this is the name of the HDF5 file
 
