@@ -274,9 +274,10 @@ pro tomo_display::optimize_rotation_center
          view_title=title, id=id, /disable_splash_screen, /no_saveprompt
   merit_diff = min(merit[*,1]) - min(merit[*,0])
   iplot, centers, merit[*,1]-merit_diff, sym_index=4, view_title=title, overplot=id
+  ; Must set limits before calling reconstruct so the center widgets are update first
+  self->set_limits
   self->reconstruct, 0
   self->reconstruct, 1
-  self->set_limits
 end
 
 
