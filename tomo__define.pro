@@ -1,40 +1,37 @@
 ;+
 ; NAME:
-;  TOMO::READ_DATA_FILE
+;  TOMO::READ_CAMERA_FILE
 ;
 ; PURPOSE:
 ;   This procedure reads a tomography data set from 2 types of data files:
-;     netCDF files.  There are 3 files
-;       base_1.nc contains flat fields collected at the beginning
-;       base_2.nc contains the projections
-;       base_3.nc contains the flat fields collected at the end
-;     HDF5 files.  There is a single file that contains the flat fields and the projections
+;     - netCDF files.  There are 4 files
+;       - base_1.nc contains flat fields collected at the beginning
+;       - base_2.nc contains the projections
+;       - base_3.nc contains the flat fields collected at the end
+;       - base.setup ASCII file containing metadata including the pixel size and dark current.
+;       
+;     - HDF5 files.  There are 2 files:
+;       - base.h5     A single file HDF5 that contains the flat fields, dark fields, projections, and metadata
+;       - base.config An ASCII file containing metadata. 
 ;
-; CATEGORY:
-;   Tomography
+; INPUT PARAMETERS:
+;   FILENAME (required):
+;     For netCDF this can be the name of any of the 3 netCDF files
+;     For HDF5 this is the name of the HDF5 file
 ;
-; CALLING SEQUENCE:
-;   TOMO->READ_DATA_FILE, Filename, Projections, Flats, Darks, Angles
-;
-; INPUTS:
-;   Filename:
-;       For netCDF this can be the name of any of the 3 files
-;       For HDF5 this is the name of the file
-;       to be of the form Base_file + strtrim(file_number,2) + '.SPE'.
-;
-; OUTPUTS:
-;   Projections:
-;       A 3-D array of the projection data, [NCOLS, NROWS, NANGLES]
-;
-;   Flats:
-;       A 3-D array of flat field data, [NCOLS, NROWS, NFLATS]
-;
-;   Darks:
-;       A 3-D array of dark field data, [NCOLS, NROWS, NDARKS]
-;
-;   Angles:
-;       A 1-D array of the projection angles
-;
+; PROCEDURE:
+;   Reads the data into the tomo object, including these member variables
+;     nx, ny, nz
+;     xPixelSize, yPixelSize, zPixelSize
+;     pAngles
+;     pFlats
+;     pDarks
+;     pData
+;     rotationCenter       Initialized to nx/2
+;     rotationCenterSlope  Initialize to 0
+;  For netCDF files reads the .setup file with tomo::read_setup
+;  For HDF5 files reads the .config file with tomo::read_sample_config
+;-
 pro tomo::read_camera_file, filename
 
   t0 = systime(1)
@@ -128,93 +125,31 @@ end
 ;  TOMO::PREPROCESS
 ;
 ; PURPOSE:
-;   This procedure reads a tomography data set from netCDF or HDF5 raw data files.
-;   It corrects the flat fields for dark current and zingers, and averages them together.
-;   It then corrects each projection for dark current, flat field, and zingers.
-;   It optionally saves the normalized data to an HDF5 file.
-;
-; CATEGORY:
-;   Tomography
+;   This procedure performs the preprocessing on a tomography dataset, producing normalized data that
+;   is corrected for dark fields, flat fields, and zingers.
+;   The data must have been read into the tomo object with tomo::read_camera_file.
+;   The preprocessing parameters can be specified before calling this function with tomo::set_preprocess_params.
 ;
 ; CALLING SEQUENCE:
-;   TOMO->PREPROCESS, Filename
-;
-; INPUTS:
-;   Filename
-;       The name of the raw data file.  For netCDF input this can be the name of any of the 3 files.
-;
-;; KEYWORD PARAMETERS:
-;   THRESHOLD:
-;       The threshold for zinger removal in normal frames.  See documentation
-;       for REMOVE_TOMO_ARTIFACTS for details.  Default=1.25
-;   DOUBLE_THRESHOLD:
-;       The threshold for zinger removal in white field frames using double
-;       correlation.  Default=1.05
-;   DARK:
-;       The dark current, either a scaler or a 2-D array.  If this is a scaler
-;       value then a constant dark current is subtracted from each pixel in
-;       every frame.  If this is a 2-D array then it must have the same
-;       dimensions as each frame in the data set.  In this case the specified
-;       2-D dark current will be substracted from each frame in the data set.
-;       With netCDF files the dark current scalar value is taken from the .setup file.
-;       With HDF5 files the dark current scalar value is in the HDF5 file, or there are
-;       actual dark current frames in the file.
-;       This keyword is thus normally not used.
-;   FIRST_ROW:
-;       The starting row (slice) to be processed.  The default is 0.  This
-;       keyword, together with LAST_ROW below are provided for processing
-;       data sets which are too large to be read into memory in their
-;       entirety.  It lets one create multiple volume arrays from a single
-;       data set, for example rows 0-300 in file 1, (FIRST_ROW=0, LAST_ROW=300)
-;       rows 301-600 in file 2, etc.
-;   LAST_ROW:
-;       The ending row (slice) to be processed.  The defaults is the last row
-;       in each image.  See comments under FIRST_ROW above.
-;  FLAT_FIELD:
-;       The flat field value, either a scaler or a 2-D array.  If this is a
-;       scaler value then each pixel in each data frame is normalized by this
-;       constant value.  If this is a 2-D array then it must have the same
-;       dimensions as each frame in the data set.  In this case then each data
-;       frame in the data set is normalized by the specified 2-D array.
-;       Note that if the data set contains flat field frames which is typically the case, 
-;       then this keyword is normally not used.
-;   OUTPUT:
-;       The name of the output file.  The default is Base_file + 'volume.h5'
-;   DEBUG:  A debugging flag.  Allowed values are:
-;           0: No informational output
-;           1: Prints each input filename as it is read, and prints limited
-;              information on processing steps
-;           2: Prints detailed information on processing steps
-; OUTPUTS:
-;   This function returns a 3-dimensional signed 16-bit integer volume array
-;   of size [NCOLS, NROWS, NPROJECTIONS].  The data is the ratio of the input image
-;   to the flat field, multiplied by 10,000.  The ratio of the data to the
-;   flat field should be in the range 0 to 1 (with occasional values slightly
-;   greater than 1).  Multiplying by 10000 should give sufficient resolution,
-;   since even values with 99% absorption will be stored with a precision of
-;   1%.
+;   TOMO->PREPROCESS
 ;
 ; PROCEDURE:
 ;   This function performs the following steps:
-;   - Reads the raw data into a 3-D array usually of type UINT (unsigned 16-bit integer)
-;     Stores the rotation angle at which each frame was collected.
-;   - Subtracts the dark current from each data frame and white field frame,
-;     using dark current scalar value or images in the data set or passed as argument
-;   - Removes zingers from white field frames using REMOVE_TOMO_ARTIFACTS with
-;     /DOUBLE_CORRELATION if possible, or /ZINGERS if not.
-;   - Divides each data frame by the white field, using white field images in
-;     the data set, or the input white field if present.
-;     The ratio of each frame to the white field is multiplied by 10,000 to be
-;     able to use 16 bit integers, rather than floats to store the results,
-;     saving a factor of 2 in memory, which is important for these large 3-D
-;     data sets.
-;   - Corrects for zingers in the white-field normalized data frames, using
-;     REMOVE_TOMO_ARTIFACTS, /ZINGERS.
-;   - Optionally writes the normalized data frames to a single disk file.  The default
-;     file name is Base_file + 'volume.h5'.  
-;     The volume file can be read back in to IDL with function READ_TOMO_VOLUME
-;
-
+;   - Averages the dark fields if there is more than 1
+;   - Subtracts the dark current from each flat field field frame,
+;   - Removes zingers from flat field frames using REMOVE_TOMO_ARTIFACTS with
+;     /DOUBLE_CORRELATION if there is more than 1, or /ZINGERS if there is only 1.
+;   - Averages the flat fields if there is more than 1.
+;   - Calls the C++ code in tomoRecon to do the following:
+;     - Subtracts the dark current from each projection 
+;     - Divides projection by the average flat field
+;     - Removes zingers using a median filter with zingerWidth and zingerThreshold
+;     - Scales the normalized projection by preprocessScale
+;   - Optionally converts the normalized projections to UInt16 if preprocessDataType = 'UInt16'
+;   - Optionally writes the normalized data frames to a single disk file if .preprocessWriteOutput is true.
+;     The file can be written in HDF5 or netCDF format.
+;   - Replaces the raw data in tomo::pVolume with the normalized data.
+;-
 pro tomo::preprocess
 
   tStart = systime(1)
@@ -319,6 +254,49 @@ if (self.preprocessDataType eq 'UInt16') then begin
 
 end
 
+;+
+; NAME:
+;  TOMO::OPTIMIZE_CENTER
+;
+; PURPOSE:
+;   This procedure performs the preprocessing on a tomography dataset, producing normalized data that
+;   is corrected for dark fields, flat fields, and zingers.
+;   The data must have been read into the tomo object with tomo::read_camera_file.
+;   The preprocessing parameters can be specified before calling this function with tomo::set_preprocess_params.
+;
+; CALLING SEQUENCE:
+;   TOMO->OPTIMIZE_CENTER, SLICES, CENTER, MERIT, WIDTH=WIDTH, STEP=STEP, METHOD=METHOD
+;
+; INPUT PARAMETERS:
+;   SLICES (required)
+;     A 2-element array containing the slice numbers to use for optimization.
+;     Normally one should be near the top of the projections and the other near the bottom
+;   CENTER (required)
+;     The initial guess of the optimum rotation center.
+;     
+; OUTPUT PARAMETERS:
+;   MERIT:
+;     An array of [2, nCenter] where nCenter = WIDTH/STEP + 1. 
+;     This array contains the figure of merit for each rotation center for the upper and lower slices.  
+;     The minimum value is nominally the best rotation center.
+;
+; KEYWORD PARAMETERS
+;   WIDTH:
+;     The full-width of the rotation center search region in pixels. Default=10.
+;   STEP:
+;     The step size within the WIDTH for each trial rotation center.  
+;     Default=0.5 if METHOD='0-180' and 0.25 if METHOD='Entropy'.
+;   METHOD:
+;     The optimization method.  Valid choices are '0-180' and 'Entropy'.
+;     
+; PROCEDURE:
+;   The IDL tomography documentation (https://CARS-UChicago.github.io/IDL_tomography) explains
+;   the optimization algorithms in detail.
+;   
+;   After the optimization the two slice numbers and the minimum values of MERIT are passed
+;   to TOMO::SET_ROTATION.  That routine sets tomo::rotationCenter and tomo::rotationCenterSlope
+;   which are used to set the rotation center of each slice during reconstruction.
+;-
 pro tomo::optimize_center, slices, center, merit, width=width, step=step, method=method
   ; This routine calculates an array of image figure of merit as the rotation center is varied
 
@@ -488,6 +466,24 @@ pro tomo::set_rotation, slice1, center1, slice2, center2
   self.lowerSlice = slice2
 end
 
+;+
+; NAME:
+;  TOMO::CORRECT_ROTATION_TILT
+;
+; PURPOSE:
+;   This procedure rotates each projection by the specified angle.
+;   It can be used to correct for the rotation center not being parallel to the columns of the camera.
+;
+; CALLING SEQUENCE:
+;   TOMO->CORRECT_ROTATION_TILT, ANGLE
+;
+; INPUT PARAMETERS:
+;   ANGLE (required)
+;     The angle in degrees clockwise by which to rotate each projection.
+;
+;; PROCEDURE:
+;   Uses the IDL ROT function.  tomo::pVolume is modified in place.
+;-
 pro tomo::correct_rotation_tilt, angle
   if (not ptr_valid(self.pVolume)) then begin
     t = dialog_message('Must read in volume file first.', /error)
