@@ -122,7 +122,6 @@ That produces this output:
               Write file:       35.560000
               Total time:       81.527000
   Sun Mar 19 10:02:49 2023 Reconstruction complete.
-  Time to read file=       11.945000
 
 Processing a mulitple datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
