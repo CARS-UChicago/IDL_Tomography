@@ -91,20 +91,19 @@ is recommended.</p>
 <h2>Install IDL<a class="headerlink" href="#install-idl" title="Permalink to this heading"></a></h2>
 <p>All sites must install <a class="reference external" href="https://www.l3harrisgeospatial.com/Software-Technology/IDL">IDL</a>, whether they will use the licensed version or the Virtual Machine.
 You should <a class="reference external" href="https://www.l3harrisgeospatial.com/Company/Create-Account?returnurl=https%3a%2f%2fwww.l3harrisgeospatial.com%2fSoftware-Technology%2fIDL">register on the Harris site</a>
-and then you can download the software and follow the installation
-instructions. If you want to get started immediately with the IDL Virtual Machine you can
+and then you can download the software and follow the installation instructions.
+If you want to get started immediately with the IDL Virtual Machine you can
 <a class="reference external" href="https://cars.uchicago.edu/data/idl">download IDL here</a>,
-but please also register with Harris.</p>
+but you should also register with Harris.</p>
 </section>
 <section id="install-idl-tomography">
 <h2>Install IDL_Tomography<a class="headerlink" href="#install-idl-tomography" title="Permalink to this heading"></a></h2>
 <ul>
-<li><p>Create a directory that will contain the IDL tomography routines. This might be C:GSECARS_tomography on Windows
-or /home/youraccount/GSECARS_tomography on Linux.</p></li>
-<li><p>Clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Tomography</a> and <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repositories into that directory. This must be done even if you
-are using the IDL Virtual Machine because that repository contains the required DLLs for Windows and shareable
-libraries for Linux.</p></li>
-<li><p>If you are running the licensed version of IDL clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repository into the same directory.
+<li><p>Create a directory that will contain the IDL tomography routines. This might be <code class="docutils literal notranslate"><span class="pre">C:\\GSECARS_tomography</span></code> on Windows
+or <code class="docutils literal notranslate"><span class="pre">/home/myaccount/GSECARS_tomography</span></code> on Linux.</p></li>
+<li><p>When using licensed version of IDL:</p>
+<ul>
+<li><p>Clone the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Tomography</a> and <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL_Imaging</a> repositories into that directory.
 For example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&gt;</span><span class="n">mkdir</span> <span class="o">~/</span><span class="n">GSECARS_tomography</span>
 <span class="o">&gt;</span><span class="n">cd</span> <span class="o">~/</span><span class="n">GSECARS_tomography</span>
@@ -113,25 +112,34 @@ For example:</p>
 </pre></div>
 </div>
 </li>
-<li><p>If you are running the IDL Virtual Machine download <a class="reference external" href="https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.sav">tomo_display.sav</a> to a folder like C:GSECARS_tomography.</p></li>
-<li><p>If you are using the licensed version of IDL you need to add the directory you created to the IDL_PATH.
-In the IDLDE use Window/Preferences/IDL/Paths to add that directory to the IDL Path, and check the box
-to also search subdirectories.
-Alternatively you can set the IDL_PATH environment variable to e.g. “&lt;IDL_DEFAULT&gt;:+/home/myaccount/GSECARS_tomography”.
-The + symbol means to search subdirectories.</p></li>
-<li><p>On Windows add the IDL_tomography folder to your PATH environment variable.
-This can be done with Control Panel/System/Advanced/Environment Variables.
-This is necessary for both the licensed and Virtual Machine versions of IDL to find libfftw3f-3.dll.</p></li>
-<li><p>If you are using the IDL Virtual machine you must to the following to define the location of the tomoRecon
-shareable library:</p>
+<li><p>Add the directory you created to the IDL_PATH.</p>
 <ul class="simple">
-<li><p>On Linux define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_linux_x86_64.so,
-which is contained in the IDL_Tomography software downloaded above.
-Example: <code class="docutils literal notranslate"><span class="pre">export</span> <span class="pre">TOMO_RECON_SHARE=/usr/local/tomography/idl/tomoRecon_linux_x86_64.so</span></code></p></li>
-<li><p>On Windows define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_Win32_x86_64.dll.
-Example: <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">TOMO_RECON_SHARE=C:\tomography\idl\tomoRecon_Win32_x86.dll</span></code>. This can be done in Control Panel/System as well.</p></li>
+<li><p>In the IDLDE use <code class="docutils literal notranslate"><span class="pre">Window/Preferences/IDL/Paths</span></code> to add that directory to the IDL Path, and check the box
+to also search subdirectories.</p></li>
+<li><p>Alternatively you can set the IDL_PATH environment variable to
+e.g. <code class="docutils literal notranslate"><span class="pre">&lt;IDL_DEFAULT&gt;:+/home/myaccount/GSECARS_tomography</span></code>.
+The + symbol means to search subdirectories.</p></li>
 </ul>
 </li>
+</ul>
+</li>
+<li><p>When using the IDL Virtual Machine</p>
+<ul>
+<li><p>Create a subdirectory in <code class="docutils literal notranslate"><span class="pre">GSECARS_tomography</span></code> called <code class="docutils literal notranslate"><span class="pre">IDL_tomography</span></code>.</p></li>
+<li><p>Download <a class="reference external" href="https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.zip">tomo_display.zip</a> to <code class="docutils literal notranslate"><span class="pre">GSECARS_tomography\IDL_Tomography</span></code> and unzip it there.</p></li>
+<li><p>On Linux define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_linux_x86_64.so,
+which is contained in the IDL_Tomography directory created above. Put a command like this in your bash startup script:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">export</span> <span class="n">TOMO_RECON_SHARE</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">myaccount</span><span class="o">/</span><span class="n">GSECARS_tomography</span><span class="o">/</span><span class="n">IDL_Tomography</span><span class="o">/</span><span class="n">tomoRecon_linux_x86_64</span><span class="o">.</span><span class="n">so</span>
+</pre></div>
+</div>
+</li>
+<li><p>On Windows define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_Win32_x86_64.dll.
+This can be done with <code class="docutils literal notranslate"><span class="pre">Control</span> <span class="pre">Panel/System/Advanced/Environment</span> <span class="pre">Variables</span></code>.</p></li>
+</ul>
+</li>
+<li><p>On Windows add the IDL_tomography folder to your PATH environment variable.
+This can be done with <code class="docutils literal notranslate"><span class="pre">Control</span> <span class="pre">Panel/System/Advanced/Environment</span> <span class="pre">Variables</span></code>.
+This is necessary for IDL to find libfftw3f-3.dll.</p></li>
 <li><p>On Linux make sure the fftw-devel package is installed.  This is required for reconstruction.</p></li>
 </ul>
 </section>
@@ -149,7 +157,7 @@ Example: <code class="docutils literal notranslate"><span class="pre">set</span>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-March-24.
+      <span class="lastupdated">Last updated on 2023-March-25.
       </span></p>
   </div>
 
