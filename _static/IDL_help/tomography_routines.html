@@ -14,7 +14,7 @@ this routine, refer to the IDL Online Help Navigator
 or type: <P>
 <PRE>     ? mk_html_help</PRE><P>
 at the IDL command line prompt.<P>
-<STRONG>Last modified: </STRONG>Sun Mar 19 16:11:18 2023.<P>
+<STRONG>Last modified: </STRONG>Sun Mar 26 16:20:15 2023.<P>
  
 <HR>
  
@@ -24,14 +24,26 @@ at the IDL command line prompt.<P>
 <LI><A HREF="#BACKPROJECT">BACKPROJECT</A>
 <LI><A HREF="#GRIDREC">GRIDREC</A>
 <LI><A HREF="#READ_TOMO_VOLUME">READ_TOMO_VOLUME</A>
+<LI><A HREF="#RECONSTRUCT_SLICE">RECONSTRUCT_SLICE</A>
 <LI><A HREF="#REMOVE_TOMO_ARTIFACTS">REMOVE_TOMO_ARTIFACTS</A>
 <LI><A HREF="#SINOGRAM">SINOGRAM</A>
 <LI><A HREF="#TOMO::CORRECT_ROTATION_TILT">TOMO::CORRECT_ROTATION_TILT</A>
+<LI><A HREF="#TOMO::GET_STRUCT">TOMO::GET_STRUCT</A>
+<LI><A HREF="#TOMO::GET_VOLUME">TOMO::GET_VOLUME</A>
+<LI><A HREF="#TOMO::INIT">TOMO::INIT</A>
 <LI><A HREF="#TOMO::OPTIMIZE_CENTER">TOMO::OPTIMIZE_CENTER</A>
 <LI><A HREF="#TOMO::PREPROCESS">TOMO::PREPROCESS</A>
 <LI><A HREF="#TOMO::READ_CAMERA_FILE">TOMO::READ_CAMERA_FILE</A>
+<LI><A HREF="#TOMO::READ_SAMPLE_CONFIG">TOMO::READ_SAMPLE_CONFIG</A>
 <LI><A HREF="#TOMO::READ_SETUP">TOMO::READ_SETUP</A>
+<LI><A HREF="#TOMO::READ_VOLUME">TOMO::READ_VOLUME</A>
 <LI><A HREF="#TOMO::RECONSTRUCT_VOLUME">TOMO::RECONSTRUCT_VOLUME</A>
+<LI><A HREF="#TOMO::RESTORE_SETTINGS">TOMO::RESTORE_SETTINGS</A>
+<LI><A HREF="#TOMO::SAVE_SETTINGS">TOMO::SAVE_SETTINGS</A>
+<LI><A HREF="#TOMO::SET_PREPROCESS_PARAMS">TOMO::SET_PREPROCESS_PARAMS</A>
+<LI><A HREF="#TOMO::SET_RECON_PARAMS">TOMO::SET_RECON_PARAMS</A>
+<LI><A HREF="#TOMO::WRITE_SAMPLE_CONFIG">TOMO::WRITE_SAMPLE_CONFIG</A>
+<LI><A HREF="#TOMO::WRITE_VOLUME">TOMO::WRITE_VOLUME</A>
 <LI><A HREF="#TOMO_FILTER">TOMO_FILTER</A>
 <LI><A HREF="#WRITE_TOMO_VOLUME">WRITE_TOMO_VOLUME</A>
 </UL><P>
@@ -154,7 +166,7 @@ at the IDL command line prompt.<P>
 <A NAME="READ_TOMO_VOLUME">
 <H2>READ_TOMO_VOLUME</H2></A>
 <A HREF="#GRIDREC">[Previous Routine]</A>
-<A HREF="#REMOVE_TOMO_ARTIFACTS">[Next Routine]</A>
+<A HREF="#RECONSTRUCT_SLICE">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -185,9 +197,49 @@ at the IDL command line prompt.<P>
 <STRONG>(See read_tomo_volume.pro)</STRONG><P>
 <HR>
  
+<A NAME="RECONSTRUCT_SLICE">
+<H2>RECONSTRUCT_SLICE</H2></A>
+<A HREF="#READ_TOMO_VOLUME">[Previous Routine]</A>
+<A HREF="#REMOVE_TOMO_ARTIFACTS">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   RECONSTRUCT_SLICE
+
+ PURPOSE:
+   Reconstructs a single slice in a tomography volume array.
+
+ CALLING SEQUENCE:
+   Result = RECONSTRUCT_SLICE(INPUT, CENTER=CENTER, SINOGRAM=SINOGRAM, COG=COG)
+
+ INPUTS:
+   INPUT:  The slice to be reconstructed, dimensions [NX, N_PROJECTIONS]
+
+ INPUT KEYWORD PARAMETERS:
+   CENTER:
+     The rotation center.  If this keyword is not specified then the
+     center is assumed to be the center pixel of the slice.
+
+ OUTPUT KEYWORD PARAMETERS:
+   SINOGRAM:
+     The computed sinogram. This can only be returned when the reconstruction method is
+     Gridrec or Backproject, not tomoRecon.
+   COG:
+     The center of gravity of the sinogram, 1-D array. This can only be returned when the reconstruction method is
+     Gridrec or Backproject, not tomoRecon.
+
+ OUTPUTS:
+   This function returns the reconstructed slice.  It is a floating point array of dimensions [NX, NX]
+
+ PROCEDURE:
+   Reconstructs the slice with the current reconstruction parameters set with TOMO::SET_RECON_PARAMS.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="REMOVE_TOMO_ARTIFACTS">
 <H2>REMOVE_TOMO_ARTIFACTS</H2></A>
-<A HREF="#READ_TOMO_VOLUME">[Previous Routine]</A>
+<A HREF="#RECONSTRUCT_SLICE">[Previous Routine]</A>
 <A HREF="#SINOGRAM">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -313,7 +365,7 @@ at the IDL command line prompt.<P>
 <A NAME="TOMO::CORRECT_ROTATION_TILT">
 <H2>TOMO::CORRECT_ROTATION_TILT</H2></A>
 <A HREF="#SINOGRAM">[Previous Routine]</A>
-<A HREF="#TOMO::OPTIMIZE_CENTER">[Next Routine]</A>
+<A HREF="#TOMO::GET_STRUCT">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -336,9 +388,79 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::GET_STRUCT">
+<H2>TOMO::GET_STRUCT</H2></A>
+<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Previous Routine]</A>
+<A HREF="#TOMO::GET_VOLUME">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::GET_STRUCT
+
+ PURPOSE:
+   This function returns the member variables of the tomo class as a structure
+   It is provided because IDL class member variables are always private.
+
+ CALLING SEQUENCE:
+   result = TOMO->GET_STRUCT()
+
+ RETURN VALUE:
+   Returns the tomo object member variables as a structure.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::GET_VOLUME">
+<H2>TOMO::GET_VOLUME</H2></A>
+<A HREF="#TOMO::GET_STRUCT">[Previous Routine]</A>
+<A HREF="#TOMO::INIT">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::GET_VOLUME
+
+ PURPOSE:
+   This function returns self.pVolume.
+   This is a pointer to raw, normalized, or reconstructed data, depending on the most recent operation performed.
+   It is an IDL pointer, so does not involve a copy operation.
+
+ CALLING SEQUENCE:
+   result = TOMO->GET_VOLUME()
+
+ RETURN VALUE:
+   Returns self.pVolume.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::INIT">
+<H2>TOMO::INIT</H2></A>
+<A HREF="#TOMO::GET_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::OPTIMIZE_CENTER">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::INIT
+
+ PURPOSE:
+   This function is called implicitly when a new TOMO object is created.
+   It initializes all member variables to reasonable defaults.
+
+ CALLING SEQUENCE:
+   TOMO = OBJ_NEW('TOMO', KEYWORD=VALUE, ...)
+
+ KEYWORD PARAMETERS:
+   settingsFile   Name of a settings file previously saved with TOMO::SAVE_SETTINGS
+   statusWidget   Widget ID of a status widget.  TOMO methods will write status strings to this widget if specified.
+   abortWidget    Widget ID of an abort width.  TOMO methods monitor this widget to know when to abort operations.
+   debugLevel     Debugging level for messages
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::OPTIMIZE_CENTER">
 <H2>TOMO::OPTIMIZE_CENTER</H2></A>
-<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Previous Routine]</A>
+<A HREF="#TOMO::INIT">[Previous Routine]</A>
 <A HREF="#TOMO::PREPROCESS">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -428,7 +550,7 @@ at the IDL command line prompt.<P>
 <A NAME="TOMO::READ_CAMERA_FILE">
 <H2>TOMO::READ_CAMERA_FILE</H2></A>
 <A HREF="#TOMO::PREPROCESS">[Previous Routine]</A>
-<A HREF="#TOMO::READ_SETUP">[Next Routine]</A>
+<A HREF="#TOMO::READ_SAMPLE_CONFIG">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -467,138 +589,407 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::READ_SAMPLE_CONFIG">
+<H2>TOMO::READ_SAMPLE_CONFIG</H2></A>
+<A HREF="#TOMO::READ_CAMERA_FILE">[Previous Routine]</A>
+<A HREF="#TOMO::READ_SETUP">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::READ_SAMPLE_CONFIG
+
+ PURPOSE:
+   This procedure reads some of fields in the JSON .config file into tomo object variables.
+
+ CALLING SEQUENCE:
+   TOMO->READ_SAMPLE_CONFIG, FILE
+   
+ INPUTS:
+   FILE:  The name of the file to read. Optional, default is self.baseFileName + '.config'
+
+ PROCEDURE:
+   This is the list of JSON fields and tomo object variables
+     RotationCenter  self.rotatinCenter
+     RotationSlose   self.rotationCenterSlope
+     UpperSlice      self.upperSlice
+     LowerSlice      self.lowerSlice
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::READ_SETUP">
 <H2>TOMO::READ_SETUP</H2></A>
-<A HREF="#TOMO::READ_CAMERA_FILE">[Previous Routine]</A>
-<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Next Routine]</A>
+<A HREF="#TOMO::READ_SAMPLE_CONFIG">[Previous Routine]</A>
+<A HREF="#TOMO::READ_VOLUME">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
    TOMO::READ_SETUP
 
  PURPOSE:
-   This function reads the setup information for a tomography data set from an
-   ASCII file.
-
- CATEGORY:
-   Tomography
+   This function reads the setup information for a tomography data set from an ASCII file.
+   NOTE: These .setup files are present for pre-2020 data collected with raw data in netCDF format
+   They contain original metadata including the dark current.
+   Previously the tomo class re-wrote these files with new metadata, including the rotation center.
+   The current processing software only reads these .setup files, and write the new metadata to the .config file.
 
  CALLING SEQUENCE:
-   result = TOMO->READ_SETUP(File)
+   result = TOMO->READ_SETUP(FILE)
 
  INPUTS:
    File:
-       The name of the input file.
+     The name of the input .setup file.
 
  OUTPUTS:
-   This function returns 0 if it was unable to read the file, 1 if it was
-   successful.
+   The data read from the file is read into the following fields in the tomo object
+     *self.pDarks
+     self.rotationCenter
+     self.[x,y,z]PixelSize
+     self.pConfig[SampleDescription1, UserName, Camera, SampleName, DarkFieldValue, Energy, ImagePixelSize]
+ 
+ RETURN VALUE:
+   The function returns 0 if it was unable to read the file, 1 if it was successful.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::READ_VOLUME">
+<H2>TOMO::READ_VOLUME</H2></A>
+<A HREF="#TOMO::READ_SETUP">[Previous Routine]</A>
+<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::READ_VOLUME
 
- EXAMPLE:
-       IDL>  status = TOMO->READ_SETUP('Sample1.setup')
+ PURPOSE:
+   Reads in 3-D volume files written by TOMO::WRITE_VOLUME.
+   These are HDF5 and netCDF format.
 
- MODIFICATION HISTORY:
-   Written by: Mark Rivers, Aug. 2001?
+ CALLING SEQUENCE:
+   Result = READ_TOMO_VOLUME(FILE, STORE=STORE, XRANGE=XRANGE, YRANGE=YRANGE, ZRANGE=ZRANGE)
+
+ INPUTS:
+   FILE:
+     The name of the volume file to be read.  If this is not specified then
+     the function will use DIALOG_PICKFILE to allow the user to select a file.
+
+; KEYWORD PARAMETERS:
+   STORE
+     If this keyword is set then the data is read into *self->pVolume, 
+     self.nx, self,ny, and self.nz are set appropriately, and the function returns the scalar value 0.
+     If this keyword is not set then the function returns the data read.
+     
+   The behavior of the following keywords depends on the file type:
+   netCDF: Only the specified subset of the data is read from disk.
+   HDF5:   The entire dataset is read from disk, but only the selected subset it returned.
+           In the future this may be improved to only read the selected subset. 
+   XRANGE=[xstart, xstop]
+       The range of X values to read in. The default is to read the entire X range of the data
+   YRANGE=[ystart, ystop]
+       The range of Y values to read in. The default is to read the entire Y range of the data
+   ZRANGE=[zstart, zstop]
+       The range of Z values to read in. The default is to read the entire Z range of the data
+
+ OUTPUTS:
+   If the keyword STORE is not set then this function the data read.
+   If the keyword is set then the function puts the data in *self.pVolume and returns 0.
+
+ PROCEDURE:
+   - Calls self->set_file_components to set self.inputFilename, self.directory, and self.baseFilename
+   - For HDF files the following datasets are read if they are present
+       /exchange/data              *self.pVolume or data returned by function
+       /process/imageType          self.imageType
+       /process/angles             *self.pAngles
+       /process/[x,y,z]PixelSize   self.[x,y,z]PixelSize
+   - For netCDF files the following variables and global attributes are read if present
+       VOLUME                      *self.pVolume or data returned by function
+       imageType                   self.imageType
+       angles                      *self.pAngles
+       scale_factor                self.preprocessScale
+       [x,y,z]PixelSize            self.[x,y,z]PixelSize
+       title                       self.pSampleConfig['SampleDescription1']
+       operator                    self.pSampleConfig['UserName']
+       camera                      self.pSampleConfig['Camera']
+       sample                      self.pSampleConfig['SampleName']
+       energy                      self.pSampleConfig['Energy']
+       dark_current                self.pSampleConfig['DarkFieldValue'], *self.pDarks
+       center                      self.rotationCenter
+   - Calls self->read_sample_config to read additional metadata that is stored in that file
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
 <A NAME="TOMO::RECONSTRUCT_VOLUME">
 <H2>TOMO::RECONSTRUCT_VOLUME</H2></A>
-<A HREF="#TOMO::READ_SETUP">[Previous Routine]</A>
-<A HREF="#TOMO_FILTER">[Next Routine]</A>
+<A HREF="#TOMO::READ_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::RESTORE_SETTINGS">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
    TOMO::RECONSTRUCT_VOLUME
 
  PURPOSE:
-   This procedure reconstructs a complete 3-D data set (X, Y, Theta) into a
-   3-D (X, Y, Z) volume.  It reads its input from disk and writes its output
-   back to disk.
-
- CATEGORY:
-   Tomography.
+   This procedure reconstructs a complete 3-D data set (X, Y, Theta) into a 3-D (X, Y, Z) volume.  
 
  CALLING SEQUENCE:
-   TOMO->RECONSTRUCT_VOLUME, Base_file
-
- INPUTS:
-   Base_file:
-       The base file name.  The input file is assumed to be named
-       base_file+'.volume', and the output file will be named
-       base_file+'_recon.volume'.  The input file is read with
-       READ_TOMO_VOLUME and the output file is written with WRITE_TOMO_VOLUME.
-
- KEYWORD PARAMETERS:
-   This procedure accepts all keywords accepted by READ_TOMO_VOLUME and
-   RECONSTRUCT_SLICE and simply passes them to those routines via keyword
-   inheritance.
-
-   CENTER
-       This keyword, which is passed to RECONSTRUCT_SLICE can either be a scaler (the
-       normal case) or a 2-element array.  If it is a 2-element array then the
-       center value passed to RECONSTRUCT_SLICE is interpolated between CENTER[0]
-       for the first slice of the volume file to CENTER[1] at the last slice of the
-       volume file.  This can be useful if the optimum center varies with slice
-       depth.
-   ANGLES
-       An optional array of angles (in degrees) at which each projection was taken.
-       This keyword is passed to RECONSTRUCT_SLICE.  If this keyword is missing
-       then RECONSTRUCT_SLICE assumes even spacing from 0 to 180-delta degrees.
-   SCALE
-       The scale factor by which the data should be multiplied before writing as
-       short integers to the output file.  The default is 1.e6.  Since the
-       attenuation values are per-pixel, and are typically 0.001, this leads to
-       integers in the range of 10,000.  If there are highly attenuating pixels the
-       scale factor may need to be decreased to 1-5e5 to avoid integer overflow.
-       The inverse of the SCALE is stored as the attribute volume:preprocessScale
-       in the netCDF file.
-;
- RESTRICTIONS:
-   This procedure assumes a naming convention for the input and output files.
-   The output is stored as 16 bit integers to save memory and disk space.
-   This can reduce the dynamic range of the reconstructed data.
+   TOMO->RECONSTRUCT_VOLUME
 
  PROCEDURE:
-   This procedure simply does the following:
-       - Reads a corrected input volume (X, Y, Theta) which is typically
-         created with READ_TOMO_DATA
-       - Calls RECONSTRUCT_SLICE for each row (slice) in the input volume
-       - Scales the reconstructed data (floating poing) by 10000 and converts
-         to 16 bit integers
-       - Writes the reconstructed 3-D volume (X, Y, Z) back to disk with
-         WRITE_TOMO_VOLUME
+   - The input is normalized data in *self.pVolume.
+   - The reconstruction is done using the parameters set in TOMO::SET_RECON_PARAMS
+   - The rotation center for each slice is determined using self.rotationCenter and self.rotationCenterSlope
+   - If the maximum angle is larger then 180 degrees then it is assumes the data is 360 degrees and calls
+     TOMO::CONVERT_360_DATA to convert to 180.
+   - If *self.pVolume is not of type FLOAT it is converted to FLOAT.
+   - If self.reconMethod is tomoRecon then the reconstruction is done with TOMO::TOMO_RECON,
+     otherwise it is done by reconstructing each slice with TOMO::RECONSTRUCT_SLICE.
+   - The .config file is updated with TOMO::WRITE_SAMPLE_CONFIG.
+     This updates the upper and lower slice numbers and rotation centers used for the reconstruction.
+   - If self.reconDataType is not Float32 then the reconstructed data is converted to Int16 or UInt16.
+   - If self.reconWriteOutput is not 0 then the output is written to disk by TOMO::WRITE_VOLUME,
+     in the format selected by self.reconWriteFormat, i.e. 'HDF5' or 'netCDF'.
+   - The output is returned in *self.pVolume, replacing the normalized data.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::RESTORE_SETTINGS">
+<H2>TOMO::RESTORE_SETTINGS</H2></A>
+<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::SAVE_SETTINGS">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::RESTORE_SETTINGS
 
- EXAMPLE:
-   reconstruct_volume, 'FOSSIL1', /AUTO_CENTER
+ PURPOSE:
+   This procedure restores the tomo settings from a file that was written by tomo::save_settings.
+   The file can contain additional keys beyond those known to the tomo class, and these are ignored.
+   This is the case when the file is written by the tomo_display class, since such files include
+   tomo_display parameters as well.
 
- MODIFICATION HISTORY:
-   Written by:    Mark Rivers, April 23, 1999
-   30-APR-1999 MLR  Fixed bug introduced by new version of sinogram, need
-                    to get size of reconstructed slices after centering
-   18-MAY-1999 MLR  Changed formal parameter _extra to _ref_extra to allow
-                    CENTER keyword value to be returned from sinogram (via
-                    reconstruct_slice).
-   23-FEB-2000 MLR  Pass extra keywords to read_tomo_volume
-   7-MAR-2000  MLR  Added support for GRIDREC reconstruction, which reconstructs
-                    2 slices at once.
-   2-JAN-2001  MLR  Added CENTER keyword. If it is a 2-element array then the
-                    center is interpolated.
-   11-APR-2001 MLR  Incorporated the previous routine RECONSTRUCT_VOLUME into the
-                    TOMO class library.
-                    This procedure now updates the .SETUP file with the center
-                    value which was used for the reconstruction.
-   12-APR-2001 MLR  Added SCALE and angles keywords since we need to process them
-                    here.
-   11-APR-2002 MLR  Fixed bug introduced on 02-APR with center
+ CALLING SEQUENCE:
+   TOMO->RESTORE_SETTINGS, FILE
+
+ INPUTS:
+  FILE: Name of the file to read from to.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::SAVE_SETTINGS">
+<H2>TOMO::SAVE_SETTINGS</H2></A>
+<A HREF="#TOMO::RESTORE_SETTINGS">[Previous Routine]</A>
+<A HREF="#TOMO::SET_PREPROCESS_PARAMS">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::SAVE_SETTINGS
+
+ PURPOSE:
+   This procedure saves the current tomo settings to a file.
+   The file is in JSON format.
+
+ CALLING SEQUENCE:
+   TOMO->SAVE_SETTINGS, FILE
+
+ INPUTS:
+  FILE: Name of the file to write to.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::SET_PREPROCESS_PARAMS">
+<H2>TOMO::SET_PREPROCESS_PARAMS</H2></A>
+<A HREF="#TOMO::SAVE_SETTINGS">[Previous Routine]</A>
+<A HREF="#TOMO::SET_RECON_PARAMS">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::SET_PREPROCESS_PARAMS
+
+ PURPOSE:
+   This procedure sets the preprocess parameters.
+   It uses keywords to set the appropriate tomo member variable value.
+   It is typically called before calling tomo::preprocess.
+
+ CALLING SEQUENCE:
+   TOMO->SET_PREPROCESS_PARAM, keyword=value, ...
+
+ KEYWORD PARAMETERS
+   Many of these value are explained in more depth in the IDL_Tomography documentation
+   at https://cars-uchicago.github.io/IDL_Tomography/processing_options.html
+
+   zingerWidth           Number of pixel used for zinger removal. 0=disable
+   zingerThreshold       Threshold for zinger removal when using median filter for projections
+   zingerDoubleThreshold Threshold for zinger removal when using double correlation for flat fields
+   dataType              Output data type: 'Float32' or 'UInt16'
+   writeOutput           1 to write the preprocessed output data to a file, 0 to not write.
+   writeFormat           Output file format: 'HDF5' or 'netCDF'
+   scale                 Output scale factor.  Typically 10000.  Needed when output='UInt16'
+   threads               Number of threads to use for preprocessing
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::SET_RECON_PARAMS">
+<H2>TOMO::SET_RECON_PARAMS</H2></A>
+<A HREF="#TOMO::SET_PREPROCESS_PARAMS">[Previous Routine]</A>
+<A HREF="#TOMO::WRITE_SAMPLE_CONFIG">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::SET_RECON_PARAMS
+
+ PURPOSE:
+   This procedure sets the reconstruction parameters.
+   It uses keywords to set the appropriate tomo member variable value.
+   It is typically called before calling tomo::reconstruct_slice or tomo::reconstruct_volume.
+
+ CALLING SEQUENCE:
+   TOMO->SET_RECON_PARAM, keyword=value, ...
+   
+ KEYWORD PARAMETERS
+   Many of these value are explained in more depth in the IDL_Tomography documentation
+   at https://cars-uchicago.github.io/IDL_Tomography/processing_options.html
+   
+   rotationCenter        Rotation center for slice 0
+   rotCenterSlope        Slope of the rotation in pixels/slice
+   reconMethod           Reconstruction method: 'tomoRecon', 'GridRec', or 'Backproject'
+   dataType              Output data type: 'Float32', 'Int16', or 'UInt16'
+   writeOutput           1 to write the reconstruction to a file, 0 to not write.
+   writeFormat           Output file format: 'HDF5' or 'netCDF'
+   sinoScale             Scale factor that was used when preprocessing
+   reconScale            Scale factor for the output.  Typically 1e6 when dataType='Int16' or 'UInt16'
+   reconOffset           Offset value for the output.  Typically 32767 when dataType='UInt16'
+   paddedSinogramWidth   0=auto, 1=no padding, other values typically power of 2 and larger than NX
+   paddingAverage        Number of pixel to average on the image edges for padding
+   airPixels             Number of air pixels to average for secondary normalization.  0=disable.
+   ringWidth             Number of pixels for ring artifact reduction.  0=disable.
+   fluorescence          1 if this is fluorescence data, 0 if absorption (take logarithm of sinogram).
+   threads               Number of threads to use for reconstruction with tomoRecon
+   slicesPerChunk        Number of slices per chunk for tomoRecon.  Not currently used.
+   debug                 Debugging print level.  Larger numbers are more verbose output
+   dbgFile               File to write debugging output to
+   geom                  Gridrec/tomoRecon geom parameter 
+   pswfParams            Gridrec/tomoRecon pswf parameter
+   sampl                 Gridrec/tomoRecon sampl parameter
+   maxPixSize            Gridrec/tomoRecon maxPixSize parameter
+   ROI                   Gridrec/tomoRecon ROI parameter
+   X0                    Gridrec/tomoRecon X0 parameter
+   Y0                    Gridrec/tomoRecon Y0 parameter
+   ltbl                  Gridrec/tomoRecon ltbl parameter
+   GR_filterName         Gridrec/tomoRecon filter name
+   BP_method             Backproject method
+   BP_filterName         Backproject filter name
+   BP_filterSize         Backproject filter size
+   RiemannInterpolation  Riemann interpolation method
+   RadonInterpolation    Radon interpolation method
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::WRITE_SAMPLE_CONFIG">
+<H2>TOMO::WRITE_SAMPLE_CONFIG</H2></A>
+<A HREF="#TOMO::SET_RECON_PARAMS">[Previous Routine]</A>
+<A HREF="#TOMO::WRITE_VOLUME">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::WRITE_SAMPLE_CONFIG
+
+ PURPOSE:
+   This writes some tomo object variables to fields in the JSON .config file which contains metadata
+
+ CALLING SEQUENCE:
+   TOMO->WRITE_SAMPLE_CONFIG
+
+ PROCEDURE:
+   This is the list of JSON fields and tomo object variables
+     RotationCenter  self.rotatinCenter
+     RotationSlose   self.rotationCenterSlope
+     UpperSlice      self.upperSlice
+     LowerSlice      self.lowerSlice
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::WRITE_VOLUME">
+<H2>TOMO::WRITE_VOLUME</H2></A>
+<A HREF="#TOMO::WRITE_SAMPLE_CONFIG">[Previous Routine]</A>
+<A HREF="#TOMO_FILTER">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::WRITE_VOLUME
+
+ PURPOSE:
+   Writes 3-D arrays containing either normalized or reconstructed data.
+   There are currently 2 file formats supported, HDF5 and netCDF.
+
+ CALLING SEQUENCE:
+   TOMO->WRITE_VOLUME, FILE, VOLUME
+
+ INPUTS:
+   FILE:
+     The name of the file to be written.
+   VOLUME:
+     The 3-D volume data to be written.  The dimensions are NX, NY, NANGLES or NX, NY, NZ
+
+ KEYWORD PARAMETERS:
+   NETCDF:
+     Set this keyword  to write files in netCDF file format.  
+     If NETCDF is not set then files are written in HDF5 format.
+
+   The following keywords are currently only supported for netCDF files.
+   Support for HDF5 files may be added in the future.
+   XOFFSET:
+   YOFFSET:
+   ZOFFSET:  The [X,Y,Z] offsets in the disk array to begin writing to.  Default
+             is [0,0,0]
+   XMAX:
+   YMAX:
+   ZMAX:     The maximum [X,Y,Z] size of the array on disk.  Valid only when the
+             file is first created, i.e. if APPEND is not specified.  Default
+             is the size of the Volume array in each dimension.
+   APPEND:   Open an existing file for appending or overwriting data.  Default is to
+             APPEND=0 which creates a new file.
+
+ PROCEDURE:
+   HDF5 files will contain the following datasets
+     /exchange/data                The volume array
+     /process/imageType            self.imageType
+     /process/angles               *self.pAngles
+     /process/[x,y,z]PixelSize     self.[x,y,z]PixelSize
+     /process/rotationCenter       self.rotationCenter
+     /process/rotationCenterSlope  self.rotationCenter
+     /process/preprocessScale      self.rotationCenterSlope
+     /process/dataOffset           self.preprocessOffset or self.reconOffset depending on self.imageType
+     /process/dataScale            self.preprocessScale or self.reconScale depending on self.imageType
+  
+  netCDF files will contain the following:
+    Dimensions:  NX, NY, NZ
+    Variables:   VOLUME
+    Global attributes:
+      title
+      camera
+      operator
+      sample
+      imageType
+      energy
+      dark current
+      center
+      [x,y,z]PixelSize
+      angles
+      scale_factor 
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
 <A NAME="TOMO_FILTER">
 <H2>TOMO_FILTER</H2></A>
-<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::WRITE_VOLUME">[Previous Routine]</A>
 <A HREF="#WRITE_TOMO_VOLUME">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
