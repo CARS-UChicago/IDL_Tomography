@@ -14,7 +14,7 @@ this routine, refer to the IDL Online Help Navigator
 or type: <P>
 <PRE>     ? mk_html_help</PRE><P>
 at the IDL command line prompt.<P>
-<STRONG>Last modified: </STRONG>Sun Mar 26 16:20:15 2023.<P>
+<STRONG>Last modified: </STRONG>Mon Mar 27 17:52:36 2023.<P>
  
 <HR>
  
@@ -373,7 +373,7 @@ at the IDL command line prompt.<P>
 
  PURPOSE:
    This procedure rotates each projection by the specified angle.
-   It can be used to correct for the rotation center not being parallel to the columns of the camera.
+   It can be used to correct for the rotation axis not being parallel to the columns of the camera.
 
  CALLING SEQUENCE:
    TOMO->CORRECT_ROTATION_TILT, ANGLE
@@ -383,7 +383,7 @@ at the IDL command line prompt.<P>
      The angle in degrees clockwise by which to rotate each projection.
 
 ; PROCEDURE:
-   Uses the IDL ROT function.  tomo::pVolume is modified in place.
+   Uses the IDL ROT function.  self.pVolume is modified in place.
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
@@ -422,7 +422,7 @@ at the IDL command line prompt.<P>
  PURPOSE:
    This function returns self.pVolume.
    This is a pointer to raw, normalized, or reconstructed data, depending on the most recent operation performed.
-   It is an IDL pointer, so does not involve a copy operation.
+   It is an IDL pointer, so calling this function does not result in a copy operation.
 
  CALLING SEQUENCE:
    result = TOMO->GET_VOLUME()
@@ -451,8 +451,8 @@ at the IDL command line prompt.<P>
 
  KEYWORD PARAMETERS:
    settingsFile   Name of a settings file previously saved with TOMO::SAVE_SETTINGS
-   statusWidget   Widget ID of a status widget.  TOMO methods will write status strings to this widget if specified.
-   abortWidget    Widget ID of an abort width.  TOMO methods monitor this widget to know when to abort operations.
+   statusWidget   Widget ID of a status widget. If present, the TOMO methods will write status strings to this widget.
+   abortWidget    Widget ID of an abort width.  If present, the TOMO methods monitor this widget to know when to abort operations.
    debugLevel     Debugging level for messages
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
@@ -468,10 +468,9 @@ at the IDL command line prompt.<P>
   TOMO::OPTIMIZE_CENTER
 
  PURPOSE:
-   This procedure performs the preprocessing on a tomography dataset, producing normalized data that
-   is corrected for dark fields, flat fields, and zingers.
-   The data must have been read into the tomo object with tomo::read_camera_file.
-   The preprocessing parameters can be specified before calling this function with tomo::set_preprocess_params.
+   This procedure optimizes the rotation center on 2 different slices, typically one near the 
+   top of the projections and the other near the bottom.
+   TOMO::PREPROCESS must be called before calling this procudure. 
 
  CALLING SEQUENCE:
    TOMO->OPTIMIZE_CENTER, SLICES, CENTER, MERIT, WIDTH=WIDTH, STEP=STEP, METHOD=METHOD
@@ -479,7 +478,7 @@ at the IDL command line prompt.<P>
  INPUT PARAMETERS:
    SLICES (required)
      A 2-element array containing the slice numbers to use for optimization.
-     Normally one should be near the top of the projections and the other near the bottom
+     Normally one should be near the top of the projections and the other near the bottom.
    CENTER (required)
      The initial guess of the optimum rotation center.
      
@@ -503,7 +502,7 @@ at the IDL command line prompt.<P>
    the optimization algorithms in detail.
    
    After the optimization the two slice numbers and the minimum values of MERIT are passed
-   to TOMO::SET_ROTATION.  That routine sets tomo::rotationCenter and tomo::rotationCenterSlope
+   to TOMO::SET_ROTATION.  That routine sets self.rotationCenter and self.rotationCenterSlope
    which are used to set the rotation center of each slice during reconstruction.
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
@@ -521,28 +520,28 @@ at the IDL command line prompt.<P>
  PURPOSE:
    This procedure performs the preprocessing on a tomography dataset, producing normalized data that
    is corrected for dark fields, flat fields, and zingers.
-   The data must have been read into the tomo object with tomo::read_camera_file.
-   The preprocessing parameters can be specified before calling this function with tomo::set_preprocess_params.
+   The data must have been read into the tomo object with TOMO::READ_CAMERA_FILE.
+   The preprocessing parameters can be specified before calling this function with TOMO::SET_PREPROCESS_PARAMS.
 
  CALLING SEQUENCE:
    TOMO->PREPROCESS
 
  PROCEDURE:
    This function performs the following steps:
-   - Averages the dark fields if there is more than 1
+   - Averages the dark fields if there is more than 1.
    - Subtracts the dark current from each flat field field frame,
    - Removes zingers from flat field frames using REMOVE_TOMO_ARTIFACTS with
      /DOUBLE_CORRELATION if there is more than 1, or /ZINGERS if there is only 1.
    - Averages the flat fields if there is more than 1.
-   - Calls the C++ code in tomoRecon to do the following:
-     - Subtracts the dark current from each projection 
-     - Divides projection by the average flat field
-     - Removes zingers using a median filter with zingerWidth and zingerThreshold
-     - Scales the normalized projection by preprocessScale
-   - Optionally converts the normalized projections to UInt16 if preprocessDataType = 'UInt16'
-   - Optionally writes the normalized data frames to a single disk file if .preprocessWriteOutput is true.
+   - Calls the multithreaded C++ code in tomoRecon to do the following:
+     - Subtract the dark current from each projection.
+     - Divide each projection by the average flat field.
+     - Remove zingers using a median filter with self.zingerWidth and self.zingerThreshold.
+     - Scale the normalized projection by self.preprocessScale.
+   - Optionally converts the normalized projections to UInt16 if self.preprocessDataType = 'UInt16'.
+   - Optionally writes the normalized data frames to a single disk file if self.preprocessWriteOutput is true.
      The file can be written in HDF5 or netCDF format.
-   - Replaces the raw data in tomo::pVolume with the normalized data.
+   - Replaces the raw data in self.pVolume with the normalized data.
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
@@ -557,14 +556,14 @@ at the IDL command line prompt.<P>
   TOMO::READ_CAMERA_FILE
 
  PURPOSE:
-   This procedure reads a tomography data set from 2 types of data files:
-     - netCDF files.  There are 4 files
+   This procedure reads a tomography data set from the following types of data files:
+     - netCDF files.  These are files collected before July 2020.  There are 4 files
        - base_1.nc contains flat fields collected at the beginning
        - base_2.nc contains the projections
        - base_3.nc contains the flat fields collected at the end
        - base.setup ASCII file containing metadata including the pixel size and dark current.
        
-     - HDF5 files.  There are 2 files:
+     - HDF5 files.  These are files collected after July 2020.  There are 2 files:
        - base.h5     A single file HDF5 that contains the flat fields, dark fields, projections, and metadata
        - base.config An ASCII file containing metadata. 
 
@@ -574,17 +573,17 @@ at the IDL command line prompt.<P>
      For HDF5 this is the name of the HDF5 file
 
  PROCEDURE:
-   Reads the data into the tomo object, including these member variables
-     nx, ny, nz
-     xPixelSize, yPixelSize, zPixelSize
-     pAngles
-     pFlats
-     pDarks
-     pData
-     rotationCenter       Initialized to nx/2
-     rotationCenterSlope  Initialize to 0
-  For netCDF files reads the .setup file with tomo::read_setup
-  For HDF5 files reads the .config file with tomo::read_sample_config
+   - Reads the data into the tomo object, including these member variables
+       nx, ny, nz
+       xPixelSize, yPixelSize, zPixelSize
+       pAngles
+       pFlats
+       pDarks
+       pData
+       rotationCenter       Initialized to nx/2
+       rotationCenterSlope  Initialize to 0
+  - For netCDF files reads the .setup file with TOMO::READ_SETUP
+  - For HDF5 files reads the .config file with TOMO::READ_SAMPLE_CONFIG
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
@@ -610,7 +609,7 @@ at the IDL command line prompt.<P>
  PROCEDURE:
    This is the list of JSON fields and tomo object variables
      RotationCenter  self.rotatinCenter
-     RotationSlose   self.rotationCenterSlope
+     RotationSlope   self.rotationCenterSlope
      UpperSlice      self.upperSlice
      LowerSlice      self.lowerSlice
 </PRE><P>
@@ -627,17 +626,17 @@ at the IDL command line prompt.<P>
    TOMO::READ_SETUP
 
  PURPOSE:
-   This function reads the setup information for a tomography data set from an ASCII file.
+   This function reads the setup information for a tomography data set from an ASCII .setup file.
    NOTE: These .setup files are present for pre-2020 data collected with raw data in netCDF format
    They contain original metadata including the dark current.
-   Previously the tomo class re-wrote these files with new metadata, including the rotation center.
-   The current processing software only reads these .setup files, and write the new metadata to the .config file.
+   In R1-0 the tomo class re-wrote these files with new metadata, including the rotation center.
+   In R2-0 it reads these .setup files, and writes the new metadata to the .config file.
 
  CALLING SEQUENCE:
    result = TOMO->READ_SETUP(FILE)
 
  INPUTS:
-   File:
+   FILE:
      The name of the input .setup file.
 
  OUTPUTS:
@@ -664,7 +663,7 @@ at the IDL command line prompt.<P>
 
  PURPOSE:
    Reads in 3-D volume files written by TOMO::WRITE_VOLUME.
-   These are HDF5 and netCDF format.
+   These are either HDF5 or netCDF format.
 
  CALLING SEQUENCE:
    Result = READ_TOMO_VOLUME(FILE, STORE=STORE, XRANGE=XRANGE, YRANGE=YRANGE, ZRANGE=ZRANGE)
@@ -674,7 +673,7 @@ at the IDL command line prompt.<P>
      The name of the volume file to be read.  If this is not specified then
      the function will use DIALOG_PICKFILE to allow the user to select a file.
 
-; KEYWORD PARAMETERS:
+ KEYWORD PARAMETERS:
    STORE
      If this keyword is set then the data is read into *self->pVolume, 
      self.nx, self,ny, and self.nz are set appropriately, and the function returns the scalar value 0.
@@ -692,7 +691,7 @@ at the IDL command line prompt.<P>
        The range of Z values to read in. The default is to read the entire Z range of the data
 
  OUTPUTS:
-   If the keyword STORE is not set then this function the data read.
+   If the keyword STORE is not set then this function returns the data read.
    If the keyword is set then the function puts the data in *self.pVolume and returns 0.
 
  PROCEDURE:
@@ -715,7 +714,7 @@ at the IDL command line prompt.<P>
        energy                      self.pSampleConfig['Energy']
        dark_current                self.pSampleConfig['DarkFieldValue'], *self.pDarks
        center                      self.rotationCenter
-   - Calls self->read_sample_config to read additional metadata that is stored in that file
+   - Calls TOMO::READ_SAMPLE_CONFIG to read additional metadata that is stored in that file
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
@@ -764,10 +763,10 @@ at the IDL command line prompt.<P>
    TOMO::RESTORE_SETTINGS
 
  PURPOSE:
-   This procedure restores the tomo settings from a file that was written by tomo::save_settings.
+   This procedure restores the tomo settings from a file that was written by TOMO::SAVE_SETTINGS.
    The file can contain additional keys beyond those known to the tomo class, and these are ignored.
-   This is the case when the file is written by the tomo_display class, since such files include
-   tomo_display parameters as well.
+   This is the case when the file is written by the TOMO_DISPLAY class, since such files include
+   TOMO_DISPLAY parameters as well.
 
  CALLING SEQUENCE:
    TOMO->RESTORE_SETTINGS, FILE
@@ -812,7 +811,7 @@ at the IDL command line prompt.<P>
  PURPOSE:
    This procedure sets the preprocess parameters.
    It uses keywords to set the appropriate tomo member variable value.
-   It is typically called before calling tomo::preprocess.
+   It is typically called before calling TOMO::PREPROCESS.
 
  CALLING SEQUENCE:
    TOMO->SET_PREPROCESS_PARAM, keyword=value, ...
@@ -821,14 +820,14 @@ at the IDL command line prompt.<P>
    Many of these value are explained in more depth in the IDL_Tomography documentation
    at https://cars-uchicago.github.io/IDL_Tomography/processing_options.html
 
-   zingerWidth           Number of pixel used for zinger removal. 0=disable
-   zingerThreshold       Threshold for zinger removal when using median filter for projections
-   zingerDoubleThreshold Threshold for zinger removal when using double correlation for flat fields
-   dataType              Output data type: 'Float32' or 'UInt16'
+   zingerWidth           Number of pixels used for zinger removal. 0=disable.
+   zingerThreshold       Threshold for zinger removal when using median filter for projections.
+   zingerDoubleThreshold Threshold for zinger removal when using double correlation for flat fields.
+   dataType              Output data type: 'Float32' or 'UInt16'.
    writeOutput           1 to write the preprocessed output data to a file, 0 to not write.
-   writeFormat           Output file format: 'HDF5' or 'netCDF'
-   scale                 Output scale factor.  Typically 10000.  Needed when output='UInt16'
-   threads               Number of threads to use for preprocessing
+   writeFormat           Output file format: 'HDF5' or 'netCDF'.
+   scale                 Output scale factor.  Typically 10000.  Needed when output='UInt16'.
+   threads               Number of threads to use for preprocessing.
 </PRE><P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
@@ -844,8 +843,8 @@ at the IDL command line prompt.<P>
 
  PURPOSE:
    This procedure sets the reconstruction parameters.
-   It uses keywords to set the appropriate tomo member variable value.
-   It is typically called before calling tomo::reconstruct_slice or tomo::reconstruct_volume.
+   It uses keywords to set the appropriate TOMO member variable value.
+   It is typically called before calling TOMO::RECONSTRUCT_SLICE or TOMO::RECONSTRUCT_VOLUME.
 
  CALLING SEQUENCE:
    TOMO->SET_RECON_PARAM, keyword=value, ...
@@ -854,25 +853,25 @@ at the IDL command line prompt.<P>
    Many of these value are explained in more depth in the IDL_Tomography documentation
    at https://cars-uchicago.github.io/IDL_Tomography/processing_options.html
    
-   rotationCenter        Rotation center for slice 0
-   rotCenterSlope        Slope of the rotation in pixels/slice
-   reconMethod           Reconstruction method: 'tomoRecon', 'GridRec', or 'Backproject'
-   dataType              Output data type: 'Float32', 'Int16', or 'UInt16'
+   rotationCenter        Rotation center for slice 0.
+   rotCenterSlope        Slope of the rotation in pixels/slice.
+   reconMethod           Reconstruction method: 'tomoRecon', 'GridRec', or 'Backproject'.
+   dataType              Output data type: 'Float32', 'Int16', or 'UInt16'.
    writeOutput           1 to write the reconstruction to a file, 0 to not write.
-   writeFormat           Output file format: 'HDF5' or 'netCDF'
-   sinoScale             Scale factor that was used when preprocessing
-   reconScale            Scale factor for the output.  Typically 1e6 when dataType='Int16' or 'UInt16'
-   reconOffset           Offset value for the output.  Typically 32767 when dataType='UInt16'
-   paddedSinogramWidth   0=auto, 1=no padding, other values typically power of 2 and larger than NX
-   paddingAverage        Number of pixel to average on the image edges for padding
+   writeFormat           Output file format: 'HDF5' or 'netCDF'.
+   sinoScale             Scale factor that was used when preprocessing.
+   reconScale            Scale factor for the output.  Typically 1e6 when dataType='Int16' or 'UInt16'.
+   reconOffset           Offset value for the output.  Typically 32767 when dataType='UInt16'.
+   paddedSinogramWidth   0=auto, 1=no padding, other values typically power of 2 and larger than NX.
+   paddingAverage        Number of pixel to average on the image edges for padding.
    airPixels             Number of air pixels to average for secondary normalization.  0=disable.
    ringWidth             Number of pixels for ring artifact reduction.  0=disable.
    fluorescence          1 if this is fluorescence data, 0 if absorption (take logarithm of sinogram).
-   threads               Number of threads to use for reconstruction with tomoRecon
+   threads               Number of threads to use for reconstruction with tomoRecon.
    slicesPerChunk        Number of slices per chunk for tomoRecon.  Not currently used.
-   debug                 Debugging print level.  Larger numbers are more verbose output
-   dbgFile               File to write debugging output to
-   geom                  Gridrec/tomoRecon geom parameter 
+   debug                 Debugging print level.  Larger numbers are more verbose output.
+   dbgFile               File to write debugging output to.
+   geom                  Gridrec/tomoRecon geom parameter
    pswfParams            Gridrec/tomoRecon pswf parameter
    sampl                 Gridrec/tomoRecon sampl parameter
    maxPixSize            Gridrec/tomoRecon maxPixSize parameter
@@ -900,13 +899,14 @@ at the IDL command line prompt.<P>
    TOMO::WRITE_SAMPLE_CONFIG
 
  PURPOSE:
-   This writes some tomo object variables to fields in the JSON .config file which contains metadata
+   This writes some tomo object variables to fields in the JSON .config file which contains metadata.
 
  CALLING SEQUENCE:
    TOMO->WRITE_SAMPLE_CONFIG
 
  PROCEDURE:
-   This is the list of JSON fields and tomo object variables
+   This is the list of JSON fields and TOMO object variables that are written to the .config file.
+   Other fields in the file are not changed.
      RotationCenter  self.rotatinCenter
      RotationSlose   self.rotationCenterSlope
      UpperSlice      self.upperSlice
@@ -925,7 +925,7 @@ at the IDL command line prompt.<P>
    TOMO::WRITE_VOLUME
 
  PURPOSE:
-   Writes 3-D arrays containing either normalized or reconstructed data.
+   Writes 3-D arrays containing either normalized or reconstructed data to a disk file.
    There are currently 2 file formats supported, HDF5 and netCDF.
 
  CALLING SEQUENCE:
@@ -944,17 +944,17 @@ at the IDL command line prompt.<P>
 
    The following keywords are currently only supported for netCDF files.
    Support for HDF5 files may be added in the future.
-   XOFFSET:
-   YOFFSET:
-   ZOFFSET:  The [X,Y,Z] offsets in the disk array to begin writing to.  Default
-             is [0,0,0]
-   XMAX:
-   YMAX:
-   ZMAX:     The maximum [X,Y,Z] size of the array on disk.  Valid only when the
-             file is first created, i.e. if APPEND is not specified.  Default
-             is the size of the Volume array in each dimension.
-   APPEND:   Open an existing file for appending or overwriting data.  Default is to
-             APPEND=0 which creates a new file.
+
+   [X,Y,Z]OFFSET:
+     The [X,Y,Z] offsets in the disk array to begin writing to.  Default is [0,0,0]
+
+   [X,Y,Z]MAX:
+     The maximum [X,Y,Z] size of the array on disk.
+     Valid only when the file is first created, i.e. if APPEND is not specified.
+     Default is the size of the Volume array in each dimension.
+
+   APPEND:
+     Open an existing file for appending or overwriting data.  Default is APPEND=0 which creates a new file.
 
  PROCEDURE:
    HDF5 files will contain the following datasets
