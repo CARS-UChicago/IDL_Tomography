@@ -14,7 +14,7 @@ this routine, refer to the IDL Online Help Navigator
 or type: <P>
 <PRE>     ? mk_html_help</PRE><P>
 at the IDL command line prompt.<P>
-<STRONG>Last modified: </STRONG>Wed Mar 29 16:11:16 2023.<P>
+<STRONG>Last modified: </STRONG>Wed Mar 29 16:23:48 2023.<P>
  
 <HR>
  
@@ -22,7 +22,6 @@ at the IDL command line prompt.<P>
 <H1>List of Routines</H1></A>
 <UL>
 <LI><A HREF="#READ_TOMO_VOLUME">READ_TOMO_VOLUME</A>
-<LI><A HREF="#SINOGRAM">SINOGRAM</A>
 <LI><A HREF="#TOMO::BACKPROJECT">TOMO::BACKPROJECT</A>
 <LI><A HREF="#TOMO::CORRECT_ROTATION_TILT">TOMO::CORRECT_ROTATION_TILT</A>
 <LI><A HREF="#TOMO::FILTER">TOMO::FILTER</A>
@@ -43,6 +42,7 @@ at the IDL command line prompt.<P>
 <LI><A HREF="#TOMO::SAVE_SETTINGS">TOMO::SAVE_SETTINGS</A>
 <LI><A HREF="#TOMO::SET_PREPROCESS_PARAMS">TOMO::SET_PREPROCESS_PARAMS</A>
 <LI><A HREF="#TOMO::SET_RECON_PARAMS">TOMO::SET_RECON_PARAMS</A>
+<LI><A HREF="#TOMO::SINOGRAM">TOMO::SINOGRAM</A>
 <LI><A HREF="#TOMO::TOMO_RECON">TOMO::TOMO_RECON</A>
 <LI><A HREF="#TOMO::WRITE_SAMPLE_CONFIG">TOMO::WRITE_SAMPLE_CONFIG</A>
 <LI><A HREF="#TOMO::WRITE_VOLUME">TOMO::WRITE_VOLUME</A>
@@ -54,7 +54,7 @@ at the IDL command line prompt.<P>
 <H1>Routine Descriptions</H1>
 <A NAME="READ_TOMO_VOLUME">
 <H2>READ_TOMO_VOLUME</H2></A>
-<A HREF="#SINOGRAM">[Next Routine]</A>
+<A HREF="#TOMO::BACKPROJECT">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -72,64 +72,9 @@ at the IDL command line prompt.<P>
 <STRONG>(See read_tomo_volume.pro)</STRONG><P>
 <HR>
  
-<A NAME="SINOGRAM">
-<H2>SINOGRAM</H2></A>
-<A HREF="#READ_TOMO_VOLUME">[Previous Routine]</A>
-<A HREF="#TOMO::BACKPROJECT">[Next Routine]</A>
-<A HREF="#ROUTINELIST">[List of Routines]</A>
-<PRE>
- NAME:
-   SINOGRAM
-
- PURPOSE:
-   To convert raw tomography data into a sinogram.
-
- CALLING SEQUENCE:
-   result = TOMO->SINOGRAM(Input)
-
- INPUTS:
-   Input
-     An array of raw tomography data. INPUT(I, J) is the intensity at
-     position I for view angle J. Each row is assumed to contain at least
-     one air value at each end for normalization.
-   COG=cog
-     This keyword is used to return the measured and fitted
-     center-of-gravity data for the sinogram. The center-of-gravity data are
-     very useful for diagnosing problems such as backlash, beam hardening,
-     detector saturation, etc. COG is dimensioned (n_angles, 2), where
-     n_angles is the number of angles in the input array. COG(*,0) is the
-     measured center-of-gravity data. COG(*,1) is the fitted data. The
-     following command can then be given after the SINOGRAM command
-     IDL> PLOT, COG(*,0)
-     IDL> OPLOT, COG(*,1)
-     to see is the sinogram data are reasonable.
- RETURN:
-   The output array containing the corrected sinogram. It is always of type FLOAT.
-
- PROCEDURE:
-   This routine creates a sinogram from raw tomography data. It does the
-   following:
-   -   Averages the air values for "airPixels" pixels on the left and
-       right hand sides of the input.
-   -   Logarithmation. output = -log(input/air). The air values are
-       interpolated between the averaged values for the left and right
-       hand edges of the image for each row.  This step is not performed
-       if the /FLUORESCENCE keyword is set.
-   -   The measured center-of-gravity is fitted to a sinusoidal curve
-       of the form Y = A(0) + A(1)*SIN(X + A(2)).
-           A(0) is the rotation axis
-           A(1) is the amplitude
-           A(2) is the phase
-       The fitting is done using routine CURVE_FIT in the User Library.
-       The shifting is done using routine POLY_2D which can shift by
-       fractional pixels.
-</PRE><P>
-<STRONG>(See tomo__define.pro)</STRONG><P>
-<HR>
- 
 <A NAME="TOMO::BACKPROJECT">
 <H2>TOMO::BACKPROJECT</H2></A>
-<A HREF="#SINOGRAM">[Previous Routine]</A>
+<A HREF="#READ_TOMO_VOLUME">[Previous Routine]</A>
 <A HREF="#TOMO::CORRECT_ROTATION_TILT">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -834,7 +779,7 @@ at the IDL command line prompt.<P>
 <A NAME="TOMO::SET_RECON_PARAMS">
 <H2>TOMO::SET_RECON_PARAMS</H2></A>
 <A HREF="#TOMO::SET_PREPROCESS_PARAMS">[Previous Routine]</A>
-<A HREF="#TOMO::TOMO_RECON">[Next Routine]</A>
+<A HREF="#TOMO::SINOGRAM">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -888,9 +833,64 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::SINOGRAM">
+<H2>TOMO::SINOGRAM</H2></A>
+<A HREF="#TOMO::SET_RECON_PARAMS">[Previous Routine]</A>
+<A HREF="#TOMO::TOMO_RECON">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::SINOGRAM
+
+ PURPOSE:
+   To convert raw tomography data into a sinogram.
+
+ CALLING SEQUENCE:
+   result = TOMO->SINOGRAM(Input)
+
+ INPUTS:
+   Input
+     An array of raw tomography data. INPUT(I, J) is the intensity at
+     position I for view angle J. Each row is assumed to contain at least
+     one air value at each end for normalization.
+   COG=cog
+     This keyword is used to return the measured and fitted
+     center-of-gravity data for the sinogram. The center-of-gravity data are
+     very useful for diagnosing problems such as backlash, beam hardening,
+     detector saturation, etc. COG is dimensioned (n_angles, 2), where
+     n_angles is the number of angles in the input array. COG(*,0) is the
+     measured center-of-gravity data. COG(*,1) is the fitted data. The
+     following command can then be given after the SINOGRAM command
+     IDL> PLOT, COG(*,0)
+     IDL> OPLOT, COG(*,1)
+     to see is the sinogram data are reasonable.
+ RETURN:
+   The output array containing the corrected sinogram. It is always of type FLOAT.
+
+ PROCEDURE:
+   This routine creates a sinogram from raw tomography data. It does the
+   following:
+   -   Averages the air values for "airPixels" pixels on the left and
+       right hand sides of the input.
+   -   Logarithmation. output = -log(input/air). The air values are
+       interpolated between the averaged values for the left and right
+       hand edges of the image for each row.  This step is not performed
+       if the /FLUORESCENCE keyword is set.
+   -   The measured center-of-gravity is fitted to a sinusoidal curve
+       of the form Y = A(0) + A(1)*SIN(X + A(2)).
+           A(0) is the rotation axis
+           A(1) is the amplitude
+           A(2) is the phase
+       The fitting is done using routine CURVE_FIT in the User Library.
+       The shifting is done using routine POLY_2D which can shift by
+       fractional pixels.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::TOMO_RECON">
 <H2>TOMO::TOMO_RECON</H2></A>
-<A HREF="#TOMO::SET_RECON_PARAMS">[Previous Routine]</A>
+<A HREF="#TOMO::SINOGRAM">[Previous Routine]</A>
 <A HREF="#TOMO::WRITE_SAMPLE_CONFIG">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
