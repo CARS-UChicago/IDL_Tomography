@@ -14,22 +14,21 @@ this routine, refer to the IDL Online Help Navigator
 or type: <P>
 <PRE>     ? mk_html_help</PRE><P>
 at the IDL command line prompt.<P>
-<STRONG>Last modified: </STRONG>Mon Mar 27 17:52:36 2023.<P>
+<STRONG>Last modified: </STRONG>Wed Mar 29 16:11:16 2023.<P>
  
 <HR>
  
 <A NAME="ROUTINELIST">
 <H1>List of Routines</H1></A>
 <UL>
-<LI><A HREF="#BACKPROJECT">BACKPROJECT</A>
-<LI><A HREF="#GRIDREC">GRIDREC</A>
 <LI><A HREF="#READ_TOMO_VOLUME">READ_TOMO_VOLUME</A>
-<LI><A HREF="#RECONSTRUCT_SLICE">RECONSTRUCT_SLICE</A>
-<LI><A HREF="#REMOVE_TOMO_ARTIFACTS">REMOVE_TOMO_ARTIFACTS</A>
 <LI><A HREF="#SINOGRAM">SINOGRAM</A>
+<LI><A HREF="#TOMO::BACKPROJECT">TOMO::BACKPROJECT</A>
 <LI><A HREF="#TOMO::CORRECT_ROTATION_TILT">TOMO::CORRECT_ROTATION_TILT</A>
+<LI><A HREF="#TOMO::FILTER">TOMO::FILTER</A>
 <LI><A HREF="#TOMO::GET_STRUCT">TOMO::GET_STRUCT</A>
 <LI><A HREF="#TOMO::GET_VOLUME">TOMO::GET_VOLUME</A>
+<LI><A HREF="#TOMO::GRIDREC">TOMO::GRIDREC</A>
 <LI><A HREF="#TOMO::INIT">TOMO::INIT</A>
 <LI><A HREF="#TOMO::OPTIMIZE_CENTER">TOMO::OPTIMIZE_CENTER</A>
 <LI><A HREF="#TOMO::PREPROCESS">TOMO::PREPROCESS</A>
@@ -37,136 +36,25 @@ at the IDL command line prompt.<P>
 <LI><A HREF="#TOMO::READ_SAMPLE_CONFIG">TOMO::READ_SAMPLE_CONFIG</A>
 <LI><A HREF="#TOMO::READ_SETUP">TOMO::READ_SETUP</A>
 <LI><A HREF="#TOMO::READ_VOLUME">TOMO::READ_VOLUME</A>
+<LI><A HREF="#TOMO::RECONSTRUCT_SLICE">TOMO::RECONSTRUCT_SLICE</A>
 <LI><A HREF="#TOMO::RECONSTRUCT_VOLUME">TOMO::RECONSTRUCT_VOLUME</A>
+<LI><A HREF="#TOMO::REMOVE_ARTIFACTS">TOMO::REMOVE_ARTIFACTS</A>
 <LI><A HREF="#TOMO::RESTORE_SETTINGS">TOMO::RESTORE_SETTINGS</A>
 <LI><A HREF="#TOMO::SAVE_SETTINGS">TOMO::SAVE_SETTINGS</A>
 <LI><A HREF="#TOMO::SET_PREPROCESS_PARAMS">TOMO::SET_PREPROCESS_PARAMS</A>
 <LI><A HREF="#TOMO::SET_RECON_PARAMS">TOMO::SET_RECON_PARAMS</A>
+<LI><A HREF="#TOMO::TOMO_RECON">TOMO::TOMO_RECON</A>
 <LI><A HREF="#TOMO::WRITE_SAMPLE_CONFIG">TOMO::WRITE_SAMPLE_CONFIG</A>
 <LI><A HREF="#TOMO::WRITE_VOLUME">TOMO::WRITE_VOLUME</A>
-<LI><A HREF="#TOMO_FILTER">TOMO_FILTER</A>
 <LI><A HREF="#WRITE_TOMO_VOLUME">WRITE_TOMO_VOLUME</A>
 </UL><P>
  
 <HR>
  
 <H1>Routine Descriptions</H1>
-<A NAME="BACKPROJECT">
-<H2>BACKPROJECT</H2></A>
-<A HREF="#GRIDREC">[Next Routine]</A>
-<A HREF="#ROUTINELIST">[List of Routines]</A>
-<PRE>
- NAME:
-   BACKPROJECT
-
- PURPOSE:
-   Reconstructs a sinogram into an image using backprojection.
-
- CATEGORY:
-   Tomography data processing
-
- CALLING SEQUENCE:
-   Result = BACKPROJECT(tomoParams, Sinogram, Angles)
-
- INPUTS:
-   Sinogram:
-       The input sinogram, dimensions NX x NANGLES.  This should have been 
-       filtered before calling this function.
-   Angles:
-       An array of dimensions NANGLES which contains the angle in degrees of 
-       each projection.
-
- OUTPUTS:
-   This function returns the reconstructed image.
-
- PROCEDURE:
-   This function simply calls the IDL RIEMANN procedure for each row in the 
-   sinogram, using the ROW and BACKPROJECT keywords.  The BILINEAR and CUBIC 
-   keywords are passed from BACKPROJECT to RIEMANN if they are present.
-
- EXAMPLE:
-   r = backproject(sinogram, angles)
-
- MODIFICATION HISTORY:
-   Written by:     Mark Rivers, May 13, 1998
-</PRE><P>
-<STRONG>(See backproject.pro)</STRONG><P>
-<HR>
- 
-<A NAME="GRIDREC">
-<H2>GRIDREC</H2></A>
-<A HREF="#BACKPROJECT">[Previous Routine]</A>
-<A HREF="#READ_TOMO_VOLUME">[Next Routine]</A>
-<A HREF="#ROUTINELIST">[List of Routines]</A>
-<PRE>
- NAME:
-   GRIDREC
-
- PURPOSE:
-   Performs tomographic reconstruction using the "gridrec" algorithm written
-   by Bob Marr and Graham Campbell (not sure about authors) at BNL in 1997.
-   The basic algorithm is based on FFTs.  It reconstructs 2 data sets at once, 
-   one in the real part of the FFT and one in the imaginary part.
-
-   This routine is 20-40 times faster than BACKPROJECT, and yields virtually
-   identical reconstructions.
-
-   This file uses CALL_EXTERNAL to call GridrecIDL.c which is a thin
-   wrapper to grid.c, 
-
- CATEGORY:
-   Tomography data processing
-
- CALLING SEQUENCE:
-   GRIDREC, tomoParams, Sinogram1, Sinogram2, Angles, Image1, Image2
-
- INPUTS:
-   Sinogram1:
-       The first input sinogram, dimensions NX x NANGLES.  
-   Sinogram2:
-       The second input sinogram, dimensions NX x NANGLES.  
-   Angles:
-       An array of dimensions NANGLES which contains the angle in degrees of 
-       each projection.
-
- KEYWORD PARAMETERS:
-   CENTER: The column containing the rotation axis.  The default is the center
-           of the sinogram.
-
- OUTPUTS:
-   Image1:
-       The reconstructed image from Sinogram1.  
-   Image2:
-       The reconstructed image from Sinogram2.  
-
-   Note that the sizes of Image1 and Image2 are controlled by "grid" and will not 
-   be equal NX*NX.  RECONSTRUCT_SLICE uses the IDL routine CONGRID to resize the 
-   images to be NX*NX.
-
- PROCEDURE:
-   This function uses CALL_EXTERNAL to call the shareable library GridrecIDL, 
-   which is written in C.
-
- RESTRICTIONS:
-   GRIDREC locates the GridrecIDL shareable library via the environment variable
-   GRIDREC_SHARE.  This environment variable must be defined and must contain the
-   name (typically including the path) to a valid shareable library or DLL.
-
- EXAMPLE:
-   GRIDREC, s1, s2, angles, image1, image2, center=419
-
- MODIFICATION HISTORY:
-   Written by:     Mark Rivers, March 4, 2000
-   19-APR-2001 MLR Change units of ANGLES from radians to degrees.  Write
-                   documentation header.
-</PRE><P>
-<STRONG>(See gridrec.pro)</STRONG><P>
-<HR>
- 
 <A NAME="READ_TOMO_VOLUME">
 <H2>READ_TOMO_VOLUME</H2></A>
-<A HREF="#GRIDREC">[Previous Routine]</A>
-<A HREF="#RECONSTRUCT_SLICE">[Next Routine]</A>
+<A HREF="#SINOGRAM">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -180,128 +68,14 @@ at the IDL command line prompt.<P>
 
  PROCEDURE:
    This function simply creates a TOMO object and calls TOMO::READ_VOLUME.
-
- EXAMPLE:
-   volume = READ_TOMO_VOLUME('diamond2.volume')
-
- MODIFICATION HISTORY:
-   Written by: Mark Rivers, May 13, 1998
-   06-APR-1999  MLR  Made file input optional, puts up dialog if it is not 
-                     specified
-   25-JAN-2000  MLR  Added /swap_if_big_endian keyword to openr to allow
-                     files to be read on big-endian machines.
-   23-FEB-2000  MLR  Added xrange, yrange, zrange keywords
-   11-APR-2001  MLR  Put the original version in the TOMO class library, made this
-                     function simply create a TOMO object and call TOMO::READ_VOLUME.
 </PRE><P>
 <STRONG>(See read_tomo_volume.pro)</STRONG><P>
 <HR>
  
-<A NAME="RECONSTRUCT_SLICE">
-<H2>RECONSTRUCT_SLICE</H2></A>
-<A HREF="#READ_TOMO_VOLUME">[Previous Routine]</A>
-<A HREF="#REMOVE_TOMO_ARTIFACTS">[Next Routine]</A>
-<A HREF="#ROUTINELIST">[List of Routines]</A>
-<PRE>
- NAME:
-   RECONSTRUCT_SLICE
-
- PURPOSE:
-   Reconstructs a single slice in a tomography volume array.
-
- CALLING SEQUENCE:
-   Result = RECONSTRUCT_SLICE(INPUT, CENTER=CENTER, SINOGRAM=SINOGRAM, COG=COG)
-
- INPUTS:
-   INPUT:  The slice to be reconstructed, dimensions [NX, N_PROJECTIONS]
-
- INPUT KEYWORD PARAMETERS:
-   CENTER:
-     The rotation center.  If this keyword is not specified then the
-     center is assumed to be the center pixel of the slice.
-
- OUTPUT KEYWORD PARAMETERS:
-   SINOGRAM:
-     The computed sinogram. This can only be returned when the reconstruction method is
-     Gridrec or Backproject, not tomoRecon.
-   COG:
-     The center of gravity of the sinogram, 1-D array. This can only be returned when the reconstruction method is
-     Gridrec or Backproject, not tomoRecon.
-
- OUTPUTS:
-   This function returns the reconstructed slice.  It is a floating point array of dimensions [NX, NX]
-
- PROCEDURE:
-   Reconstructs the slice with the current reconstruction parameters set with TOMO::SET_RECON_PARAMS.
-</PRE><P>
-<STRONG>(See tomo__define.pro)</STRONG><P>
-<HR>
- 
-<A NAME="REMOVE_TOMO_ARTIFACTS">
-<H2>REMOVE_TOMO_ARTIFACTS</H2></A>
-<A HREF="#RECONSTRUCT_SLICE">[Previous Routine]</A>
-<A HREF="#SINOGRAM">[Next Routine]</A>
-<A HREF="#ROUTINELIST">[List of Routines]</A>
-<PRE>
- NAME:
-   REMOVE_TOMO_ARTIFACTS
-
- PURPOSE:
-   Removes artifacts from tomography images and sinograms.
-
- CATEGORY:
-   Tomography data processing
-
- CALLING SEQUENCE:
-   Result = REMOVE_TOMO_ARTIFACTS(Image)
-
- INPUTS:
-   Image:  The input array from which artifacts are to be removed.
-
- KEYWORD PARAMETERS:
-   IMAGE2:
-       A second input and output image when doing DOUBLE_CORRELATION
-   ZINGERS:
-       Set this keyword to remove zingers from the input image
-   DOUBLE_CORRELATION:
-       Set this keyword to remove zingers from the input using double 
-       correlation rather than a spatial detection
-   RINGS:
-       Set this keyword to remove ring artifacts from a sinogram
-   DIFFRACTION:
-       Set this keyword to removed diffraction artifacts from a sinogram
-   WIDTH:          
-       Set this keyword to adjust the size of the filter kernal used in the
-       artifact removal.  The default is 9 pixels.
-   THRESHOLD:  
-       Set this keyword to adjust the threshold used in detecting zingers and
-       diffraction artifacts.  The defaults are 1.2 for /ZINGER and 
-       /DOUBLE_CORRELATION and 0.8 for/DIFFRACTION
-   DEBUG:      
-       Set this keyword to print debugging information
-
- OUTPUTS:
-   This function returns an image with the specified artifacts removed.
-
- PROCEDURE:
-   THIS STILL NEEDS TO BE DOCUMENTED.  For now, see the source code.
-
- EXAMPLE:
-   r = remove_tomo_artifacts(sinogram, /Rings)
-
- MODIFICATION HISTORY:
-   Written by:     Mark Rivers, May 13, 1998
-   MLR 4/4/99 MLR  Added DOUBLE_CORRELATION keyword
-   MLR 4/5/99 MLR  Added /EDGE_TRUNCATE to all calls to SMOOTH so that
-                   smoothing works to the edges of the image
-</PRE><P>
-<STRONG>(See remove_tomo_artifacts.pro)</STRONG><P>
-<HR>
- 
 <A NAME="SINOGRAM">
 <H2>SINOGRAM</H2></A>
-<A HREF="#REMOVE_TOMO_ARTIFACTS">[Previous Routine]</A>
-<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Next Routine]</A>
+<A HREF="#READ_TOMO_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::BACKPROJECT">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -310,62 +84,90 @@ at the IDL command line prompt.<P>
  PURPOSE:
    To convert raw tomography data into a sinogram.
 
- CATEGORY:
-   Tomography
-
  CALLING SEQUENCE:
-   result = SINOGRAM(Input, Angles)
+   result = TOMO->SINOGRAM(Input)
 
  INPUTS:
    Input
-       An array of raw tomography data. INPUT(I, J) is the intensity at
-       position I for view angle J. Each row is assumed to contain at least
-       one air value at each end for normalization.
-   Angles
-       An array of the angles of each row of the input.  Units are degrees.
-
+     An array of raw tomography data. INPUT(I, J) is the intensity at
+     position I for view angle J. Each row is assumed to contain at least
+     one air value at each end for normalization.
    COG=cog
-       This keyword is used to return the measured and fitted
-       center-of-gravity data for the sinogram. The center-of-gravity data are
-       very useful for diagnosing problems such as backlash, beam hardening,
-       detector saturation, etc. COG is dimensioned (n_angles, 2), where
-       n_angles is the number of angles in the input array. COG(*,0) is the
-       measured center-of-gravity data. COG(*,1) is the fitted data. The
-       following command can then be given after the SINOGRAM command
-       IDL> PLOT, COG(*,0)
-       IDL> OPLOT, COG(*,1)
-       to see is the sinogram data are reasonable.
+     This keyword is used to return the measured and fitted
+     center-of-gravity data for the sinogram. The center-of-gravity data are
+     very useful for diagnosing problems such as backlash, beam hardening,
+     detector saturation, etc. COG is dimensioned (n_angles, 2), where
+     n_angles is the number of angles in the input array. COG(*,0) is the
+     measured center-of-gravity data. COG(*,1) is the fitted data. The
+     following command can then be given after the SINOGRAM command
+     IDL> PLOT, COG(*,0)
+     IDL> OPLOT, COG(*,1)
+     to see is the sinogram data are reasonable.
  RETURN:
-       The output array containing the corrected sinogram. It is always of
-       type FLOAT.
+   The output array containing the corrected sinogram. It is always of type FLOAT.
 
  PROCEDURE:
-       This routine creates a sinogram from raw tomography data. It does the
-       following:
-       -   Averages the air values for "airPixels" pixels on the left and 
-           right hand sides of the input.
-       -   Logarithmation. output = -log(input/air). The air values are
-           interpolated between the averaged values for the left and right 
-           hand edges of the image for each row.  This step is not performed
-           if the /FLUORESCENCE keyword is set.
-       -   The measured center-of-gravity is fitted to a sinusoidal curve
-           of the form Y = A(0) + A(1)*SIN(X + A(2)).
-               A(0) is the rotation axis
-               A(1) is the amplitude
-               A(2) is the phase
-           The fitting is done using routine CURVE_FIT in the User Library.
-           The shifting is done using routine POLY_2D which can shift by 
-           fractional pixels.
- MODIFICATION HISTORY:
-   Created 21-OCT-1991 by Mark Rivers.
+   This routine creates a sinogram from raw tomography data. It does the
+   following:
+   -   Averages the air values for "airPixels" pixels on the left and
+       right hand sides of the input.
+   -   Logarithmation. output = -log(input/air). The air values are
+       interpolated between the averaged values for the left and right
+       hand edges of the image for each row.  This step is not performed
+       if the /FLUORESCENCE keyword is set.
+   -   The measured center-of-gravity is fitted to a sinusoidal curve
+       of the form Y = A(0) + A(1)*SIN(X + A(2)).
+           A(0) is the rotation axis
+           A(1) is the amplitude
+           A(2) is the phase
+       The fitting is done using routine CURVE_FIT in the User Library.
+       The shifting is done using routine POLY_2D which can shift by
+       fractional pixels.
 </PRE><P>
-<STRONG>(See sinogram.pro)</STRONG><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
+<A NAME="TOMO::BACKPROJECT">
+<H2>TOMO::BACKPROJECT</H2></A>
+<A HREF="#SINOGRAM">[Previous Routine]</A>
+<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::BACKPROJECT
+
+ PURPOSE:
+   Reconstructs a sinogram into an image using backprojection.
+
+ CALLING SEQUENCE:
+   Result = BACKPROJECT(SINOGRAM, CENTER=CENTER)
+
+ INPUTS:
+   SINOGRAM:
+     The input sinogram, dimensions NX x NANGLES.  
+     This should have been filtered before calling this function.
+     It is typically created with TOMO::SINOGRAM
+
+ KEYWORD PARAMETERS
+   CENTER:
+     The rotation center to use when reconstructing.  Default is the center of the sinogram.
+     
+ OUTPUTS:
+   This function returns the reconstructed image.
+
+ PROCEDURE:
+   This function calls either the IDL RIEMANN or RADON procedure depending on the value of self.BP_Method.
+   These procedures are called with the BACKPROJECT keyword.
+   With RIEMANN interpolation can be None, Bilinear or Cubic depending on the value of self.RiemannInterpolation.
+   With RADON interpolation can be None or Linear, depending on the value of self.RadonInterpolation.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
 <A NAME="TOMO::CORRECT_ROTATION_TILT">
 <H2>TOMO::CORRECT_ROTATION_TILT</H2></A>
-<A HREF="#SINOGRAM">[Previous Routine]</A>
-<A HREF="#TOMO::GET_STRUCT">[Next Routine]</A>
+<A HREF="#TOMO::BACKPROJECT">[Previous Routine]</A>
+<A HREF="#TOMO::FILTER">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -388,9 +190,62 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::FILTER">
+<H2>TOMO::FILTER</H2></A>
+<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Previous Routine]</A>
+<A HREF="#TOMO::GET_STRUCT">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::FILTER
+
+ PURPOSE:
+   Filters a sinogram before backprojection.  A selection of filters is
+   available.
+
+ CALLING SEQUENCE:
+   Result = TOMO->FILTER(SINOGRAM, FILTER_SIZE, D)
+
+ INPUTS:
+   SINOGRAM:
+     The unfiltered sinogram.  This must be a 2-D array.
+
+ OPTIONAL INPUTS:
+   FILTER_SIZE:
+     The half-size of the filter in pixels.
+     The default is NX/4 where NX is the first dimension of the sinogram.
+
+   D:
+     An additional filter parameter.  The default is 1.0
+
+ KEYWORD PARAMETERS:
+   FILTER_NAME:
+     A case-insensitive string specifying the filter to be used.
+     Allowed values are:
+       'GEN_HAMMING'
+       'LP_COSINE'
+       'SHEPP_LOGAN'
+       'RAMLAK'
+       'NONE'
+       The default is 'SHEPP_LOGAN'
+
+ OUTPUTS:
+   This function returns the filtered sinogram.
+
+ PROCEDURE:
+   For each row in the sinogram, this function simply does the following:
+       Pads the input sinogram
+       Does a convolution with the appropriate filter
+   The code for the filters was taken from the IDL tomography demo program
+   which is included in the IDL distribution.  It would be easy to add
+   additional filters in the future.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::GET_STRUCT">
 <H2>TOMO::GET_STRUCT</H2></A>
-<A HREF="#TOMO::CORRECT_ROTATION_TILT">[Previous Routine]</A>
+<A HREF="#TOMO::FILTER">[Previous Routine]</A>
 <A HREF="#TOMO::GET_VOLUME">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -413,7 +268,7 @@ at the IDL command line prompt.<P>
 <A NAME="TOMO::GET_VOLUME">
 <H2>TOMO::GET_VOLUME</H2></A>
 <A HREF="#TOMO::GET_STRUCT">[Previous Routine]</A>
-<A HREF="#TOMO::INIT">[Next Routine]</A>
+<A HREF="#TOMO::GRIDREC">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -433,9 +288,62 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::GRIDREC">
+<H2>TOMO::GRIDREC</H2></A>
+<A HREF="#TOMO::GET_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::INIT">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::GRIDREC
+
+ PURPOSE:
+   Performs tomographic reconstruction using the "gridrec" algorithm written
+   by Bob Marr and Graham Campbell (not sure about authors) at BNL in 1997.
+   The basic algorithm is based on FFTs.  It reconstructs 2 sinograms at once,
+   one in the real part of the FFT and one in the imaginary part.
+
+   This routine is 20-40 times faster than BACKPROJECT, and yields virtually
+   identical reconstructions. 
+   It uses CALL_EXTERNAL to call GridrecIDL.c which is a thin wrapper to grid.c
+
+   However, GridrecIDL.c only reconstructs 2 slices, and is single-threaded.
+   For fast reconstructions TOMO::TOMO_RECON should be used instead.
+   TOMO::TOMO_RECON is much faster bbecause it also computes the sinograms in C++ rather than in IDL
+   and it is multithreaded and so reconstructs many slices in parallel.
+
+   TOMO::GRIDREC is typically used only when reconstructing single slices when it is desireable to
+   visualize the sinogram and the center-of-gravity plot of the sinogram
+
+ CALLING SEQUENCE:
+   TOMO->GRIDREC, SINOGRAM1, SINOGRAM2, IMAGE1, IMAGE2
+
+ INPUTS:
+   SINOGRAM1:
+       The first input sinogram, dimensions NX x NANGLES.
+   SINOGRAM2:
+       The second input sinogram, dimensions NX x NANGLES.
+
+ KEYWORD PARAMETERS:
+   CENTER: 
+     The column containing the rotation axis. The default is the center of the sinogram.
+
+ OUTPUTS:
+   IMAGE1:
+       The reconstructed image from SINOGRAM1.
+   IMAGE2:
+       The reconstructed image from SINOGRAM2.
+
+ PROCEDURE:
+   This function uses CALL_EXTERNAL to call the shareable library GridrecIDL,
+   which is written in C.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::INIT">
 <H2>TOMO::INIT</H2></A>
-<A HREF="#TOMO::GET_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::GRIDREC">[Previous Routine]</A>
 <A HREF="#TOMO::OPTIMIZE_CENTER">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -530,7 +438,7 @@ at the IDL command line prompt.<P>
    This function performs the following steps:
    - Averages the dark fields if there is more than 1.
    - Subtracts the dark current from each flat field field frame,
-   - Removes zingers from flat field frames using REMOVE_TOMO_ARTIFACTS with
+   - Removes zingers from flat field frames using SELF->REMOVE_ARTIFACTS with
      /DOUBLE_CORRELATION if there is more than 1, or /ZINGERS if there is only 1.
    - Averages the flat fields if there is more than 1.
    - Calls the multithreaded C++ code in tomoRecon to do the following:
@@ -655,7 +563,7 @@ at the IDL command line prompt.<P>
 <A NAME="TOMO::READ_VOLUME">
 <H2>TOMO::READ_VOLUME</H2></A>
 <A HREF="#TOMO::READ_SETUP">[Previous Routine]</A>
-<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Next Routine]</A>
+<A HREF="#TOMO::RECONSTRUCT_SLICE">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -719,10 +627,51 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::RECONSTRUCT_SLICE">
+<H2>TOMO::RECONSTRUCT_SLICE</H2></A>
+<A HREF="#TOMO::READ_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::RECONSTRUCT_SLICE
+
+ PURPOSE:
+   Reconstructs a single slice in a tomography volume array.
+
+ CALLING SEQUENCE:
+   Result = RECONSTRUCT_SLICE(INPUT, CENTER=CENTER, SINOGRAM=SINOGRAM, COG=COG)
+
+ INPUTS:
+   INPUT:
+     The slice to be reconstructed, dimensions [NX, N_PROJECTIONS]
+
+ INPUT KEYWORD PARAMETERS:
+   CENTER:
+     The rotation center.  If this keyword is not specified then the
+     center is assumed to be the center pixel of the slice.
+
+ OUTPUT KEYWORD PARAMETERS:
+   SINOGRAM:
+     The computed sinogram. This can only be returned when the reconstruction method is
+     Gridrec or Backproject, not tomoRecon.
+   COG:
+     The center of gravity of the sinogram, 1-D array. This can only be returned when the reconstruction method is
+     Gridrec or Backproject, not tomoRecon.
+
+ OUTPUTS:
+   This function returns the reconstructed slice.  It is a floating point array of dimensions [NX, NX]
+
+ PROCEDURE:
+   Reconstructs the slice with the current reconstruction parameters set with TOMO::SET_RECON_PARAMS.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::RECONSTRUCT_VOLUME">
 <H2>TOMO::RECONSTRUCT_VOLUME</H2></A>
-<A HREF="#TOMO::READ_VOLUME">[Previous Routine]</A>
-<A HREF="#TOMO::RESTORE_SETTINGS">[Next Routine]</A>
+<A HREF="#TOMO::RECONSTRUCT_SLICE">[Previous Routine]</A>
+<A HREF="#TOMO::REMOVE_ARTIFACTS">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -753,9 +702,59 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::REMOVE_ARTIFACTS">
+<H2>TOMO::REMOVE_ARTIFACTS</H2></A>
+<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::RESTORE_SETTINGS">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::REMOVE_ARTIFACTS
+
+ PURPOSE:
+   Removes artifacts from tomography images and sinograms.
+
+ CALLING SEQUENCE:
+   Result = TOMO->REMOVE_ARTIFACTS(IMAGE)
+
+ INPUTS:
+   IMAGE:  
+     The input array from which artifacts are to be removed.
+
+ KEYWORD PARAMETERS:
+   IMAGE2:
+     A second input and output image when doing DOUBLE_CORRELATION
+   ZINGERS:
+     Set this keyword to remove zingers from the input image
+   DOUBLE_CORRELATION:
+     Set this keyword to remove zingers from the input using double
+     correlation rather than a spatial detection
+   RINGS:
+     Set this keyword to remove ring artifacts from a sinogram
+   DIFFRACTION:
+     Set this keyword to removed diffraction artifacts from a sinogram
+   WIDTH:
+     Set this keyword to adjust the size of the filter kernal used in the
+     artifact removal.  The default is 9 pixels.
+   THRESHOLD:
+     Set this keyword to adjust the threshold used in detecting zingers and
+     diffraction artifacts.  The defaults are 1.2 for /ZINGER and
+     /DOUBLE_CORRELATION and 0.8 for/DIFFRACTION
+   DEBUG:
+     Set this keyword to print debugging information
+
+ OUTPUTS:
+   This function returns an image with the specified artifacts removed.
+
+ PROCEDURE:
+   THIS STILL NEEDS TO BE DOCUMENTED.  For now, see the source code.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::RESTORE_SETTINGS">
 <H2>TOMO::RESTORE_SETTINGS</H2></A>
-<A HREF="#TOMO::RECONSTRUCT_VOLUME">[Previous Routine]</A>
+<A HREF="#TOMO::REMOVE_ARTIFACTS">[Previous Routine]</A>
 <A HREF="#TOMO::SAVE_SETTINGS">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -835,7 +834,7 @@ at the IDL command line prompt.<P>
 <A NAME="TOMO::SET_RECON_PARAMS">
 <H2>TOMO::SET_RECON_PARAMS</H2></A>
 <A HREF="#TOMO::SET_PREPROCESS_PARAMS">[Previous Routine]</A>
-<A HREF="#TOMO::WRITE_SAMPLE_CONFIG">[Next Routine]</A>
+<A HREF="#TOMO::TOMO_RECON">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -872,7 +871,7 @@ at the IDL command line prompt.<P>
    debug                 Debugging print level.  Larger numbers are more verbose output.
    dbgFile               File to write debugging output to.
    geom                  Gridrec/tomoRecon geom parameter
-   pswfParams            Gridrec/tomoRecon pswf parameter
+   pswfParam             Gridrec/tomoRecon pswf parameter
    sampl                 Gridrec/tomoRecon sampl parameter
    maxPixSize            Gridrec/tomoRecon maxPixSize parameter
    ROI                   Gridrec/tomoRecon ROI parameter
@@ -889,9 +888,71 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
+<A NAME="TOMO::TOMO_RECON">
+<H2>TOMO::TOMO_RECON</H2></A>
+<A HREF="#TOMO::SET_RECON_PARAMS">[Previous Routine]</A>
+<A HREF="#TOMO::WRITE_SAMPLE_CONFIG">[Next Routine]</A>
+<A HREF="#ROUTINELIST">[List of Routines]</A>
+<PRE>
+ NAME:
+   TOMO::TOMO_RECON
+
+ PURPOSE:
+   Performs tomographic reconstruction using the "gridrec" algorithm written
+   by Bob Marr and Graham Campbell (not sure about authors) at BNL in 1997.
+
+   It uses CALL_EXTERNAL to call tomoReconIDL.cpp, which is a thin wrapper for tomoRecon.cpp.
+   The tomoRecon C++ code can be found at https://github.com/CARS-UChicago/tomoRecon.
+
+ CALLING SEQUENCE:
+   TOMO->GRIDREC, INPUT, OUTPUT, KEYWORD=VALUE, ...
+
+ INPUTS:
+   INPUT:
+     The input normalized volume [NZ, NY, NPROJECTIONS].
+     If this array is not of type Float it is first converted to Float.
+
+ KEYWORD PARAMETERS:
+   CREATE:
+     Set this keyword to create the tomoRecon C++ object which must be done when changing any
+     reconstruction parameters.  
+     This should not be set when processing additional "chunks" in the same dataset.
+     
+   CENTER:
+     The column containing the rotation axis. 
+     - If this is not set then the center of the sinogram is used for all slices.
+     - If this is a single value then it is used as the rotation center for all slices.
+     - If this is an array then the number of elements must be the number of slices (NY) and
+       slice N will be reconstructed using the rotation center in CENTER[N].
+
+   ANGLES:
+     An array containing the projection angles in degrees.  Default is *self.pAngles.
+
+   WAIT:
+     Set this keyword to wait for the reconstruction to complete before returning.
+     When reconstructing in chunks this keyword can be omitted, which returns control
+     to IDL while the reconstruction continues in the background.
+     This allows overlapping I/O with reconstruction.
+
+ OUTPUTS:
+   OUTPUT:
+       The reconstructed array [NX, NX, NY].  Type=Float.
+ 
+ PROCEDURE:
+   The tomoRecon code is multithreaded, with each thread processing 2 slices at a time.
+   The processing includes
+     - Optional secondary air normalization
+     - Computing the sinogram (logarithm)
+     - Optional ring artifact reduction on the sinogram
+     - Reconstruction
+   The reconstruction parameters are controlled by TOMO::SET_RECON_PARAMS.
+</PRE><P>
+<STRONG>(See tomo__define.pro)</STRONG><P>
+<HR>
+ 
 <A NAME="TOMO::WRITE_SAMPLE_CONFIG">
 <H2>TOMO::WRITE_SAMPLE_CONFIG</H2></A>
-<A HREF="#TOMO::SET_RECON_PARAMS">[Previous Routine]</A>
+<A HREF="#TOMO::TOMO_RECON">[Previous Routine]</A>
 <A HREF="#TOMO::WRITE_VOLUME">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
@@ -918,7 +979,7 @@ at the IDL command line prompt.<P>
 <A NAME="TOMO::WRITE_VOLUME">
 <H2>TOMO::WRITE_VOLUME</H2></A>
 <A HREF="#TOMO::WRITE_SAMPLE_CONFIG">[Previous Routine]</A>
-<A HREF="#TOMO_FILTER">[Next Routine]</A>
+<A HREF="#WRITE_TOMO_VOLUME">[Next Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
@@ -987,101 +1048,26 @@ at the IDL command line prompt.<P>
 <STRONG>(See tomo__define.pro)</STRONG><P>
 <HR>
  
-<A NAME="TOMO_FILTER">
-<H2>TOMO_FILTER</H2></A>
-<A HREF="#TOMO::WRITE_VOLUME">[Previous Routine]</A>
-<A HREF="#WRITE_TOMO_VOLUME">[Next Routine]</A>
-<A HREF="#ROUTINELIST">[List of Routines]</A>
-<PRE>
- NAME:
-   TOMO_FILTER
-
- PURPOSE:
-   Filters a sinogram before backprojection.  A selection of filters is
-   available.
-
- CATEGORY:
-   Tomography data processing
-
- CALLING SEQUENCE:
-   Result = TOMO_FILTER(Sinogram, Filter_size, D)
-
- INPUTS:
-   Sinogram:       The unfiltered sinogram.  This must be a 2-D array.
-
- OPTIONAL INPUTS:
-   Filter_size:    The half-size of the filter in pixels.  The default is NX/4 where
-                   NX is the first dimension of the sinogram.
-   D:              An additional filter parameter.  The default is 1.0
-
- KEYWORD PARAMETERS:
-   FILTER_NAME:  A case-insensitive string specifying the filter to be used.
-                 Allowed values are:
-                 'GEN_HAMMING'
-                 'LP_COSINE'
-                 'SHEPP_LOGAN'
-                 'RAMLAK'
-                 'NONE'
-                 The default is 'SHEPP_LOGAN'
- OUTPUTS:
-   This function returns the filtered sinogram.
-
- PROCEDURE:
-   For each row in the sinogram, this function simply does the following:
-       Pads the input sinogram
-       Does a convolution with the appropriate filter
-   The code for the filters was taken from the IDL tomography demo program
-   which is included in the IDL distribution.  It would be easy to add
-   additional filters in the future.
-
- EXAMPLE:
-   f = tomo_filter(sinogram, filter_name='SHEPP_LOGAN')
-
- MODIFICATION HISTORY:
-   Written by:     Mark Rivers, May 13, 1998
-   25-Nov-2001  MLR  Changed the keywords from names of individual filters
-                     (e.g. /SHEPP_LOGAN) to FILTER_NAME
-                     Changed the default filter size from 32 to NX/4
-</PRE><P>
-<STRONG>(See tomo_filter.pro)</STRONG><P>
-<HR>
- 
 <A NAME="WRITE_TOMO_VOLUME">
 <H2>WRITE_TOMO_VOLUME</H2></A>
-<A HREF="#TOMO_FILTER">[Previous Routine]</A>
+<A HREF="#TOMO::WRITE_VOLUME">[Previous Routine]</A>
 <A HREF="#ROUTINELIST">[List of Routines]</A>
 <PRE>
  NAME:
    WRITE_TOMO_VOLUME
 
  PURPOSE:
-   Writes 3-D volume files to be read later by READ_TOMO_VOLUME or TOMO::
-   READ-VOLUME.
+   Writes 3-D volume files to be read later by READ_TOMO_VOLUME or TOMO::READ-VOLUME.
 
    This function is a simple wrapper around TOMO::WRITE_VOLUME.
    See the documentation for <A HREF="#TOMO::WRITE_VOLUME">TOMO::WRITE_VOLUME </A>
    for more information.
-
- CATEGORY:
-   Tomography data processing
 
  CALLING SEQUENCE:
    WRITE_TOMO_VOLUME, File, Volume
 
  PROCEDURE:
    This function simply creates a TOMO object and calls TOMO::WRITE_VOLUME.
-
- EXAMPLE:
-   WRITE_TOMO_VOLUME, 'diamond2.volume', volume
-
- MODIFICATION HISTORY:
-   Written by:     Mark Rivers, May 13, 1998
-   26-JAN-2000  MLR  Added /swap_if_big_endian keyword to openw to allow
-                     files to be read on big-endian machines.
-   04-MAR-2001  MLR  Added support for netCDF file format.  Added NETCDF
-                     and SETUP keywords
-   11-APR-2001  MLR  Put the original version in the TOMO class library, made this
-                     function simply create a TOMO object and call TOMO::WRITE_VOLUME.
 </PRE><P>
 <STRONG>(See write_tomo_volume.pro)</STRONG><P>
 <HR>
