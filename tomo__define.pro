@@ -360,7 +360,6 @@ function tomo::filter, image, filter_size=filter_size, filter_param=d, filter_na
     temp = convol(temp, filter)
     s(0,i) = temp[nfilter : nfilter+ncols-1]
   endfor
-help, s
   return, s
 end
 
