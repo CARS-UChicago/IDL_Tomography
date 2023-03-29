@@ -137,7 +137,7 @@ end
 ;   This function performs the following steps:
 ;   - Averages the dark fields if there is more than 1.
 ;   - Subtracts the dark current from each flat field field frame,
-;   - Removes zingers from flat field frames using REMOVE_TOMO_ARTIFACTS with
+;   - Removes zingers from flat field frames using SELF->REMOVE_ARTIFACTS with
 ;     /DOUBLE_CORRELATION if there is more than 1, or /ZINGERS if there is only 1.
 ;   - Averages the flat fields if there is more than 1.
 ;   - Calls the multithreaded C++ code in tomoRecon to do the following:
@@ -186,10 +186,10 @@ pro tomo::preprocess
   ; Remove zingers from flat fields.  If there is more than 1 flat field
   ; do it with double correlation, else do it with spatial filter
   if (nflats eq 1) then begin
-    flats = remove_tomo_artifacts(flats, /zingers, threshold=threshold, debug=debug)
+    flats = self->remove_artifacts(flats, /zingers, threshold=threshold, debug=debug)
   endif else begin
     for i=0, nflats-2 do begin
-      flats[0,0,i] = remove_tomo_artifacts(flats[*,*,i], image2=flats[*,*,i+1], $
+      flats[0,0,i] = self->remove_artifacts(flats[*,*,i], image2=flats[*,*,i+1], $
         /double_correlation, threshold=double_threshold, debug=debug)
     endfor
   endelse
@@ -252,6 +252,253 @@ if (self.preprocessDataType eq 'UInt16') then begin
   print, '                    Freeing memory:', tEnd - tWriteFile
   print, '                             Total:', tEnd - tStart
 
+end
+
+; *** *** Reconstruction Filters from IDL reconstruction demo *** ***
+Function None, x, d
+  return, [1.0]
+end
+
+Function RAMLAK, x, d
+  zero = where(x eq 0.0, count)
+  q = x
+  if (count ne 0) then q(zero) = .01
+  y = -sin(!pi*x/2)^2 / (!pi^2 * q^2 * d)
+  if count ne 0 then y(zero) = 1./(4.*d)
+  return, y
+end
+
+Function Shepp_logan, x, d
+  d = !pi^2 * d * (1.-4.*x^2)
+  zeros = where(abs(d) le 1.0e-6, count)
+  if count ne 0 then d(zeros) = .001
+  return, 2./d
+end
+
+Function lp_cosine, x, d
+  return, 0.5 * (ramlak(x-.5,d) + ramlak(x+.5,d))
+end
+
+Function Gen_Hamming, x, d, alpha
+  if n_elements(alpha) le 0 then alpha = 0.5
+  return, alpha * ramlak(x,d) + ((1.-alpha)/2) * (ramlak(x-1,d) + ramlak(x+1,d))
+end
+
+;+
+; NAME:
+;   TOMO::FILTER
+;
+; PURPOSE:
+;   Filters a sinogram before backprojection.  A selection of filters is
+;   available.
+;
+; CALLING SEQUENCE:
+;   Result = TOMO->FILTER(SINOGRAM, FILTER_SIZE, D)
+;
+; INPUTS:
+;   SINOGRAM:
+;     The unfiltered sinogram.  This must be a 2-D array.
+;
+; OPTIONAL INPUTS:
+;   FILTER_SIZE:
+;     The half-size of the filter in pixels.
+;     The default is NX/4 where NX is the first dimension of the sinogram.
+;
+;   D:
+;     An additional filter parameter.  The default is 1.0
+;
+; KEYWORD PARAMETERS:
+;   FILTER_NAME:
+;     A case-insensitive string specifying the filter to be used.
+;     Allowed values are:
+;       'GEN_HAMMING'
+;       'LP_COSINE'
+;       'SHEPP_LOGAN'
+;       'RAMLAK'
+;       'NONE'
+;       The default is 'SHEPP_LOGAN'
+
+; OUTPUTS:
+;   This function returns the filtered sinogram.
+;
+; PROCEDURE:
+;   For each row in the sinogram, this function simply does the following:
+;       Pads the input sinogram
+;       Does a convolution with the appropriate filter
+;   The code for the filters was taken from the IDL tomography demo program
+;   which is included in the IDL distribution.  It would be easy to add
+;   additional filters in the future.
+;-
+
+function tomo::filter, image, filter_size=filter_size, filter_param=d, filter_name=filter_name
+  dims = size(image, /dimensions)
+  if (n_elements(filter_size) eq 0) then filter_size = 0
+  if (filter_size eq 0) then filter_size = dims[0]/4
+  nfilter = 2*filter_size+1
+  x = findgen(nfilter)-filter_size
+  if (n_elements(d) eq 0) then d=1.0
+  if (n_elements(filter_name) eq 0) then filter_name = 'SHEPP_LOGAN'
+  if (strlen(filter_name) eq 0) then filter_name = 'SHEPP_LOGAN'
+  case strupcase(filter_name) of
+    'GEN_HAMMING': filter = gen_hamming(x, d)
+    'LP_COSINE':   filter = lp_cosine(x, d)
+    'SHEPP_LOGAN': filter = shepp_logan(x, d)
+    'RAMLAK':      filter = ramlak(x, d)
+    'NONE':        filter = none(x, d)
+    else:  message, 'Unknown filter in tomo::filter'
+  endcase
+  size = size(image)
+  ncols = size[1]
+  nrows = size[2]
+  s = image
+  temp = fltarr(ncols + 2*nfilter)
+  for i=0, nrows-1 do begin
+    ; Pad array with data from first and last columns
+    temp[0:nfilter-1] = image[0,i]
+    temp[nfilter+ncols-1:ncols+2*nfilter-1] = image[ncols-1,i]
+    temp(nfilter) = image[*,i]
+    temp = convol(temp, filter)
+    s(0,i) = temp[nfilter : nfilter+ncols-1]
+  endfor
+help, s
+  return, s
+end
+
+;+
+; NAME:
+;   TOMO::REMOVE_ARTIFACTS
+;
+; PURPOSE:
+;   Removes artifacts from tomography images and sinograms.
+;
+; CALLING SEQUENCE:
+;   Result = TOMO->REMOVE_ARTIFACTS(IMAGE)
+;
+; INPUTS:
+;   IMAGE:  
+;     The input array from which artifacts are to be removed.
+;
+; KEYWORD PARAMETERS:
+;   IMAGE2:
+;     A second input and output image when doing DOUBLE_CORRELATION
+;   ZINGERS:
+;     Set this keyword to remove zingers from the input image
+;   DOUBLE_CORRELATION:
+;     Set this keyword to remove zingers from the input using double
+;     correlation rather than a spatial detection
+;   RINGS:
+;     Set this keyword to remove ring artifacts from a sinogram
+;   DIFFRACTION:
+;     Set this keyword to removed diffraction artifacts from a sinogram
+;   WIDTH:
+;     Set this keyword to adjust the size of the filter kernal used in the
+;     artifact removal.  The default is 9 pixels.
+;   THRESHOLD:
+;     Set this keyword to adjust the threshold used in detecting zingers and
+;     diffraction artifacts.  The defaults are 1.2 for /ZINGER and
+;     /DOUBLE_CORRELATION and 0.8 for/DIFFRACTION
+;   DEBUG:
+;     Set this keyword to print debugging information
+;
+; OUTPUTS:
+;   This function returns an image with the specified artifacts removed.
+;
+; PROCEDURE:
+;   THIS STILL NEEDS TO BE DOCUMENTED.  For now, see the source code.
+;-
+
+function tomo::remove_artifacts, image, image2=image2, width=width, $
+                                 threshold=threshold, $
+                                 zingers=zingers, double_correlation=double_correlation, $
+                                 rings=rings, diffraction=diffraction, debug=debug
+
+  ; Copy input image to output
+  output = image
+  size = size(image)
+  ncols = size[1]
+  nrows = size[2]
+  if (keyword_set(debug)) then debug=1 else debug=0
+
+  if (keyword_set(zingers)) then begin
+    ; Default kernal width for smoothing
+    if (n_elements(width) eq 0) then width=9
+    ; Default threshold for detecting zingers
+    if (n_elements(threshold) eq 0) then threshold=1.2
+    ; Compute ratio of unsmoothed image to smoothed image
+    ratio = float(image)/smooth(image, width, /edge_truncate)
+    ; Find indices of pixels which are above threshold
+    zinger = where(ratio gt threshold, count)
+    ; Replace pixels with zingers by the average of the pixels 2 to the left and
+    ; 2 to the right.  We don't use nearest neighbor, since zingers sometimes hit 2
+    ; adjacent pixels.
+    if (count gt 0) then output[zinger] = $
+      (output[zinger-2] + output[zinger+2])/2.
+    if (debug) then print, 'Found ', count, ' zingers in image'
+  endif
+
+  if (keyword_set(double_correlation)) then begin
+    ; Compute ratio of the two images
+    ratio = float(image) / float(image2)
+    ; Find the median value of the ratio
+    m = median(ratio)
+    ; Normalize the ratio to this value
+    ratio = ratio / m
+    if (n_elements(threshold) eq 0) then threshold=1.2
+    zingers1 = where(ratio gt threshold, count1)
+    zingers2 = where(ratio lt 1./threshold, count2)
+    if (debug) then print, 'Found ', count1, ' zingers in image1 and ', $
+      count2, ' zingers in image2'
+    ; Copy the first image to the output to be returned in function value
+    output = image
+    ; Replace zinger pixels in the first image with pixels from the second
+    ;   image scaled by median value of ratio
+    if (count1 gt 0) then output[zingers1] = image2[zingers1] * m
+    ; Replace zinger pixels in the second image with pixels from the first
+    ;   image scaled by median value of ratio
+    if (count2 gt 0) then image2[zingers2] = image[zingers2] / m
+    ; Now deal with the case where there are zingers at the same pixel in
+    ;   both images
+    if ((count1 gt 0) and (count2 gt 0)) then begin
+      both = [zingers1, zingers2]
+      both = both[sort(both)]
+      indices = where(both eq shift(both, -1), count)
+      if (debug) then print, 'Found ', count, $
+        ' common zingers in image1 and image2'
+      if (count gt 0) then both = both[indices]
+      for i=0, count-1 do begin
+        output[both[i]] = (output[both[i]-2] + output[both[i]+2])/2.
+        image2[both[i]] = (image2[both[i]-2] + image2[both[i]+2])/2.
+      endfor
+    endif
+  endif
+
+  if (keyword_set(rings)) then begin
+    ; Default kernal width for smoothing
+    if (n_elements(width) eq 0) then width=9
+    ; Sum all of the rows in the image, get average
+    ave = total(image, 2)/nrows
+    ; Get the difference between the average row and smoothed version
+    ; of average row.  These are the column deviations.
+    diff = ave - smooth(ave, width, /edge_truncate)
+    ; Subtract this difference from each row
+    for i=0, nrows-1 do output[0,i] = output[*,i] - diff
+  endif
+
+  if (keyword_set(diffraction)) then begin
+    ; Default kernal width for smoothing
+    if (n_elements(width) eq 0) then width=9
+    ; Default threshold for detecting diffraction peaks
+    if (n_elements(threshold) eq 0) then threshold=.8
+    ; Loop over each column in the image
+    for i=0, ncols-1 do begin
+      col = reform(output[i,*])
+      ratio = col/smooth(col, width, /edge_truncate)
+      bad = where(ratio lt threshold)
+      col[bad] = (col[(bad-2)>0] + col[(bad+2)<(ncols-1)]) / 2.
+      output[i,*] = col
+    endfor
+  endif
+  return, output
 end
 
 ;+
@@ -529,13 +776,170 @@ function tomo::convert_360_data, input, center, angles
   return, output
 end
 
-pro tomo::tomo_recon, $
-  input, $
-  output, $
-  create = create, $
-  center=center, $
-  angles=angles, $
-  wait=wait
+pro sine_wave, x, a, f, pder
+
+  ; Used to evaluate a sine wave with unit frequency. This routine is used by
+  ; sinogram to fit the center-of-gravity data
+  ; a(0) = rotation center
+  ; a(1) = amplitude
+  ; a(2) = phase
+  f = a(0) + a(1)*sin(x + a(2))
+  pder = fltarr(n_elements(x), n_elements(a))
+  pder(*,0) = 1.
+  pder(*,1) = sin(x + a(2))
+  pder(*,2) = a(1)*cos(x + a(2))
+  return
+end
+
+
+function tomo::sinogram, input, cog=cog
+;+
+; NAME:
+;   SINOGRAM
+;
+; PURPOSE:
+;   To convert raw tomography data into a sinogram.
+;
+; CALLING SEQUENCE:
+;   result = TOMO->SINOGRAM(Input)
+;
+; INPUTS:
+;   Input
+;     An array of raw tomography data. INPUT(I, J) is the intensity at
+;     position I for view angle J. Each row is assumed to contain at least
+;     one air value at each end for normalization.
+;   COG=cog
+;     This keyword is used to return the measured and fitted
+;     center-of-gravity data for the sinogram. The center-of-gravity data are
+;     very useful for diagnosing problems such as backlash, beam hardening,
+;     detector saturation, etc. COG is dimensioned (n_angles, 2), where
+;     n_angles is the number of angles in the input array. COG(*,0) is the
+;     measured center-of-gravity data. COG(*,1) is the fitted data. The
+;     following command can then be given after the SINOGRAM command
+;     IDL> PLOT, COG(*,0)
+;     IDL> OPLOT, COG(*,1)
+;     to see is the sinogram data are reasonable.
+; RETURN:
+;   The output array containing the corrected sinogram. It is always of type FLOAT.
+;
+; PROCEDURE:
+;   This routine creates a sinogram from raw tomography data. It does the
+;   following:
+;   -   Averages the air values for "airPixels" pixels on the left and
+;       right hand sides of the input.
+;   -   Logarithmation. output = -log(input/air). The air values are
+;       interpolated between the averaged values for the left and right
+;       hand edges of the image for each row.  This step is not performed
+;       if the /FLUORESCENCE keyword is set.
+;   -   The measured center-of-gravity is fitted to a sinusoidal curve
+;       of the form Y = A(0) + A(1)*SIN(X + A(2)).
+;           A(0) is the rotation axis
+;           A(1) is the amplitude
+;           A(2) is the phase
+;       The fitting is done using routine CURVE_FIT in the User Library.
+;       The shifting is done using routine POLY_2D which can shift by
+;       fractional pixels.
+;-
+
+  ; Convert data to floating point
+  output = float(input)
+  nrows = n_elements(output(0,*))
+  ncols = n_elements(output(*,0))
+
+  cog = fltarr(nrows)                    ; Center-of-gravity array
+  linear = findgen(ncols) / (ncols-1)
+  no_air = fltarr(ncols) + self.preprocessScale
+  lin2 = findgen(ncols) + 1.
+  weight = fltarr(nrows) + 1.
+  airPixels = self.airPixels
+  for i=0, nrows-1 do begin
+    if (airPixels gt 0) then begin
+      air_left = total(output(0:airPixels-1,i)) / airPixels
+      air_right = total(output(ncols-airPixels:ncols-1,i)) / airPixels
+      air = air_left + linear*(air_right-air_left)
+    endif else begin
+      air = no_air
+    endelse
+    if (not self.fluorescence) then $
+      output(0,i) = -alog(output(*,i)/air > 1.e-5)
+    cog(i) = total(output(*,i) * lin2) / total(output(*,i))
+  endfor
+  x = *self.pAngles*!dtor
+  a = [ncols/2., $               ; Initial estimate of rotation axis
+    (max(cog) - min(cog))/2., $ ; Initial estimate of amplitude
+    0.]                         ; Initial estimate of phase
+  cog_fit = curvefit(x, cog, weight, a, sigmaa, $
+    function_name='sine_wave')
+  cog_mean = a(0)
+
+  if (self.debug) then print, format='(a, f8.2, a, f8.2)', $
+    'Fitted center of gravity = ', cog_mean, ' +-', sigmaa(0)
+  cog = [[cog], [cog_fit]]
+
+  return, output
+end
+
+
+;+
+; NAME:
+;   TOMO::TOMO_RECON
+;
+; PURPOSE:
+;   Performs tomographic reconstruction using the "gridrec" algorithm written
+;   by Bob Marr and Graham Campbell (not sure about authors) at BNL in 1997.
+;
+;   It uses CALL_EXTERNAL to call tomoReconIDL.cpp, which is a thin wrapper for tomoRecon.cpp.
+;   The tomoRecon C++ code can be found at https://github.com/CARS-UChicago/tomoRecon.
+;
+; CALLING SEQUENCE:
+;   TOMO->GRIDREC, INPUT, OUTPUT, KEYWORD=VALUE, ...
+;
+; INPUTS:
+;   INPUT:
+;     The input normalized volume [NZ, NY, NPROJECTIONS].
+;     If this array is not of type Float it is first converted to Float.
+;
+; KEYWORD PARAMETERS:
+;   CREATE:
+;     Set this keyword to create the tomoRecon C++ object which must be done when changing any
+;     reconstruction parameters.  
+;     This should not be set when processing additional "chunks" in the same dataset.
+;     
+;   CENTER:
+;     The column containing the rotation axis. 
+;     - If this is not set then the center of the sinogram is used for all slices.
+;     - If this is a single value then it is used as the rotation center for all slices.
+;     - If this is an array then the number of elements must be the number of slices (NY) and
+;       slice N will be reconstructed using the rotation center in CENTER[N].
+;
+;   ANGLES:
+;     An array containing the projection angles in degrees.  Default is *self.pAngles.
+;
+;   WAIT:
+;     Set this keyword to wait for the reconstruction to complete before returning.
+;     When reconstructing in chunks this keyword can be omitted, which returns control
+;     to IDL while the reconstruction continues in the background.
+;     This allows overlapping I/O with reconstruction.
+;
+; OUTPUTS:
+;   OUTPUT:
+;       The reconstructed array [NX, NX, NY].  Type=Float.
+; 
+; PROCEDURE:
+;   The tomoRecon code is multithreaded, with each thread processing 2 slices at a time.
+;   The processing includes
+;     - Optional secondary air normalization
+;     - Computing the sinogram (logarithm)
+;     - Optional ring artifact reduction on the sinogram
+;     - Reconstruction
+;   The reconstruction parameters are controlled by TOMO::SET_RECON_PARAMS.
+;-
+pro tomo::tomo_recon, input, $
+                      output, $
+                      create = create, $
+                      center=center, $
+                      angles=angles, $
+                      wait=wait
 
   t0 = systime(1)
   dims = long(size(input, /dimensions))
@@ -629,7 +1033,151 @@ end
 
 ;+
 ; NAME:
-;   RECONSTRUCT_SLICE
+;   TOMO::GRIDREC
+;
+; PURPOSE:
+;   Performs tomographic reconstruction using the "gridrec" algorithm written
+;   by Bob Marr and Graham Campbell (not sure about authors) at BNL in 1997.
+;   The basic algorithm is based on FFTs.  It reconstructs 2 sinograms at once,
+;   one in the real part of the FFT and one in the imaginary part.
+;
+;   This routine is 20-40 times faster than BACKPROJECT, and yields virtually
+;   identical reconstructions. 
+;   It uses CALL_EXTERNAL to call GridrecIDL.c which is a thin wrapper to grid.c
+;
+;   However, GridrecIDL.c only reconstructs 2 slices, and is single-threaded.
+;   For fast reconstructions TOMO::TOMO_RECON should be used instead.
+;   TOMO::TOMO_RECON is much faster bbecause it also computes the sinograms in C++ rather than in IDL
+;   and it is multithreaded and so reconstructs many slices in parallel.
+;
+;   TOMO::GRIDREC is typically used only when reconstructing single slices when it is desireable to
+;   visualize the sinogram and the center-of-gravity plot of the sinogram
+;
+; CALLING SEQUENCE:
+;   TOMO->GRIDREC, SINOGRAM1, SINOGRAM2, IMAGE1, IMAGE2
+;
+; INPUTS:
+;   SINOGRAM1:
+;       The first input sinogram, dimensions NX x NANGLES.
+;   SINOGRAM2:
+;       The second input sinogram, dimensions NX x NANGLES.
+;
+; KEYWORD PARAMETERS:
+;   CENTER: 
+;     The column containing the rotation axis. The default is the center of the sinogram.
+;
+; OUTPUTS:
+;   IMAGE1:
+;       The reconstructed image from SINOGRAM1.
+;   IMAGE2:
+;       The reconstructed image from SINOGRAM2.
+;
+; PROCEDURE:
+;   This function uses CALL_EXTERNAL to call the shareable library GridrecIDL,
+;   which is written in C.
+;-
+
+pro tomo::gridrec, S1, S2, I1, I2, center=center
+
+  image_size = 0L
+  n_ang = n_elements(S1[0,*])
+  n_det = n_elements(S1[*,0])
+  angles = *self.pAngles
+  if (n_elements(angles) ne n_ang) then message, 'Incorrect number of angles'
+
+  if (n_elements(center) eq 0) then center=n_det/2.
+
+  t = call_external(self.gridrecShareableLibrary, 'recon_init_IDL', $
+    long(n_ang), $
+    long(n_det), $
+    self.geom, $
+    float(angles), $
+    float(center), $
+    self.pswfParam, $
+    self.sampl, $
+    self.ROI, $
+    self.maxPixSize, $
+    self.X0, $
+    self.Y0, $
+    self.ltbl, $
+    [byte(self.GR_filterName), 0B], $
+    image_size)
+
+  I1 = fltarr(image_size, image_size)
+  I2 = fltarr(image_size, image_size)
+  t = call_external(self.gridrecShareableLibrary, 'do_recon_IDL', $
+    long(n_ang), $
+    long(n_det), $
+    long(image_size),$
+    float(S1), $
+    float(S2), $
+    I1, $
+    I2);
+end
+
+;+
+; NAME:
+;   TOMO::BACKPROJECT
+;
+; PURPOSE:
+;   Reconstructs a sinogram into an image using backprojection.
+;
+; CALLING SEQUENCE:
+;   Result = BACKPROJECT(SINOGRAM, CENTER=CENTER)
+;
+; INPUTS:
+;   SINOGRAM:
+;     The input sinogram, dimensions NX x NANGLES.  
+;     This should have been filtered before calling this function.
+;     It is typically created with TOMO::SINOGRAM
+;
+; KEYWORD PARAMETERS
+;   CENTER:
+;     The rotation center to use when reconstructing.  Default is the center of the sinogram.
+;     
+; OUTPUTS:
+;   This function returns the reconstructed image.
+;
+; PROCEDURE:
+;   This function calls either the IDL RIEMANN or RADON procedure depending on the value of self.BP_Method.
+;   These procedures are called with the BACKPROJECT keyword.
+;   With RIEMANN interpolation can be None, Bilinear or Cubic depending on the value of self.RiemannInterpolation.
+;   With RADON interpolation can be None or Linear, depending on the value of self.RadonInterpolation.
+;-
+
+function tomo::backproject, sinogram, center=center
+  nrho = self.nx
+  nangles = self.nz
+  angles = *self.pAngles
+
+  if (self.BP_Method eq self.BP_MethodRiemann) then begin ; in case of Riemann backprojection
+    b = fltarr(nrho, nrho)      ;Initial reconstructed image.
+    if n_elements(center) then ctr = center
+    for i=0,nangles-1 do begin
+      riemann, sinogram, b, angles[i]*!dtor, row=i, /backproject, $
+        center=ctr, $
+        bilinear=(self.RiemannInterpolation eq self.RiemannInterpolationBilinear), $
+        cubic=(self.RiemannInterpolation eq self.RiemannInterpolationCubic)
+    endfor
+    b = b*!pi/nangles
+
+  endif else if(self.BP_Method eq self.BP_MethodRadon) then begin ; in case of Radon backprojection
+    if (n_elements(center) eq 0) then center = (nrho-1)/2.
+    rhos = (findgen(nrho) - center)
+    rangles = angles*!dtor ; convert angles to radians
+    b = radon(transpose(sinogram), /backproject, rho=rhos, theta=rangles, nx=nrho, ny=nrho, $
+      linear=(self.RadonInterpolation eq self.RadonInterpolationLinear))
+  endif
+
+  mask = shift(dist(nrho), nrho/2, nrho/2)
+  outside = where(mask gt nrho/2.)
+  b(outside) = 0.
+  return, b
+end
+
+;+
+; NAME:
+;   TOMO::RECONSTRUCT_SLICE
 ;
 ; PURPOSE:
 ;   Reconstructs a single slice in a tomography volume array.
@@ -638,7 +1186,8 @@ end
 ;   Result = RECONSTRUCT_SLICE(INPUT, CENTER=CENTER, SINOGRAM=SINOGRAM, COG=COG)
 ;
 ; INPUTS:
-;   INPUT:  The slice to be reconstructed, dimensions [NX, N_PROJECTIONS]
+;   INPUT:
+;     The slice to be reconstructed, dimensions [NX, N_PROJECTIONS]
 ;
 ; INPUT KEYWORD PARAMETERS:
 ;   CENTER:
@@ -684,17 +1233,18 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
   if (self.reconMethod eq self.reconMethodGridrec) then begin
     t1 = input
     t2 = input
-    s1 = sinogram(tomoParams, t1, angles, cog=cog)
+    time2 = systime(1)
+    s1 = self->sinogram(t1, cog=cog)
     singram = s1
-    s2 = sinogram(tomoParams, t2, angles, cog=cog)
+    s2 = self->sinogram(t2, cog=cog)
     time3 = systime(1)
 
     if (self.ringWidth eq 0) then begin
       g1 = s1
       g2 = s2
     endif else begin
-      g1 = remove_tomo_artifacts(s1, /rings, width=self.ringWidth)
-      g2 = remove_tomo_artifacts(s2, /rings, width=self.ringWidth)
+      g1 = self->remove_artifacts(s1, /rings, width=self.ringWidth)
+      g2 = self->remove_artifacts(s2, /rings, width=self.ringWidth)
     endelse
 
     ; pad sinogram
@@ -717,7 +1267,7 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
     endif
 
     time4 = systime(1)
-    gridrec, tomoParams, g1, g2, angles, r, unused, center=center
+    self->gridrec, g1, g2, r, unused, center=center
 
     ; crop results if sinogram was padded
     if (pad ne 0 AND size[1] le pad) then begin
@@ -740,21 +1290,22 @@ function tomo::reconstruct_slice, input, center=center, sinogram=singram, cog=co
   endif
 
   if (self.reconMethod eq self.reconMethodBackproject) then begin
-    s1 = sinogram(tomoParams, t1, angles, cog=cog)
+    time2 = systime(1)
+    s1 = self->sinogram(input, cog=cog)
     cent = -1
     time3 = systime(1)
     if (self.ringWidth eq 0) then begin
       g1 = s1
     endif else begin
-      g1 = remove_tomo_artifacts(s1, /rings, width=self.ringWidth)
+      g1 = self->remove_artifacts(s1, /rings, width=self.ringWidth)
     endelse
 
     time4 = systime(1)
-    ss1 = tomo_filter(g1, filter_size=self.BP_filterSize, filter_name=self.BP_filterName)
+    ss1 = self.filter(g1, filter_size=self.BP_filterSize, filter_name=self.BP_filterName)
     singram = ss1
     time5 = systime(1)
-    if (center ge (nx-1)/2) then ctr = center else ctr = center + 2*abs(round(center - (nx-1)/2))
-    r = backproject(tomoParams, ss1, angles, center=ctr)
+    ;if (center ge (nx-1)/2) then ctr = center else ctr = center + 2*abs(round(center - (nx-1)/2))
+    r = self->backproject(ss1, center=center)
     time6 = systime(1)
     ; Scale results
     if ((self.reconScale ne 0.) and (self.reconScale ne 1.0)) then begin
@@ -1549,7 +2100,7 @@ end
 ;   debug                 Debugging print level.  Larger numbers are more verbose output.
 ;   dbgFile               File to write debugging output to.
 ;   geom                  Gridrec/tomoRecon geom parameter
-;   pswfParams            Gridrec/tomoRecon pswf parameter
+;   pswfParam             Gridrec/tomoRecon pswf parameter
 ;   sampl                 Gridrec/tomoRecon sampl parameter
 ;   maxPixSize            Gridrec/tomoRecon maxPixSize parameter
 ;   ROI                   Gridrec/tomoRecon ROI parameter
@@ -1847,6 +2398,13 @@ function tomo::init, settingsFile=settingsFile, statusWidget=statusWidget, abort
     self.tomoReconShareableLibrary = file_which(file)
   endif
   if (self.tomoReconShareableLibrary eq '') then message, 'tomoRecon shareable library not defined'
+  self.gridrecShareableLibrary       = getenv('GRIDREC_SHARE')
+  if (self.gridrecShareableLibrary eq "") then begin
+    file = 'GridrecIDL_' + !version.os + '_' + !version.arch
+    if (!version.os eq 'Win32') then file=file+'.dll' else file=file+'.so'
+    self.gridrecShareableLibrary = file_which(file)
+  endif
+  if (self.gridrecShareableLibrary eq '') then message, 'Gridrec shareable library not defined'
   if (n_elements(settingsFile) ne 0) then self->restore_settings, settings
   return, 1
 end
@@ -1896,6 +2454,7 @@ pro tomo__define
     reconWriteOutput:             0L, $ 0: don't write, 1: write
     reconWriteFormat:             "", $ 'netCDF' or 'HDF5'
     tomoReconShareableLibrary:    "", $
+    gridrecShareableLibrary:      "", $
     ; tomoRecon parameters
     reconScale:                   0., $ ; Scale factor for reconstruction
     reconOffset:                  0., $ ; Offset factor for reconstruction
