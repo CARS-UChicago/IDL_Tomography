@@ -795,7 +795,7 @@ end
 function tomo::sinogram, input, cog=cog
 ;+
 ; NAME:
-;   SINOGRAM
+;   TOMO::SINOGRAM
 ;
 ; PURPOSE:
 ;   To convert raw tomography data into a sinogram.
