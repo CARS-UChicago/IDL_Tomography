@@ -578,7 +578,7 @@ pro tomo::optimize_center, slices, center, merit, width=width, step=step, method
   endif
   self->set_rotation, slices[0], center1, slices[1], center2
   t1 = systime(1)
-  print, 'optimize_center, time=', t1-t0
+  print, 'optimize_center, time=', t1-t0, ' centers=', center1, center2
 end
 
 pro tomo::optimize_center_entropy, slices, center, merit
