@@ -53,7 +53,7 @@ Install IDL_Tomography
     ::
 
       export TOMO_RECON_SHARE=/home/myaccount/GSECARS_tomography/IDL_Tomography/tomoRecon_linux_x86_64.so
-  - On Windows define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_Win32_x86_64.dll.
+  - On Windows define the environment variable ``TOMO_RECON_SHARE`` to point to the complete path to ``tomoRecon_Win32_x86_64.dll``, and the environment variable ``GRIDREC_SHARE`` to point to the complete path to ``GridrecIDL_Win32_x86_64.dll``.
     This can be done with ``Control Panel/System/Advanced/Environment Variables``.
 - On Windows add the IDL_tomography folder to your PATH environment variable.
   This can be done with ``Control Panel/System/Advanced/Environment Variables``.
