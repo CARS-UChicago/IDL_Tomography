@@ -48,12 +48,17 @@ Install IDL_Tomography
 
   - Create a subdirectory in ``GSECARS_tomography`` called ``IDL_tomography``.
   - Download tomo_display.zip_ to ``GSECARS_tomography\IDL_Tomography`` and unzip it there.
-  - On Linux define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_linux_x86_64.so, 
-    which is contained in the IDL_Tomography directory created above. Put a command like this in your bash startup script:
+  - On Linux define the environment variable ``TOMO_RECON_SHARE`` to point to the complete path to ``tomoRecon_linux_x86_64.so``, 
+    and the environment variable ``GRIDREC_SHARE`` to point to the complete path to ``GridrecIDL_linux-x86_64.so``.
+    These are contained in the IDL_Tomography directory created above.
+    Put commands like this in your bash startup script:
     ::
 
       export TOMO_RECON_SHARE=/home/myaccount/GSECARS_tomography/IDL_Tomography/tomoRecon_linux_x86_64.so
-  - On Windows define the environment variable ``TOMO_RECON_SHARE`` to point to the complete path to ``tomoRecon_Win32_x86_64.dll``, and the environment variable ``GRIDREC_SHARE`` to point to the complete path to ``GridrecIDL_Win32_x86_64.dll``.
+      export GRIDREC_SHARE=/home/myaccount/GSECARS_tomography/IDL_Tomography/GridrecIDL_linux_x86_64.so
+  - On Windows define the environment variable ``TOMO_RECON_SHARE`` to point to the complete path to ``tomoRecon_Win32_x86_64.dll``,
+    and the environment variable ``GRIDREC_SHARE`` to point to the complete path to ``GridrecIDL_Win32_x86_64.dll``.
+    These are contained in the IDL_Tomography directory created above. 
     This can be done with ``Control Panel/System/Advanced/Environment Variables``.
 - On Windows add the IDL_tomography folder to your PATH environment variable.
   This can be done with ``Control Panel/System/Advanced/Environment Variables``.

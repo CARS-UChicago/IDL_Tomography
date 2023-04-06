@@ -127,13 +127,18 @@ The + symbol means to search subdirectories.</p></li>
 <ul>
 <li><p>Create a subdirectory in <code class="docutils literal notranslate"><span class="pre">GSECARS_tomography</span></code> called <code class="docutils literal notranslate"><span class="pre">IDL_tomography</span></code>.</p></li>
 <li><p>Download <a class="reference external" href="https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.zip">tomo_display.zip</a> to <code class="docutils literal notranslate"><span class="pre">GSECARS_tomography\IDL_Tomography</span></code> and unzip it there.</p></li>
-<li><p>On Linux define the environment variable TOMO_RECON_SHARE to point to the complete path to tomoRecon_linux_x86_64.so,
-which is contained in the IDL_Tomography directory created above. Put a command like this in your bash startup script:</p>
+<li><p>On Linux define the environment variable <code class="docutils literal notranslate"><span class="pre">TOMO_RECON_SHARE</span></code> to point to the complete path to <code class="docutils literal notranslate"><span class="pre">tomoRecon_linux_x86_64.so</span></code>,
+and the environment variable <code class="docutils literal notranslate"><span class="pre">GRIDREC_SHARE</span></code> to point to the complete path to <code class="docutils literal notranslate"><span class="pre">GridrecIDL_linux-x86_64.so</span></code>.
+These are contained in the IDL_Tomography directory created above.
+Put commands like this in your bash startup script:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">export</span> <span class="n">TOMO_RECON_SHARE</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">myaccount</span><span class="o">/</span><span class="n">GSECARS_tomography</span><span class="o">/</span><span class="n">IDL_Tomography</span><span class="o">/</span><span class="n">tomoRecon_linux_x86_64</span><span class="o">.</span><span class="n">so</span>
+<span class="n">export</span> <span class="n">GRIDREC_SHARE</span><span class="o">=/</span><span class="n">home</span><span class="o">/</span><span class="n">myaccount</span><span class="o">/</span><span class="n">GSECARS_tomography</span><span class="o">/</span><span class="n">IDL_Tomography</span><span class="o">/</span><span class="n">GridrecIDL_linux_x86_64</span><span class="o">.</span><span class="n">so</span>
 </pre></div>
 </div>
 </li>
-<li><p>On Windows define the environment variable <code class="docutils literal notranslate"><span class="pre">TOMO_RECON_SHARE</span></code> to point to the complete path to <code class="docutils literal notranslate"><span class="pre">tomoRecon_Win32_x86_64.dll</span></code>, and the environment variable <code class="docutils literal notranslate"><span class="pre">GRIDREC_SHARE</span></code> to point to the complete path to <code class="docutils literal notranslate"><span class="pre">GridrecIDL_Win32_x86_64.dll</span></code>.
+<li><p>On Windows define the environment variable <code class="docutils literal notranslate"><span class="pre">TOMO_RECON_SHARE</span></code> to point to the complete path to <code class="docutils literal notranslate"><span class="pre">tomoRecon_Win32_x86_64.dll</span></code>,
+and the environment variable <code class="docutils literal notranslate"><span class="pre">GRIDREC_SHARE</span></code> to point to the complete path to <code class="docutils literal notranslate"><span class="pre">GridrecIDL_Win32_x86_64.dll</span></code>.
+These are contained in the IDL_Tomography directory created above.
 This can be done with <code class="docutils literal notranslate"><span class="pre">Control</span> <span class="pre">Panel/System/Advanced/Environment</span> <span class="pre">Variables</span></code>.</p></li>
 </ul>
 </li>
