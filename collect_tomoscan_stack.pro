@@ -30,7 +30,7 @@ acquire_PV  = '13BMDPG1:TS:StartScan'
 shutter_PV  = '13BMD:Unidig2Bo10'
 
 if (n_elements(ystart) ne 0) then begin
-  yposition = ystart * findgen(ny)*ystep
+  yposition = ystart + findgen(ny)*ystep
 endif
 num_y = n_elements(yposition)
 num_energy = n_elements(energy)
