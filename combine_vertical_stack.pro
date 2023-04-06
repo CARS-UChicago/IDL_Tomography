@@ -54,6 +54,8 @@ pro combine_vertical_stack, base_file_name, num_volumes, pixel_overlap, $
     endfor
     print, systime() + ' Writing combined volume '
     t->write_volume, base_file_name + 'combined_recon' + extension, vol, netcdf=is_netcdf
+    vol = 0
+    v = 0
     print, systime() + ' Done'
 end
 
