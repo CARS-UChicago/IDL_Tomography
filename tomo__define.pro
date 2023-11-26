@@ -97,6 +97,55 @@ pro tomo::read_camera_file, filename
   print, 'Time to read camera file=', systime(1)-t0
 end
 
+pro tomo::read_nsls2_files, proj_dir, flat_dir
+
+  t0 = systime(1)
+  ptr_free, self.pVolume
+  print, 'Time to free volume=', systime(1)-t0
+
+  t1 = systime(1)
+  darks       = h5_getdata(flat_dir + '/dark_00000.hdf', '/entry/data/data')
+  print, 'Time to read darks=', systime(1)-t1
+  t1 = systime(1)
+  flats       = h5_getdata(flat_dir + '/flat_00000.hdf', '/entry/data/data')
+  print, 'Time to read flats=', systime(1)-t1
+  t1 = systime(1)
+  ; We read the projections and then discard the last one.
+  ; This is 5x faster than just reading a subset of the data with HDF5 functions
+  projections = h5_getdata(proj_dir + '/proj_00000.hdf', '/entry/data/data/')
+  print, 'Time to read projections=', systime(1)-t1
+  self->set_file_components, proj_dir + '/proj_00000.hdf'
+  t1 = systime(1)
+  temp        = file_search(proj_dir + '/scan*.nxs')
+  filename = temp[0]
+  angles      = h5_getdata(filename, '/entry/data/rotation_angle/')
+  angles = float(angles)
+  print, 'Time to read angles=', systime(1)-t1
+  ; Remove the final projection
+  t1 = systime(1)
+  dims = size(projections, /dimensions)
+  num_projections = dims[2]
+  projections = projections[*, *, 0:num_projections-2]
+  angles = angles[0:num_projections-2] - angles[0]
+  print, 'Time to resize arrays=', systime(1)-t1
+  dims = size(projections, /dimensions)
+  num_projections = dims[2]
+  camera = 'Kinetix'
+  self.xPixelSize = 1.4
+  self.yPixelSize = 1.4
+  self.zPixelSize = 1.4
+  self.nx = dims[0]
+  self.ny = dims[1]
+  self.nz = dims[2]
+  self.imageType = 'RAW'
+  self.pAngles = ptr_new(angles, /no_copy)
+  self.pVolume = ptr_new(projections, /no_copy)
+  self.pFlats = ptr_new(flats, /no_copy)
+  self.pDarks = ptr_new(darks, /no_copy)
+
+  print, 'Time to read camera files=', systime(1)-t0
+end
+
 function tomo::find_attribute, attributes, name
   for i=0, n_elements(attributes) do begin
     if (attributes[i].name eq name) then return, i
@@ -703,8 +752,12 @@ end
 pro tomo::set_rotation, slice1, center1, slice2, center2
   slices = float([slice1, slice2])
   center = float([center1, center2])
-  ; Do a linear fit of slice number and rotation center
-  coeffs = poly_fit(slices, center, 1)
+  if (slice1 eq slice2) then begin
+    coeffs = [center1, 0.]
+  endif else begin
+    ; Do a linear fit of slice number and rotation center
+    coeffs = poly_fit(slices, center, 1)
+  endelse
   self.rotationCenter = coeffs[0]
   self.rotationCenterSlope = coeffs[1]
   self.upperSlice = slice1
@@ -953,6 +1006,7 @@ pro tomo::tomo_recon, input, $
   
   if (n_elements(create) eq 0) then create = 1
   if (n_elements(angles) eq 0) then angles = *self.pAngles
+  angles = float(angles)  ; Make sure angles array is type float
   if (n_elements(center) eq 0) then begin
     centerArr = fltarr(numSlices) + (numPixels)/2.
   endif else if (n_elements(center) eq 1) then begin
@@ -2052,13 +2106,14 @@ pro tomo::cleanup
 end
 
 function tomo::getPaddedSinogramWidth, numPixels
+  paddedSinogramWidth = max([numPixels, self.paddedSinogramWidth])
   if (self.paddedSinogramWidth eq 0) then begin
     ; Use the next largest power of 2 by default
     paddedSinogramWidth = 128
     repeat begin
       paddedSinogramWidth=paddedSinogramWidth * 2
     endrep until (paddedSinogramWidth ge numPixels)
-  endif else if (paddedSinogramWidth eq 1) then begin
+  endif else if (self.paddedSinogramWidth eq 1) then begin
     paddedSinogramWidth = numPixels
   endif
   return, paddedSinogramWidth
