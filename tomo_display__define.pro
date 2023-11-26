@@ -207,6 +207,10 @@ pro tomo_display::update_tomo_struct
   self.tomoStruct = self.tomoObj->get_struct()
 end
 
+function tomo_display::get_tomo_object
+  return, self.tomoObj
+end
+
 pro tomo_display::update_file_widgets
   widget_control, self.widgets.input_file, set_value=self.tomoStruct.inputFilename
   widget_control, self.widgets.base_file, set_value=self.tomoStruct.baseFilename
@@ -486,6 +490,25 @@ pro tomo_display::event, event
       self->update_file_widgets
       self->update_volume_widgets
       widget_control, self.widgets.dark_current,      set_value=*self.tomoStruct.pDarks[0]
+      widget_control, self.widgets.status,            set_value='Done reading camera file ' + file
+    end
+
+    self.widgets.read_nsls2_files: begin
+      proj_dir = dialog_pickfile(/directory, title='Please select the projection directory')
+      if (proj_dir eq '') then break
+      flat_dir = dialog_pickfile(/directory, title='Please select the dark/flat directory')
+      if (flat_dir eq '') then break
+      cd, proj_dir
+      file = proj_dir + '/proj_00000.hdf'
+      self->update_file_widgets
+      widget_control, /hourglass
+      widget_control, self.widgets.status, $
+        set_value='Reading camera files ' + file + ' ...'
+      self.tomoObj->read_nsls2_files, proj_dir, flat_dir
+      self->update_tomo_struct
+      self->update_file_widgets
+      self->update_volume_widgets
+      widget_control, self.widgets.dark_current,      set_value=(*self.tomoStruct.pDarks)[0]
       widget_control, self.widgets.status,            set_value='Done reading camera file ' + file
     end
 
@@ -810,6 +833,7 @@ function tomo_display::init
 
   file                                  = widget_button(mbar, /menu, value = 'File')
   self.widgets.read_camera_file         = widget_button(file, value = 'Read camera file ...')
+  self.widgets.read_nsls2_files         = widget_button(file, value = 'Read NSLS-II files ...')
   self.widgets.read_processed_file      = widget_button(file, value = 'Read processed file ...')
   self.widgets.save_settings            = widget_button(file, value = 'Save settings ...')
   self.widgets.restore_settings         = widget_button(file, value = 'Restore settings ...')
@@ -1123,6 +1147,7 @@ pro tomo_display__define
   widgets={ tomo_display_widgets, $
     base:                     0L, $
     read_camera_file:         0L, $
+    read_nsls2_files:         0L, $
     read_processed_file:      0L, $
     save_settings:            0L, $
     restore_settings:         0L, $
