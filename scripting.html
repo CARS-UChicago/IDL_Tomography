@@ -11,9 +11,11 @@
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/jquery.js?v=5d32c60e"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="_static/documentation_options.js?v=60dbed4a"></script>
+        <script src="_static/doctools.js?v=888ff710"></script>
+        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -81,13 +83,13 @@
            <div itemprop="articleBody">
              
   <section id="scripting-and-batch-processing">
-<h1>Scripting and batch processing<a class="headerlink" href="#scripting-and-batch-processing" title="Permalink to this heading"></a></h1>
+<h1>Scripting and batch processing<a class="headerlink" href="#scripting-and-batch-processing" title="Link to this heading"></a></h1>
 <p>The <code class="docutils literal notranslate"><span class="pre">tomo</span></code> class can be called from user-written IDL routines to perform all steps in the reconstruction process.
 This can be used to write scripts to do batch processing of data without using the tomo_display GUI.</p>
 <p>The <a class="reference external" href="_static/IDL_help/tomography_routines.html">tomo class documentation</a> explains the use of each
 of the <code class="docutils literal notranslate"><span class="pre">tomo</span></code> methods.  These are the routines whose names begin with <code class="docutils literal notranslate"><span class="pre">tomo::</span></code>.</p>
 <section id="processing-a-single-dataset">
-<h2>Processing a single dataset<a class="headerlink" href="#processing-a-single-dataset" title="Permalink to this heading"></a></h2>
+<h2>Processing a single dataset<a class="headerlink" href="#processing-a-single-dataset" title="Link to this heading"></a></h2>
 <p>The following IDL procedure will reconstruct a single dataset.</p>
 <div class="highlight-IDL notranslate"><div class="highlight"><pre><span></span><span class="k">pro</span><span class="w"> </span>process_dataset,<span class="w"> </span>camera_file
 <span class="w">  </span>tomo<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">obj_new</span>(<span class="s1">&#39;tomo&#39;</span>)
@@ -200,7 +202,7 @@ IDL<span class="o">&gt;</span><span class="w"> </span>process_dataset,<span clas
 </div>
 </section>
 <section id="processing-a-mulitple-datasets">
-<h2>Processing a mulitple datasets<a class="headerlink" href="#processing-a-mulitple-datasets" title="Permalink to this heading"></a></h2>
+<h2>Processing a mulitple datasets<a class="headerlink" href="#processing-a-mulitple-datasets" title="Link to this heading"></a></h2>
 <p>The following IDL procedure will reconstruct a multiple datasets collected with the IDL <code class="docutils literal notranslate"><span class="pre">collect_tomoscan_stack</span></code> procedure.
 Each file has a base name followed by _A, _B, etc.</p>
 <div class="highlight-IDL notranslate"><div class="highlight"><pre><span></span><span class="k">pro</span><span class="w"> </span>process_stack,<span class="w"> </span>base_file,<span class="w"> </span>num_files
@@ -246,7 +248,7 @@ IDL<span class="o">&gt;</span><span class="w"> </span>process_stack,<span class=
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-April-06.
+      <span class="lastupdated">Last updated on 2023-November-26.
       </span></p>
   </div>
 

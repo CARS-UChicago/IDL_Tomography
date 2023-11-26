@@ -11,9 +11,11 @@
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/jquery.js?v=5d32c60e"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="_static/documentation_options.js?v=60dbed4a"></script>
+        <script src="_static/doctools.js?v=888ff710"></script>
+        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -82,9 +84,9 @@
            <div itemprop="articleBody">
              
   <section id="file-formats">
-<h1>File formats<a class="headerlink" href="#file-formats" title="Permalink to this heading"></a></h1>
+<h1>File formats<a class="headerlink" href="#file-formats" title="Link to this heading"></a></h1>
 <section id="raw-data">
-<h2>Raw data<a class="headerlink" href="#raw-data" title="Permalink to this heading"></a></h2>
+<h2>Raw data<a class="headerlink" href="#raw-data" title="Link to this heading"></a></h2>
 <p>Beginning in July 2020 the raw data is stored in HDF5 files with the extension “.h5”.
 There is one HDF5 file per dataset, and it contains the flat field images and the projections.
 It also contains metadata including the positions of many motors on the beamline, the ring current,
@@ -99,7 +101,7 @@ including the sample information, x-ray energy, and pixel size.</p>
 <p>Prior to May 2014 the raw data is stored in Princeton Instruments SPE files with the extension “.spe”.</p>
 </section>
 <section id="preprocessed-normalized-data">
-<h2>Preprocessed (normalized) data<a class="headerlink" href="#preprocessed-normalized-data" title="Permalink to this heading"></a></h2>
+<h2>Preprocessed (normalized) data<a class="headerlink" href="#preprocessed-normalized-data" title="Link to this heading"></a></h2>
 <p>Beginning with the R2-0 version of <em>tomo_display</em> in January 2023 the
 preprocessed data is generally not written to disk at all, it is kept in memory after preprocessing.
 This significantly improves the reconstruction speed.
@@ -110,7 +112,7 @@ Prior to July 2020 these files were written by <em>tomo_display</em>, while from
 by a Python script called <em>preprocess_13bm.py</em>.</p>
 </section>
 <section id="reconstructed-data">
-<h2>Reconstructed data<a class="headerlink" href="#reconstructed-data" title="Permalink to this heading"></a></h2>
+<h2>Reconstructed data<a class="headerlink" href="#reconstructed-data" title="Link to this heading"></a></h2>
 <p>Beginning with the R2-0 version of <em>tomo_display</em> it can store reconstructed files in
 either netCDF format with a file name that ends in “recon.nc”, or in HDF5 format with a file name that ends in “recon.h5”.
 HDF5 is 2-3 times faster to write, and is generally recommended.  However, there are some limitations in reading HDF5 files into
@@ -132,7 +134,7 @@ in “recon.volume”.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-April-06.
+      <span class="lastupdated">Last updated on 2023-November-26.
       </span></p>
   </div>
 

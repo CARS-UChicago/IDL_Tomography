@@ -11,9 +11,11 @@
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="_static/sphinx_highlight.js"></script>
+        <script src="_static/jquery.js?v=5d32c60e"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="_static/documentation_options.js?v=60dbed4a"></script>
+        <script src="_static/doctools.js?v=888ff710"></script>
+        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -102,20 +104,20 @@
            <div itemprop="articleBody">
              
   <section id="processing-options">
-<h1>Processing options<a class="headerlink" href="#processing-options" title="Permalink to this heading"></a></h1>
+<h1>Processing options<a class="headerlink" href="#processing-options" title="Link to this heading"></a></h1>
 <p>There are a number of options available to control the preprocessing, sinogram, and reconstruction steps.
 These can be controlled with the Processing Options screen, which is opened with <em>Options/Processing options …</em>
 in the main tomo_display screen.</p>
 <figure class="align-center" id="id1">
 <img alt="_images/processing_options.png" src="_images/processing_options.png" />
 <figcaption>
-<p><span class="caption-text"><strong>Processing options screen</strong></span><a class="headerlink" href="#id1" title="Permalink to this image"></a></p>
+<p><span class="caption-text"><strong>Processing options screen</strong></span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
 </figcaption>
 </figure>
 <section id="preprocessing-options">
-<h2>Preprocessing options<a class="headerlink" href="#preprocessing-options" title="Permalink to this heading"></a></h2>
+<h2>Preprocessing options<a class="headerlink" href="#preprocessing-options" title="Link to this heading"></a></h2>
 <section id="zinger-removal">
-<h3>Zinger removal<a class="headerlink" href="#zinger-removal" title="Permalink to this heading"></a></h3>
+<h3>Zinger removal<a class="headerlink" href="#zinger-removal" title="Link to this heading"></a></h3>
 <p>Zingers are anomalously bright pixels, typically caused by an X-ray directly striking the camera sensor.
 If they are not removed they will cause single-pixel line artifacts across the image during reconstruction.
 Zinger removal uses a median-filter algorithm for normal projections, and a double-correlation algorithm for the flat fields.
@@ -160,12 +162,12 @@ dark current and flat field correction.</p>
 <p>The double-correlation calculation is done in IDL, which is fast enough for the limited number of flat fields.</p>
 </section>
 <section id="dark-current">
-<h3>Dark current<a class="headerlink" href="#dark-current" title="Permalink to this heading"></a></h3>
+<h3>Dark current<a class="headerlink" href="#dark-current" title="Link to this heading"></a></h3>
 <p>This value is currently read-only.  It is read from the .h5 or .setup files and displayed in this screen for information.
 The option to allow changing the value in this screen could be added in the future if needed.</p>
 </section>
 <section id="scale-factor-preprocessing">
-<h3>Scale factor (preprocessing)<a class="headerlink" href="#scale-factor-preprocessing" title="Permalink to this heading"></a></h3>
+<h3>Scale factor (preprocessing)<a class="headerlink" href="#scale-factor-preprocessing" title="Link to this heading"></a></h3>
 <p>During the preprocessing each projection is divided by the average of the flat fields.  This produces a normalized image
 whose intensity if approximately in the range of 0.0 to 1.0.  If one wants to have the option to save the preprocessed
 data as an unsigned 16-bit integer then it needs to first be scaled by a scale factor.
@@ -175,15 +177,15 @@ A scale factor of 16000 would handle 16-bit cameras with little danger of overfl
 which would only happen if some pixels were more than 2.0 times brighter than the flat field.</p>
 </section>
 <section id="number-of-threads">
-<h3>Number of threads<a class="headerlink" href="#number-of-threads" title="Permalink to this heading"></a></h3>
+<h3>Number of threads<a class="headerlink" href="#number-of-threads" title="Link to this heading"></a></h3>
 <p>This is the number of threads to use for the C++ preprocessing.  It is reasonable to use the number cores in the processing
 machine.  A smaller number could be used if other compute-intensive tasks are to run at the same time.</p>
 </section>
 </section>
 <section id="sinogram-options">
-<h2>Sinogram options<a class="headerlink" href="#sinogram-options" title="Permalink to this heading"></a></h2>
+<h2>Sinogram options<a class="headerlink" href="#sinogram-options" title="Link to this heading"></a></h2>
 <section id="air-pixels">
-<h3>Air pixels<a class="headerlink" href="#air-pixels" title="Permalink to this heading"></a></h3>
+<h3>Air pixels<a class="headerlink" href="#air-pixels" title="Link to this heading"></a></h3>
 <p>The preprocessing does a first stage of normalization by dividing each projection by the average of the flat fields.
 If <strong>Air pixels</strong> is greater than 0 then it does the following secondary stage of normalization for each row in the sinogram:</p>
 <ul class="simple">
@@ -198,19 +200,19 @@ in the horizontal direction.  That is often the case for mirror and monochromato
 <p>If <strong>Air pixels</strong> is 0 then there is no secondary normalization.</p>
 </section>
 <section id="data-type">
-<h3>Data type<a class="headerlink" href="#data-type" title="Permalink to this heading"></a></h3>
+<h3>Data type<a class="headerlink" href="#data-type" title="Link to this heading"></a></h3>
 <p>The choices are Absorption and Fluorescence.  For Absorption data the logarithm of the normalized data must be
 computed before reconstruction. For Fluorscence data the logarithm operation is not performed.</p>
 </section>
 <section id="display-sinogram">
-<h3>Display sinogram<a class="headerlink" href="#display-sinogram" title="Permalink to this heading"></a></h3>
+<h3>Display sinogram<a class="headerlink" href="#display-sinogram" title="Link to this heading"></a></h3>
 <p>Selecting this option will display the sinogram after the logarithm is performed.  This option should only be used when
 reconstructing single slices, and it can only be used if the reconstruction method is Gridrec or Backproject.  With
 tomoRecon the sinogram is computed in C++, and IDL does not have access to the sinogram.</p>
 <p>[Need to put image here once Gridrec and Backproject are working again]</p>
 </section>
 <section id="plot-center-of-gravity">
-<h3>Plot center-of-gravity<a class="headerlink" href="#plot-center-of-gravity" title="Permalink to this heading"></a></h3>
+<h3>Plot center-of-gravity<a class="headerlink" href="#plot-center-of-gravity" title="Link to this heading"></a></h3>
 <p>Selecting this option will plot the center of gravity of the each row of the sinogram as a function of angle.  This can be
 useful for seeing artifacts like sample motion.  It has the same restrictions as displaying the sinogram, i.e. only for single
 slice reconstructions, and not when using tomoRecon.</p>
@@ -218,9 +220,9 @@ slice reconstructions, and not when using tomoRecon.</p>
 </section>
 </section>
 <section id="reconstruction-options">
-<h2>Reconstruction options<a class="headerlink" href="#reconstruction-options" title="Permalink to this heading"></a></h2>
+<h2>Reconstruction options<a class="headerlink" href="#reconstruction-options" title="Link to this heading"></a></h2>
 <section id="reconstruction-method">
-<h3>Reconstruction method<a class="headerlink" href="#reconstruction-method" title="Permalink to this heading"></a></h3>
+<h3>Reconstruction method<a class="headerlink" href="#reconstruction-method" title="Link to this heading"></a></h3>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 10%" />
@@ -249,7 +251,7 @@ It is the slowest method.</p></td>
 </table>
 </section>
 <section id="scale-factor-reconstruction">
-<h3>Scale factor (reconstruction)<a class="headerlink" href="#scale-factor-reconstruction" title="Permalink to this heading"></a></h3>
+<h3>Scale factor (reconstruction)<a class="headerlink" href="#scale-factor-reconstruction" title="Link to this heading"></a></h3>
 <p>The data from the tomography reconstruction is the linear X-ray attenuation coefficient in units of inverse pixel size.
 They represent the fraction of X-rays absorbed as the beam traverses that single pixel.
 Since the beam is typically absorbed by 10% to 90% as it traverses ~2K pixels, the absorption in each pixel is quite small,
@@ -261,7 +263,7 @@ values, it is necessary to scale the reconstruction values by a <strong>Scale fa
 <p>The scale factor can be set to 1 for no scaling.  The reconstructed data would then need to be saved as 32-bit float.</p>
 </section>
 <section id="ring-smoothing-width">
-<h3>Ring smoothing width<a class="headerlink" href="#ring-smoothing-width" title="Permalink to this heading"></a></h3>
+<h3>Ring smoothing width<a class="headerlink" href="#ring-smoothing-width" title="Link to this heading"></a></h3>
 <p>The ring artifact reduction method assumes that the average row of the sinogram should be quite “smooth”,
 without many high-frequency features.  It detects high-frequency anomalies and removes them.</p>
 <p>If <strong>Ring smoothing width</strong> is non-zero then ring artifact reduction is performed using the following algorithm
@@ -282,7 +284,7 @@ new features because of this.</p>
 </section>
 </section>
 <section id="backproject">
-<h2>Backproject<a class="headerlink" href="#backproject" title="Permalink to this heading"></a></h2>
+<h2>Backproject<a class="headerlink" href="#backproject" title="Link to this heading"></a></h2>
 <p>The following parameters are available when the reconstruction method is Backproject.</p>
 <table class="docutils align-default">
 <colgroup>
@@ -309,7 +311,7 @@ new features because of this.</p>
 </table>
 </section>
 <section id="gridrec-tomorecon">
-<h2>Gridrec/tomoRecon<a class="headerlink" href="#gridrec-tomorecon" title="Permalink to this heading"></a></h2>
+<h2>Gridrec/tomoRecon<a class="headerlink" href="#gridrec-tomorecon" title="Link to this heading"></a></h2>
 <p>The following parameters are available when the reconstruction method is either Gridrec or tomoRecon.</p>
 <table class="docutils align-default">
 <colgroup>
@@ -336,7 +338,7 @@ when computing the padding value.  0 selects a padding value of 0.</p></td>
 </table>
 </section>
 <section id="tomorecon">
-<h2>tomoRecon<a class="headerlink" href="#tomorecon" title="Permalink to this heading"></a></h2>
+<h2>tomoRecon<a class="headerlink" href="#tomorecon" title="Link to this heading"></a></h2>
 <p>The following parameters are available when the reconstruction method is tomoRecon.</p>
 <table class="docutils align-default">
 <colgroup>
@@ -378,7 +380,7 @@ larger than this.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2023-April-06.
+      <span class="lastupdated">Last updated on 2023-November-26.
       </span></p>
   </div>
 
