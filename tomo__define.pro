@@ -205,8 +205,14 @@ pro tomo::preprocess
   if (self.preprocessWriteFormat eq 'netCDF') then output_file = self.baseFilename + 'norm.nc' $
   else output_file = self.baseFilename + 'norm.h5'
 
-  normalized = fltarr(self.nx, self.ny, self.nz, /nozero)
-
+  if (self.preprocessDataType eq 'UInt16') then begin
+    normalized = uintarr(self.nx, self.ny, self.nz, /nozero)
+    outputDataType = 0;
+  endif else begin
+    normalized = fltarr(self.nx, self.ny, self.nz, /nozero)
+    outputDataType = 1;
+  endelse
+   
   ; Convert darks and flats to float
   darks = float(*self.pDarks)
   flats = float(*self.pFlats)
@@ -254,6 +260,7 @@ pro tomo::preprocess
     zingerWidth:      self.zingerWidth, $
     zingerThreshold:  self.zingerThreshold, $
     scaleFactor:      self.preprocessScale, $
+    outputDataType:   outputDataType, $
     debug:            self.debug, $
     debugFile:        bytarr(256) $
   }
@@ -273,12 +280,10 @@ pro tomo::preprocess
     wait, 0.1
   endrep until preprocessComplete
   tNormalize = systime(1)
-
-if (self.preprocessDataType eq 'UInt16') then begin
-    self->display_status, 'Converting to UInt16 ...', 1
-    normalized = fix(normalized)
-  endif
-  tConvertOut = systime(1)
+  
+  ; Free the volume array, no longer needed
+  ptr_free, self.pVolume
+  tFree = systime(1)
 
   self.imageType = 'NORMALIZED'
   if (self.preprocessWriteOutput) then begin
@@ -288,7 +293,6 @@ if (self.preprocessDataType eq 'UInt16') then begin
   self->write_sample_config
   tWriteFile = systime(1)
 
-  ptr_free, self.pVolume
   self.pVolume = ptr_new(normalized, /no_copy)
   tEnd = systime(1)
   self->display_status, 'Preprocessing complete', 1
@@ -296,9 +300,8 @@ if (self.preprocessDataType eq 'UInt16') then begin
   print, 'Preprocess execution times:'
   print, '                  Flat adjustments:', tFlats - tStart
   print, '  Dark, flat and zinger correction:', tNormalize - tFlats
-  print, '                 Convert to UInt16:', tConvertOut - tNormalize
-  print, '                    Writing output:', tWriteFile - tConvertOut
-  print, '                    Freeing memory:', tEnd - tWriteFile
+  print, '                    Freeing memory:', tFree - tNormalize
+  print, '                    Writing output:', tWriteFile - tFree
   print, '                             Total:', tEnd - tStart
 
 end
