@@ -496,6 +496,8 @@ pro tomo_display::event, event
     self.widgets.read_nsls2_files: begin
       proj_dir = dialog_pickfile(/directory, title='Please select the projection directory')
       if (proj_dir eq '') then break
+      cd, proj_dir
+      cd, '..'
       flat_dir = dialog_pickfile(/directory, title='Please select the dark/flat directory')
       if (flat_dir eq '') then break
       cd, proj_dir
