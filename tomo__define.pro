@@ -113,23 +113,14 @@ pro tomo::read_nsls2_files, proj_dir, flat_dir
   ; We read the projections and then discard the last one.
   ; This is 5x faster than just reading a subset of the data with HDF5 functions
   projections = h5_getdata(proj_dir + '/proj_00000.hdf', '/entry/data/data/')
+  dims = size(projections, /dimensions)
+  num_projections = dims[2]
   print, 'Time to read projections=', systime(1)-t1
   self->set_file_components, proj_dir + '/proj_00000.hdf'
-  t1 = systime(1)
   temp        = file_search(proj_dir + '/scan*.nxs')
   filename = temp[0]
   angles      = h5_getdata(filename, '/entry/data/rotation_angle/')
   angles = float(angles)
-  print, 'Time to read angles=', systime(1)-t1
-  ; Remove the final projection
-  t1 = systime(1)
-  dims = size(projections, /dimensions)
-  num_projections = dims[2]
-  projections = projections[*, *, 0:num_projections-2]
-  angles = angles[0:num_projections-2] - angles[0]
-  print, 'Time to resize arrays=', systime(1)-t1
-  dims = size(projections, /dimensions)
-  num_projections = dims[2]
   camera = 'Kinetix'
   self.xPixelSize = 1.4
   self.yPixelSize = 1.4
@@ -207,10 +198,10 @@ pro tomo::preprocess
 
   if (self.preprocessDataType eq 'UInt16') then begin
     normalized = uintarr(self.nx, self.ny, self.nz, /nozero)
-    outputDataType = 0;
+    outputDataType = 1L;
   endif else begin
     normalized = fltarr(self.nx, self.ny, self.nz, /nozero)
-    outputDataType = 1;
+    outputDataType = 0L;
   endelse
    
   ; Convert darks and flats to float
@@ -1021,11 +1012,32 @@ pro tomo::tomo_recon, input, $
   endelse
   if (n_elements(wait) eq 0) then wait = 1
 
+  tname = size(input, /tname)
+  if (tname eq 'FLOAT') then begin
+    inputDataType = 0L
+  endif else begin
+    inputDataType = 1L
+  endelse
+
+  output = 0 ; Deallocate any existing array
+  if (self.reconDataType eq 'Float32') then begin
+    output = fltarr(numPixels, numPixels, numSlices, /nozero)
+    outputDataType = 0L
+  endif else if (self.reconDataType eq 'UInt16') then begin
+    output = uintarr(numPixels, numPixels, numSlices, /nozero)
+    outputDataType = 1L
+  endif else if (self.reconDataType eq 'Int16') then begin
+    output = intarr(numPixels, numPixels, numSlices, /nozero)
+    outputDataType = 2L
+  endif
+
   tp = {tomo_params,                                $
     ; Sinogram parameters
     numPixels:            numPixels,                $ ; Number of pixels in sinogram row before padding
     numProjections:       numProjections,           $ ; Number of angles
     numSlices:            numSlices,                $ ; Number of slices
+    inputDataType:        inputDataType,            $ ; Input data type (0=float32, 1=uint16)
+    outputDataType:       outputDataType,           $ ; Output data type (0=float32, 1=uint16, 2=int16)
     sinoScale:            self.preprocessScale,     $ ; Scale factor to multiply sinogram when airPixels=0;
     reconScale:           self.reconScale,          $ ; Scale factor to multiple reconstruction
     reconOffset:          self.reconOffset,         $ ; Offset factor to multiple reconstruction
@@ -1053,16 +1065,6 @@ pro tomo::tomo_recon, input, $
   tp.GR_filterName = [byte(self.GR_filterName), 0B]
   tp.paddedSinogramWidth = self->getPaddedSinogramWidth(numPixels)
 
-  output = 0 ; Deallocate any existing array
-  output = fltarr(numPixels, numPixels, numSlices, /nozero)
-
-  ; Make sure input is a float array
-  tname = size(input, /tname)
-  if (tname ne 'FLOAT') then begin
-    input = float(input)
-  endif
-  t1 = systime(1)
-
   if (create) then begin
     t = call_external(self.tomoReconShareableLibrary, 'tomoReconCreateIDL', tp, angles)
   endif
@@ -1080,10 +1082,8 @@ pro tomo::tomo_recon, input, $
       self->display_status, 'Reconstructing slice: ' + strtrim(numSlices-slicesRemaining,2) + '/' + strtrim(numSlices,2), 2
       wait, .01
     endrep until (reconComplete)
-    t2 = systime(1)
-    print, 'tomo_recon: time to convert to float:', t1-t0
-    print, '                 time to reconstruct:', t2-t1
-    print, '                          total time:', t2-t0
+    t1 = systime(1)
+    print, '                 time to reconstruct:', t1-t0
   endif
 end
 
@@ -1429,12 +1429,6 @@ pro tomo::reconstruct_volume
     center = center_value + findgen(self.ny)*0
   endif
   tConvert360 = systime(1)
-  if (size(*self.pVolume, /tname) ne 'FLOAT') then begin
-    self->display_status, 'Converting to float ...', 1
-    *self.pVolume = float(*self.pVolume)
-  endif
-  tConvertFloat = systime(1)
-  recon = fltarr(numPixels, numPixels, numSlices, /nozero)
   
   if (self.reconDataType eq 'UInt16') then begin
     self.reconOffset = 32767. 
@@ -1452,7 +1446,7 @@ pro tomo::reconstruct_volume
     ; If we are using GRIDREC to reconstruct then we get 2 slices at a time
     for i=0, nrows-1, 2 do begin
       self->display_status, 'Reconstructing slice ' + strtrim(i,2) + '/' + strtrim(nrows-1,2), 2
-      r = self->reconstruct_slice((*self.pVolume)[*,[i,(i+1)<self.ny],*], r2, center=center[i])
+      r = self->reconstruct_slice(float((*self.pVolume)[*,[i,(i+1)<self.ny],*]), r2, center=center[i])
       if (i eq 0) then begin
         ncols = n_elements(r[*,0])
         recon = intarr(ncols, ncols, nrows, /nozero)
@@ -1466,20 +1460,12 @@ pro tomo::reconstruct_volume
         return
       endif
     endfor
+
   endelse
   
   ptr_free, self.pVolume
   tReconDone = systime(1)
   self->write_sample_config
-  
-  self->display_status, 'Converting to output data type ...', 1
-  if (self.reconDataType eq 'Int16') then begin
-    recon = fix(recon)
-  endif
-  if (self.reconDataType eq 'UInt16') then begin
-    recon = uint(recon)
-  endif
-  tConvertInt = systime(1)
 
   self.imageType = 'RECONSTRUCTED'
   dims = size(recon, /dimensions)
@@ -1494,10 +1480,8 @@ pro tomo::reconstruct_volume
   self.pVolume = ptr_new(recon, /no_copy)
   tEnd = systime(1)
   print, '     Convert 360 to 180:', tConvert360 - tStart
-  print, ' Convert input to float:', tConvertFloat - tConvert360
-  print, '            Reconstruct:', tReconDone-tConvertFloat
-  print, 'Convert output to ' + self.reconDataType + ':', tConvertInt - tReconDone
-  print, '             Write file:', tEnd-tConvertInt
+  print, '            Reconstruct:', tReconDone-tConvert360
+  print, '             Write file:', tEnd-tReconDone
   print, '             Total time:', tEnd-tStart
   self->display_status, 'Reconstruction complete.', 1
 end
