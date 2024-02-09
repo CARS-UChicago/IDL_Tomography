@@ -57,12 +57,12 @@ pro tomo::read_camera_file, filename
     num_projections = dims[2]
     flats = [[[flat1]], [[flat2]]]
     status = self.read_setup(self.baseFilename + '.setup')
-    ; pDarks is set in read_setup
+    ; pDarks is set in read_setup. Copy to darks
+    darks = *self.pDarks
     rotation_start = 0.
     rotation_step = 180./num_projections
     self.rotationCenter = dims[0]/2.
     self.rotationCenterSlope = 0.
-    return
   endif
 
   ; See if the file is HDF5
@@ -1946,7 +1946,7 @@ function tomo::read_setup, file
       'SAMPLE:'        :  sampleConfig['SampleName'] = value
       'DARK_CURRENT:'  :  begin
                             sampleConfig['DarkFieldValue'] = value
-                            self.pDarks = ptrNew(value)
+                            self.pDarks = ptr_new(float(value))
                           end
       'CENTER:'        :  self.rotationCenter = value
       'ENERGY:'        :  sampleConfig['Energy'] = value
