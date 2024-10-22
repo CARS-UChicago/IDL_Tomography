@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" data-content_root="./">
 <head>
@@ -9,15 +11,11 @@
       <link rel="stylesheet" type="text/css" href="_static/css/my_theme.css?v=254ed751" />
 
   
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script src="_static/jquery.js?v=5d32c60e"></script>
-        <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-        <script src="_static/documentation_options.js?v=60dbed4a"></script>
-        <script src="_static/doctools.js?v=888ff710"></script>
-        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=60dbed4a"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -90,7 +88,7 @@
 <p>ImageJ is an excellent free program for displaying and analyzing tomography data.
 ImageJ for Linux, Windows, and Mac can be downloaded from the
 <a class="reference external" href="https://imagej.nih.gov/ij/download.html">ImageJ Website</a>.</p>
-<p>The download is a ZIP file that can be extracted to a location like <code class="docutils literal notranslate"><span class="pre">C:\\ImageJ</span></code> on Windows
+<p>The download is a ZIP file that can be extracted to a location like <code class="docutils literal notranslate"><span class="pre">C:\ImageJ</span></code> on Windows
 or <code class="docutils literal notranslate"><span class="pre">/home/user/ImageJ</span></code> or <code class="docutils literal notranslate"><span class="pre">/usr/local/ImageJ</span></code> on Linux.</p>
 <section id="netcdf-plugin">
 <h2>netCDF plugin<a class="headerlink" href="#netcdf-plugin" title="Link to this heading"></a></h2>
@@ -108,30 +106,19 @@ will be opened as a stack in ImageJ</p>
 <h2>HDF5 plugin<a class="headerlink" href="#hdf5-plugin" title="Link to this heading"></a></h2>
 <p>There are 2 ImageJ plugins for reading HDF5 files.</p>
 <ul class="simple">
-<li><p>The first one is the <a class="reference external" href="https://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/hdf5.html">Freiburg HDF5 plugin</a>.
+<li><p>The <a class="reference external" href="https://lmb.informatik.uni-freiburg.de/resources/opensource/imagej_plugins/hdf5.html">Freiburg HDF5 plugin</a>.
 This plugin can only read datasets smaller than 2 GB, so it is not useful for reading most tomography datasets.</p></li>
-<li><p>The second one is <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5">PSI HDF5 plugin</a>.
-This version is also limited to reading datasets smaller than 2 GB into “real” ImageJ stacks.
+<li><p>The <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5">PSI HDF5 plugin</a>.
+This plugin is also limited to reading datasets smaller than 2 GB into “real” ImageJ stacks.
 However, it supports “virtual” ImageJ stacks, which can be any size.  Virtual stacks are not read into memory
-in their entirety, only the currently selected slice is actually in memory.</p></li>
-</ul>
-<p>Virtual datasets have these 2 advantages:</p>
-<ul class="simple">
-<li><p>The required memory is small</p></li>
-<li><p>It is very fast to open files and browse through them</p></li>
-</ul>
-<p>They also have a major disadvantage:</p>
-<ul class="simple">
-<li><p>The datasets are read-only.</p>
-<ul>
-<li><p>This means that they cannot be modified and scaled to display unsigned 16-bit data, the way that GSETomo_.ijm does for
-netCDF datasets.</p></li>
-</ul>
-</li>
+in their entirety, only the currently selected slice is actually in memory.
+This plugin is the one that should be used for reading GSECARS tomography data.</p></li>
 </ul>
 <p>To install the PSI plugin copy the latest jar file from the <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5/releases">PSI HDF5 releases</a> to the ImageJ/plugins folder.
 NOTE: If this is being installed in FIJI, rather than ImageJ it is first necessary to uninstall the Freiburg HDF5 plugin.
 This is explained in the <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5">PSI HDF5 plugin</a> README.md file.</p>
+<p>The PSI plugin can be used directly to read the HDF5 “camera” files containing the flat fields and projections,
+which are unsigned 16-bit integers.</p>
 <p>Open ImageJ and select <code class="docutils literal notranslate"><span class="pre">File/Import/HDF5...</span></code>.  This will open a file browser to select an HDF5 file.
 After selecting the HDF file it will open the following window to select which dataset to read:</p>
 <figure class="align-center" id="id1">
@@ -140,25 +127,36 @@ After selecting the HDF file it will open the following window to select which d
 <p><span class="caption-text"><strong>ImageJ HDF5 plugin dataset selection window</strong></span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
 </figcaption>
 </figure>
-<p>This example is for reading an HDF5 raw data file, which contains 4 datasets.
+<p>This example is for reading a “camera” HDF5 raw data file, which contains 4 datasets.
 /exchange/data is the one with the projections, /exchange/data_white contains the flat fields.
-Reconstruction and normalized HDF5 only have a single dataset, /exchange/data.</p>
+Reconstruction and normalized HDF5 files only have a single dataset, /exchange/data.</p>
 <p>The 3-D dataset in the file will be opened by default as a virtual stack in ImageJ.  Unchecking the <code class="docutils literal notranslate"><span class="pre">Virtual</span> <span class="pre">Stack</span></code>
 box in the selection window will generate an error because the dataset is larger than 2 GB.</p>
-<p>This is an example of a reconstructed dataset read into a virtual stack:</p>
+<p>The prefered data type for the reconstructed HDF5 files is signed 16-bit integers.
+This produces files that are 50% of the size of 32-bit floating point, with no practical loss of precision or range.
+Unfortunately, ImageJ does not directly support signed 16-bit integers, so a scaling is needed
+to correctly display the values.
+To read these files into ImageJ you need copy the following to the ImageJ/plugins folder.</p>
+<ul class="simple">
+<li><p>The latest jar file from the <a class="reference external" href="https://github.com/paulscherrerinstitute/ch.psi.imagej.hdf5/releases">PSI HDF5 releases</a>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Read_GSE_HDF5_recon.ijm</span></code> from the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL Tomography</a> repository.
+See the instructions in <a class="reference internal" href="installation.html#installation"><span class="std std-ref">Installation</span></a> for how to download this.</p></li>
+</ul>
+<p>There will then be a Plugins menu item titled “Read GSE HDF5 recon”.
+Click on it and select the *recon.h5 file.  It does the following:</p>
+<ul class="simple">
+<li><p>Reads the HDF5 file into a virtual stack.</p></li>
+<li><p>Duplicates the virtual stack to a real stack.</p></li>
+<li><p>Applies scaling so that the signed 16-bit integer values are displayed correctly.</p></li>
+<li><p>Closes the virtual stack.</p></li>
+</ul>
+<p>This is an example of a reconstructed dataset read with the macro above:</p>
 <figure class="align-center" id="id2">
-<img alt="_images/ImageJ_virtual_stack.png" src="_images/ImageJ_virtual_stack.png" />
+<img alt="_images/ImageJ_recon_stack.png" src="_images/ImageJ_recon_stack.png" />
 <figcaption>
-<p><span class="caption-text"><strong>ImageJ virtual stack for HDF5 file with reconstructed data</strong></span><a class="headerlink" href="#id2" title="Link to this image"></a></p>
+<p><span class="caption-text"><strong>ImageJ stack for HDF5 file with reconstructed data</strong></span><a class="headerlink" href="#id2" title="Link to this image"></a></p>
 </figcaption>
 </figure>
-<p>It is possible to copy the virtual stack into a real stack in ImageJ. This is as follows:</p>
-<ul class="simple">
-<li><p>Right click on the image in the virtual stack window</p></li>
-<li><p>Select <code class="docutils literal notranslate"><span class="pre">Duplicate</span></code></p></li>
-<li><p>In the next window check the <code class="docutils literal notranslate"><span class="pre">Duplicate</span> <span class="pre">stack</span></code> box.</p></li>
-</ul>
-<p>The copy operation takes some time.  The new window will be a real stack which can be modified.</p>
 </section>
 <section id="incompatibility-of-netcdf-and-hdf5-plugins">
 <h2>Incompatibility of netCDF and HDF5 plugins<a class="headerlink" href="#incompatibility-of-netcdf-and-hdf5-plugins" title="Link to this heading"></a></h2>
@@ -188,7 +186,7 @@ One will have the netCDF plugin and the other the HDF5 plugin.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2024-April-05.
+      <span class="lastupdated">Last updated on 2024-October-22.
       </span></p>
   </div>
 
