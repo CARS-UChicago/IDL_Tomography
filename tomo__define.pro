@@ -638,25 +638,25 @@ pro tomo::optimize_center_entropy, slices, center, merit
   self->tomo_recon, input, recon, angles=*self.pAngles, center=ctr
 
   ; Use the slice in center of range to get min/max of reconstruction for histogram
-  r1 = recon[*,*,ncenter]
-  r2 = recon[*,*,ncenter+1]
+  r1 = float(recon[*,*,ncenter])
+  r2 = float(recon[*,*,ncenter+1])
 
-  mn1 = float(min(r1))
+  mn1 = min(r1)
   if ((mn1) lt 0) then mn1=2*mn1 else mn1=0.5*mn1
-  mx1 = float(max(r1))
+  mx1 = max(r1)
   if ((mx1) gt 0) then mx1=2*mx1 else mx1=0.5*mx1
   binsize1=(mx1-mn1)/1.e4
 
-  mn2 = float(min(r2))
+  mn2 = min(r2)
   if ((mn2) lt 0) then mn2=2*mn2 else mn2=0.5*mn2
-  mx2 = float(max(r2))
+  mx2 = max(r2)
   if ((mx2) gt 0) then mx2=2*mx2 else mx2=0.5*mx2
   binsize2=(mx2-mn2)/1.e4
 
   npixels = n_elements(r1)
   for i=0, ncenter-1 do begin
-    r1 = recon[*,*,i*2]
-    r2 = recon[*,*,i*2+1]
+    r1 = float(recon[*,*,i*2])
+    r2 = float(recon[*,*,i*2+1])
     h1 = histogram(r1, min=mn1, max=mx1, bin=binsize1) > 1
     h1 = float(h1) / npixels
     h2 = histogram(r2, min=mn2, max=mx2, bin=binsize2) > 1
