@@ -1,8 +1,8 @@
 .. _IDL_Tomography:      https://github.com/CARS-UChicago/IDL_tomography
 .. _IDL_Imaging:         https://github.com/CARS-UChicago/IDL_tomography
-.. _IDL:                 https://www.l3harrisgeospatial.com/Software-Technology/IDL
+.. _IDL:                 https://www.nv5geospatialsoftware.com/Products/IDL
 .. _tomo_display.zip:    https://cars.uchicago.edu/data/tomography/tomo_display/tomo_display.zip
-.. _IDL_Register:        https://www.l3harrisgeospatial.com/Company/Create-Account?returnurl=https%3a%2f%2fwww.l3harrisgeospatial.com%2fSoftware-Technology%2fIDL
+.. _IDL_Register:        https://portal.nv5geospatialsoftware.com/auth/sign-up
 
 Installation
 ============
@@ -16,12 +16,12 @@ is recommended.
 Install IDL
 ~~~~~~~~~~~
 All sites must install IDL_, whether they will use the licensed version or the Virtual Machine. 
-You should `register on the Harris site 
-<https://www.l3harrisgeospatial.com/Company/Create-Account?returnurl=https%3a%2f%2fwww.l3harrisgeospatial.com%2fSoftware-Technology%2fIDL>`_ 
+You should `register on the NV5 Geospatial site 
+<https://portal.nv5geospatialsoftware.com/auth/sign-up>`__ 
 and then you can download the software and follow the installation instructions. 
 If you want to get started immediately with the IDL Virtual Machine you can 
 `download IDL here <https://cars.uchicago.edu/data/idl>`__,
-but you should also register with Harris.
+but you should also register with NV5.
 
 Install IDL_Tomography
 ~~~~~~~~~~~~~~~~~~~~~~

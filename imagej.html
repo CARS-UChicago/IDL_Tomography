@@ -157,6 +157,16 @@ Click on it and select the *recon.h5 file.  It does the following:</p>
 <p><span class="caption-text"><strong>ImageJ stack for HDF5 file with reconstructed data</strong></span><a class="headerlink" href="#id2" title="Link to this image"></a></p>
 </figcaption>
 </figure>
+<p>It is also possible to convert a signed 16-bit integer reconstructed HDF5 file to a TIFF stack in the case of the
+HDF5 file being too large to convert directly in memory. Download and run <code class="docutils literal notranslate"><span class="pre">Open_Virtual_h5_Save_tiff_Stack.ijm</span></code> from
+the <a class="reference external" href="https://github.com/CARS-UChicago/IDL_tomography">IDL Tomography</a> repository. This will:</p>
+<ul class="simple">
+<li><p>Read the selected HDF5 file into a virtual stack.</p></li>
+<li><p>Prompt you to choose a directory for saving the TIFF images.</p></li>
+<li><p>Open each image in the stack one at a time, scale it, and save it into the specified directory.</p></li>
+</ul>
+<p>Because this method relies on opening and saving each single image in the stack, it takes longer than using
+<code class="docutils literal notranslate"><span class="pre">Read_GSE_HDF5_recon.ijm</span></code>.</p>
 </section>
 <section id="incompatibility-of-netcdf-and-hdf5-plugins">
 <h2>Incompatibility of netCDF and HDF5 plugins<a class="headerlink" href="#incompatibility-of-netcdf-and-hdf5-plugins" title="Link to this heading"></a></h2>
@@ -186,7 +196,7 @@ One will have the netCDF plugin and the other the HDF5 plugin.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2024-October-22.
+      <span class="lastupdated">Last updated on 2024-November-08.
       </span></p>
   </div>
 

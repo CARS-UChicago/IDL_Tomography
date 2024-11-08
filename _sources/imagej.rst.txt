@@ -84,6 +84,17 @@ This is an example of a reconstructed dataset read with the macro above:
 
     **ImageJ stack for HDF5 file with reconstructed data**
 
+It is also possible to convert a signed 16-bit integer reconstructed HDF5 file to a TIFF stack in the case of the
+HDF5 file being too large to convert directly in memory. Download and run ``Open_Virtual_h5_Save_tiff_Stack.ijm`` from 
+the `IDL Tomography`_ repository. This will:
+
+-	Read the selected HDF5 file into a virtual stack.
+-	Prompt you to choose a directory for saving the TIFF images.
+-	Open each image in the stack one at a time, scale it, and save it into the specified directory.
+
+Because this method relies on opening and saving each single image in the stack, it takes longer than using
+``Read_GSE_HDF5_recon.ijm``.
+
 Incompatibility of netCDF and HDF5 plugins
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Unfortunately the netCDF and PSI HDF5 plugins referenced above are incompatible, meaning that they cannot both be
