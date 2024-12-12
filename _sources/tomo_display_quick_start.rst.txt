@@ -152,9 +152,8 @@ Once the optimum rotation center is found, use the **Reconstruct all** button to
 The output data type can be signed 16-bit integer (Int16), unsigned 16-bit integer (UInt16), or 32-bit floating point (Float32).
 Normally **Save result** is set to Yes, so that the reconstruction is written to a file.  
 It can be set to "No" for tests where only in-memory reconstruction is needed.
-The output **File format** can be netCDF or HDF5.  HDF5 is faster and more widely used.  netCDF can be used for
-backwards compatibility for older datasets, or when Int32 data needs to be read into ImageJ.  The limitations of ImageJ
-for reading Int32 HDF5 files are explained later.
+The output **File format** can be netCDF or HDF5.  HDF5 is faster, more widely used, and recommended.  netCDF can be used for
+backwards compatibility for older datasets.
 
 After reconstruction the screen will look like this. Note that **Visualize/Type** is now "RECONSTRUCTED", and the **Preprocess**
 and **Reconstruct** regions are disabled.

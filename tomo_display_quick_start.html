@@ -247,9 +247,8 @@ These values are within 0.25 pixels of those found with the 0-180 method.</p>
 The output data type can be signed 16-bit integer (Int16), unsigned 16-bit integer (UInt16), or 32-bit floating point (Float32).
 Normally <strong>Save result</strong> is set to Yes, so that the reconstruction is written to a file.
 It can be set to “No” for tests where only in-memory reconstruction is needed.
-The output <strong>File format</strong> can be netCDF or HDF5.  HDF5 is faster and more widely used.  netCDF can be used for
-backwards compatibility for older datasets, or when Int32 data needs to be read into ImageJ.  The limitations of ImageJ
-for reading Int32 HDF5 files are explained later.</p>
+The output <strong>File format</strong> can be netCDF or HDF5.  HDF5 is faster, more widely used, and recommended.  netCDF can be used for
+backwards compatibility for older datasets.</p>
 <p>After reconstruction the screen will look like this. Note that <strong>Visualize/Type</strong> is now “RECONSTRUCTED”, and the <strong>Preprocess</strong>
 and <strong>Reconstruct</strong> regions are disabled.</p>
 <figure class="align-center" id="id9">
@@ -299,7 +298,7 @@ in an <strong>image_display</strong> window like this.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2024-November-08.
+      <span class="lastupdated">Last updated on 2024-December-12.
       </span></p>
   </div>
 

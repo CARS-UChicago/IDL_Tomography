@@ -33,8 +33,7 @@ Reconstructed data
 ~~~~~~~~~~~~~~~~~~
 Beginning with the R2-0 version of *tomo_display* it can store reconstructed files in
 either netCDF format with a file name that ends in "recon.nc", or in HDF5 format with a file name that ends in "recon.h5".
-HDF5 is 2-3 times faster to write, and is generally recommended.  However, there are some limitations in reading HDF5 files into
-ImageJ which are discussed below.
+HDF5 is 2-3 times faster to write, and is generally recommended.
 
 Prior to R2-0 the reconstructed files were stored in netCDF format with a file name that ends
 in "recon.volume".
