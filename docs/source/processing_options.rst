@@ -173,7 +173,7 @@ The inner and outer edges of the cylinder wall will be detected as ring artifact
 new features because of this.
 
 Backproject
-~~~~~~~~~~~
+...........
 The following parameters are available when the reconstruction method is Backproject.
 
 .. list-table::
@@ -191,7 +191,7 @@ The following parameters are available when the reconstruction method is Backpro
     - The intepolation method to use with Radon backprojection.  Choices are None and Linear.
 
 Gridrec/tomoRecon
-~~~~~~~~~~~~~~~~~
+.................
 The following parameters are available when the reconstruction method is either Gridrec or tomoRecon.
 
 .. list-table::
@@ -210,7 +210,7 @@ The following parameters are available when the reconstruction method is either 
       when computing the padding value.  0 selects a padding value of 0.
       
 tomoRecon
-~~~~~~~~~~~~~~~~~
+.........
 The following parameters are available when the reconstruction method is tomoRecon.
 
 .. list-table::
