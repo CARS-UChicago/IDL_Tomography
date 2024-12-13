@@ -66,11 +66,11 @@
 <li class="toctree-l3"><a class="reference internal" href="#reconstruction-method">Reconstruction method</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#scale-factor-reconstruction">Scale factor (reconstruction)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#ring-smoothing-width">Ring smoothing width</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#backproject">Backproject</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#gridrec-tomorecon">Gridrec/tomoRecon</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tomorecon">tomoRecon</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#backproject">Backproject</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#gridrec-tomorecon">Gridrec/tomoRecon</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#tomorecon">tomoRecon</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="image_display.html">Visualize with image_display</a></li>
@@ -282,9 +282,8 @@ Setting the value to 0 will prevent any ring artifact correction from being perf
 The inner and outer edges of the cylinder wall will be detected as ring artifacts, and the algorithm can cause
 new features because of this.</p>
 </section>
-</section>
 <section id="backproject">
-<h2>Backproject<a class="headerlink" href="#backproject" title="Link to this heading"></a></h2>
+<h3>Backproject<a class="headerlink" href="#backproject" title="Link to this heading"></a></h3>
 <p>The following parameters are available when the reconstruction method is Backproject.</p>
 <table class="docutils align-default">
 <colgroup>
@@ -311,7 +310,7 @@ new features because of this.</p>
 </table>
 </section>
 <section id="gridrec-tomorecon">
-<h2>Gridrec/tomoRecon<a class="headerlink" href="#gridrec-tomorecon" title="Link to this heading"></a></h2>
+<h3>Gridrec/tomoRecon<a class="headerlink" href="#gridrec-tomorecon" title="Link to this heading"></a></h3>
 <p>The following parameters are available when the reconstruction method is either Gridrec or tomoRecon.</p>
 <table class="docutils align-default">
 <colgroup>
@@ -338,7 +337,7 @@ when computing the padding value.  0 selects a padding value of 0.</p></td>
 </table>
 </section>
 <section id="tomorecon">
-<h2>tomoRecon<a class="headerlink" href="#tomorecon" title="Link to this heading"></a></h2>
+<h3>tomoRecon<a class="headerlink" href="#tomorecon" title="Link to this heading"></a></h3>
 <p>The following parameters are available when the reconstruction method is tomoRecon.</p>
 <table class="docutils align-default">
 <colgroup>
@@ -367,6 +366,7 @@ That much memory only costs about $400 today, so chunking is probably not needed
 larger than this.</p>
 </section>
 </section>
+</section>
 
 
            </div>
@@ -380,7 +380,7 @@ larger than this.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2023, Mark Rivers.
-      <span class="lastupdated">Last updated on 2024-December-12.
+      <span class="lastupdated">Last updated on 2024-December-13.
       </span></p>
   </div>
 
