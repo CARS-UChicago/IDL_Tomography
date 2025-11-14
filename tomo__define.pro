@@ -257,6 +257,11 @@ pro tomo::preprocess
   }
   params.debugFile = [byte(self.debugFile), 0B]
 
+  ; The C++ code only handles UInt16 data.  Convert if necessary.
+  if (size(*self.pVolume, /tname) ne 'UINT') then begin
+    print, 'Converting *self.pVolume, to uint'
+    *self.pVolume = uint(*self.pVolume)
+  endif
   t = call_external(self.tomoReconShareableLibrary, 'tomoPreprocessCreateIDL', $
                     params, darks, flats, *self.pVolume, normalized)
 
