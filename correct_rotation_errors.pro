@@ -9,9 +9,10 @@
 
 function correct_rotation_errors, errs=errs, vol=vol, infile=infile, outfile=outfile, errorfile=errorfile, round=round
 
+  tomo = obj_new('tomo')
   if (n_elements(infile) ne 0) then begin
     print, 'Reading volume file ', infile
-    vol = read_tomo_volume(infile)
+    vol = tomo->read_volume(infile)
   endif
 
   s = size(vol, /dimensions)
@@ -39,6 +40,6 @@ function correct_rotation_errors, errs=errs, vol=vol, infile=infile, outfile=out
    endfor
    if (n_elements(outfile) ne 0) then begin
      print, 'Writing output file ', outfile
-     write_tomo_volume, outfile, vol
+     tomo->write_volume, outfile, vol
    endif
 end
